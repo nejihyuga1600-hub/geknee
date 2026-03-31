@@ -85,6 +85,28 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   useEffect(() => { if (open && ctx.page !== 'globe') inputRef.current?.focus(); }, [open, ctx.page]);
   useEffect(() => { if (open && ctx.page === 'globe') destRef.current?.focus(); }, [open, ctx.page]);
 
+  // Listen for globe / landmark clicks from the 3D canvas
+  useEffect(() => {
+    if (ctx.page !== 'globe') return;
+    const handler = (e: Event) => {
+      const loc = (e as CustomEvent<{ location: string }>).detail.location;
+      setOpen(true);
+      setDestError('');
+      if (loc) {
+        setConfirming(loc);
+        setConfirmLoc(encodeURIComponent(loc));
+        setDestInput('');
+      } else {
+        setConfirming('');
+        setConfirmLoc('');
+        setDestInput('');
+        setTimeout(() => destRef.current?.focus(), 80);
+      }
+    };
+    window.addEventListener('geknee:globeselect', handler);
+    return () => window.removeEventListener('geknee:globeselect', handler);
+  }, [ctx.page]);
+
   const handleDest = useCallback(async () => {
     const city = destInput.trim();
     if (!city || destLoading) return;

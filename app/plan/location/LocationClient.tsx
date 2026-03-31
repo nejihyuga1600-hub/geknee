@@ -5219,7 +5219,6 @@ const SettingsPanel   = dynamic(() => import("@/app/components/SettingsPanel"), 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LocationPage() {
   const [location, setLocation] = useState("");
-  const [pendingLoc, setPendingLoc] = useState<string | null>(null);
   const [authOpen,      setAuthOpen]      = useState(false);
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
@@ -5227,8 +5226,13 @@ export default function LocationPage() {
   const { data: session } = useSession();
   // Register globe-click navigation so Lm can navigate without prop-drilling
   useState(() => {
-    _setLmNav((loc: string) => { setLocation(loc); setPendingLoc(loc); });
-    _setGlobeClick(() => setPendingLoc((prev) => prev === null ? "" : prev));
+    _setLmNav((loc: string) => {
+      setLocation(loc);
+      window.dispatchEvent(new CustomEvent('geknee:globeselect', { detail: { location: loc } }));
+    });
+    _setGlobeClick(() => {
+      window.dispatchEvent(new CustomEvent('geknee:globeselect', { detail: { location: '' } }));
+    });
   });
 
   const handleInitialize = () => {
@@ -5357,52 +5361,6 @@ export default function LocationPage() {
           <span style={{ display: "block", width: 14, height: 1.5, background: "currentColor", borderRadius: 1 }} />
         </button>
       </div>
-
-      {/* Where do you want to travel — bottom-left confirmation bar */}
-      {pendingLoc !== null && (
-        <div style={{
-          position: "fixed", bottom: 32, left: 32, zIndex: 30,
-          background: "rgba(6,8,22,0.92)", border: "1px solid rgba(129,140,248,0.45)",
-          backdropFilter: "blur(18px)", borderRadius: 16,
-          padding: "18px 20px", display: "flex", flexDirection: "column", gap: 12,
-          boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.15)",
-          minWidth: 280,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Where do you want to travel?
-            </span>
-            <button onClick={() => setPendingLoc(null)} style={{
-              background: "none", border: "none", color: "rgba(200,210,255,0.5)",
-              cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px",
-            }}>&#x2715;</button>
-          </div>
-          <input
-            autoFocus
-            value={pendingLoc}
-            onChange={e => setPendingLoc(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && pendingLoc.trim()) router.push(`/plan/style?location=${encodeURIComponent(pendingLoc.trim())}`); if (e.key === "Escape") setPendingLoc(null); }}
-            placeholder="Enter a destination..."
-            style={{
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(129,140,248,0.3)",
-              borderRadius: 10, color: "#e0e7ff", fontSize: 15, fontWeight: 500,
-              padding: "10px 14px", outline: "none", width: "100%", boxSizing: "border-box",
-            }}
-          />
-          <button
-            onClick={() => { if (pendingLoc.trim()) router.push(`/plan/style?location=${encodeURIComponent(pendingLoc.trim())}`); }}
-            disabled={!pendingLoc.trim()}
-            style={{
-              background: pendingLoc.trim() ? "linear-gradient(135deg, #6366f1, #818cf8)" : "rgba(99,102,241,0.25)",
-              border: "none", borderRadius: 10, color: pendingLoc.trim() ? "#fff" : "rgba(255,255,255,0.35)",
-              fontSize: 14, fontWeight: 700, padding: "11px 0", cursor: pendingLoc.trim() ? "pointer" : "default",
-              letterSpacing: "0.03em", transition: "all 0.15s",
-            }}
-          >
-            Plan My Trip &rarr;
-          </button>
-        </div>
-      )}
 
       {/* Auth modal */}
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
