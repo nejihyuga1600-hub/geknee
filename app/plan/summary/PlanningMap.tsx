@@ -164,7 +164,7 @@ export default function PlanningMap({
         const coords: [number, number] = [loc.lng(), loc.lat()];
         const photos  = (place.photos  ?? []).slice(0, 12).map(p => p.getUrl({ maxWidth: 800, maxHeight: 600 }));
         const reviews = (place.reviews ?? []).slice(0, 5).map(r => ({
-          author: r.author_name, rating: r.rating, text: r.text,
+          author: r.author_name, rating: r.rating ?? 0, text: r.text,
         }));
 
         setDetail({
