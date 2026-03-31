@@ -234,7 +234,7 @@ export const AIRPORTS: Record<string, { name: string; iata: string }> = {
   'Cusco':           { name: 'Alejandro Velasco Astete International',   iata: 'CUZ' },
   'Papeete':         { name: 'Fa\u0101\u2019a International Airport',   iata: 'PPT' },
   'Bora Bora':       { name: 'Bora Bora Airport',                        iata: 'BOB' },
-  'Jackson':         { name: 'Jackson Hole Airport',                     iata: 'JAC' },
+  'Jackson Hole':    { name: 'Jackson Hole Airport',                     iata: 'JAC' },
   'Bergen':          { name: 'Bergen Airport Flesland',                  iata: 'BGO' },
   'Punta Arenas':    { name: 'Carlos Ib\u00e1\u00f1ez del Campo International', iata: 'PUQ' },
 };
@@ -251,7 +251,7 @@ const LANDMARK_AIRPORTS: Record<string, string> = {
   'Hiroshima Peace Memorial': 'Hiroshima',
   // USA
   'Grand Canyon':        'Las Vegas',
-  'Yellowstone':         'Jackson',
+  'Yellowstone':         'Jackson Hole',
   'Niagara Falls':       'Buffalo',
   'Yosemite':            'San Francisco',
   'Zion':                'Las Vegas',
