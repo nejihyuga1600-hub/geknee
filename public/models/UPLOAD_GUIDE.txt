@@ -1,0 +1,376 @@
+GLOBE 3D MODEL FILE LOCATIONS
+==============================
+Upload .glb files to:  travel-ai/public/models/<filename>
+Once uploaded, the globe automatically shows your model instead of the primitive shape.
+
+Total landmarks: 275
+
+
+── Original 30 World Wonders ─────────────────────────
+  greatWall                     public/models/great_wall.glb
+  petra                         public/models/petra.glb
+  christRedeem                  public/models/christ_redeemer.glb
+  machuPicchu                   public/models/machu_picchu.glb
+  chichenItza                   public/models/chichen_itza.glb
+  colosseum                     public/models/colosseum.glb
+  tajMahal                      public/models/taj_mahal.glb
+  eiffelTower                   public/models/eiffel_tower.glb
+  acropolis                     public/models/acropolis.glb
+  stonehenge                    public/models/stonehenge.glb
+  sagradaFamilia                public/models/sagrada_familia.glb
+  angkorWat                     public/models/angkor_wat.glb
+  borobudur                     public/models/borobudur.glb
+  tokyoSkytree                  public/models/tokyo_skytree.glb
+  pyramidGiza                   public/models/pyramids.glb
+  tableMountain                 public/models/table_mountain.glb
+  statueLiberty                 public/models/statue_liberty.glb
+  mtRushmore                    public/models/mt_rushmore.glb
+  goldenGate                    public/models/golden_gate.glb
+  grandCanyon                   public/models/grand_canyon.glb
+  niagaraFalls                  public/models/niagara_falls.glb
+  iguazuFalls                   public/models/iguazu_falls.glb
+  galapagos                     public/models/galapagos.glb
+  plitviceLakes                 public/models/plitvice_lakes.glb
+  swissAlps                     public/models/swiss_alps.glb
+  mtEverest                     public/models/mt_everest.glb
+  haLongBay                     public/models/ha_long_bay.glb
+  victoriaFalls                 public/models/victoria_falls.glb
+  greatBarrierReef              public/models/great_barrier_reef.glb
+  milfordSound                  public/models/milford_sound.glb
+
+── United States (by state) ──────────────────────────
+  alabamaRocket                 public/models/alabama_rocket.glb
+  alaskaDenali                  public/models/alaska_denali.glb
+  arkansasCrystal               public/models/arkansas_crystal.glb
+  californiaYosemite            public/models/california_yosemite.glb
+  coloradoRocky                 public/models/colorado_rocky.glb
+  connecticutMark               public/models/connecticut_mark_twain.glb
+  delawareCape                  public/models/delaware_cape_henlopen.glb
+  floridaKSC                    public/models/florida_kennedy_space_center.glb
+  georgiaStone                  public/models/georgia_stone_mountain.glb
+  hawaiiDiamond                 public/models/hawaii_diamond_head.glb
+  idahoCraters                  public/models/idaho_craters_moon.glb
+  illinoisBean                  public/models/illinois_cloud_gate.glb
+  indianaSpeedway               public/models/indiana_speedway.glb
+  iowaFields                    public/models/iowa_field_of_dreams.glb
+  kansasPrairie                 public/models/kansas_tallgrass_prairie.glb
+  kentuckyMammoth               public/models/kentucky_mammoth_cave.glb
+  louisianaFrench               public/models/louisiana_french_quarter.glb
+  maineAcadia                   public/models/maine_acadia.glb
+  marylandFort                  public/models/maryland_fort_mchenry.glb
+  massFreedom                   public/models/massachusetts_freedom_trail.glb
+  michiganPictured              public/models/michigan_pictured_rocks.glb
+  minnesotaMall                 public/models/minnesota_mall_of_america.glb
+  mississippiNatch              public/models/mississippi_natchez_trace.glb
+  missouriArch                  public/models/missouri_gateway_arch.glb
+  montanaGlacier                public/models/montana_glacier_np.glb
+  nebraskaChimney               public/models/nebraska_chimney_rock.glb
+  nevadaVegas                   public/models/nevada_las_vegas_strip.glb
+  nhWashington                  public/models/nh_mount_washington.glb
+  njAtlantic                    public/models/nj_atlantic_city.glb
+  nmWhiteSands                  public/models/nm_white_sands.glb
+  nyEmpire                      public/models/ny_empire_state.glb
+  ncBlueRidge                   public/models/nc_blue_ridge.glb
+  ndTheodore                    public/models/nd_theodore_roosevelt.glb
+  ohioRock                      public/models/ohio_rock_hall.glb
+  oklahomaMemorial              public/models/oklahoma_memorial.glb
+  oregonCrater                  public/models/oregon_crater_lake.glb
+  paLibertyBell                 public/models/pa_liberty_bell.glb
+  riCliffWalk                   public/models/ri_cliff_walk.glb
+  scFortSumter                  public/models/sc_fort_sumter.glb
+  tnGraceland                   public/models/tn_graceland.glb
+  txAlamo                       public/models/tx_alamo.glb
+  utahArches                    public/models/utah_arches.glb
+  vtStowe                       public/models/vt_stowe_mountain.glb
+  vaMonticello                  public/models/va_monticello.glb
+  waSpaceNeedle                 public/models/wa_space_needle.glb
+  wvNewRiver                    public/models/wv_new_river_gorge.glb
+  wiHouseRock                   public/models/wi_house_on_the_rock.glb
+  wyOldFaithful                 public/models/wy_old_faithful.glb
+  parkGuell                     public/models/park_guell.glb
+  pampalonaFiesta               public/models/pamplona.glb
+  vaticanCity                   public/models/vatican_city.glb
+  windsorCastle                 public/models/windsor_castle.glb
+  varanasiGhats                 public/models/varanasi_ghats.glb
+  pamukkale                     public/models/pamukkale.glb
+  pantanal                      public/models/pantanal.glb
+  palenqueMx                    public/models/palenque.glb
+  valleyOfKings                 public/models/valley_of_the_kings.glb
+  wadiRum                       public/models/wadi_rum.glb
+  patagoniaArg                  public/models/patagonia_torres_del_paine.glb
+
+── France ────────────────────────────────────────────
+  montSaintMichelF              public/models/mont_saint_michel.glb
+  versaillesF                   public/models/versailles.glb
+  notreDameF                    public/models/notre_dame.glb
+  niceRiviera                   public/models/nice_riviera.glb
+  pontDuGard                    public/models/pont_du_gard.glb
+  chamonixAlps                  public/models/chamonix_alps.glb
+  carcassonneF                  public/models/carcassonne.glb
+  chambordF                     public/models/chambord_castle.glb
+  bordeauxWine                  public/models/bordeaux.glb
+  colmarAlsace                  public/models/colmar.glb
+  daintreeRF                    public/models/daintree_rainforest.glb
+
+── Spain ─────────────────────────────────────────────
+  alhambra                      public/models/alhambra.glb
+  parkGuell                     public/models/park_guell.glb
+  sevilleCathedral              public/models/seville_cathedral.glb
+  guggenheimBilbao              public/models/guggenheim_bilbao.glb
+  teideVolcano                  public/models/teide_volcano.glb
+  santiagoDeComp                public/models/santiago_de_compostela.glb
+  toledoSpain                   public/models/toledo_spain.glb
+  ibizaSpain                    public/models/ibiza.glb
+  costaBrava                    public/models/costa_brava.glb
+  pampalonaFiesta               public/models/pamplona.glb
+
+── Italy ─────────────────────────────────────────────
+  leaningPisa                   public/models/leaning_tower_pisa.glb
+  veniceCanals                  public/models/venice_canals.glb
+  amalfiCoast                   public/models/amalfi_coast.glb
+  vaticanCity                   public/models/vatican_city.glb
+  pompeii                       public/models/pompeii.glb
+  cinqueTerre                   public/models/cinque_terre.glb
+  lakeComo                      public/models/lake_como.glb
+  dolomites                     public/models/dolomites.glb
+  treviFountain                 public/models/trevi_fountain.glb
+  siciliaTemple                 public/models/sicily_valley_temples.glb
+
+── United Kingdom ────────────────────────────────────
+  bigBen                        public/models/big_ben.glb
+  towerBridge                   public/models/tower_bridge.glb
+  edinburghCastle               public/models/edinburgh_castle.glb
+  buckinghamPalace              public/models/buckingham_palace.glb
+  bathRomans                    public/models/bath_roman_baths.glb
+  giantsCauseway                public/models/giants_causeway.glb
+  lakeDistrict                  public/models/lake_district.glb
+  windsorCastle                 public/models/windsor_castle.glb
+  hadrianWall                   public/models/hadrians_wall.glb
+  cotswolds                     public/models/cotswolds.glb
+
+── Germany ───────────────────────────────────────────
+  brandenburgGate               public/models/brandenburg_gate.glb
+  neuschwanstein                public/models/neuschwanstein_castle.glb
+  cologneGermany                public/models/cologne_cathedral.glb
+  rhineValley                   public/models/rhine_valley.glb
+  blackForest                   public/models/black_forest.glb
+  heidelbergCastle              public/models/heidelberg_castle.glb
+  bavAlps                       public/models/bavarian_alps.glb
+  hamburgHarbor                 public/models/hamburg_harbor.glb
+  rothenburg                    public/models/rothenburg.glb
+  munichMarien                  public/models/munich_marienplatz.glb
+
+── Japan ─────────────────────────────────────────────
+  mountFuji                     public/models/mount_fuji.glb
+  fushimiInari                  public/models/fushimi_inari.glb
+  hiroshimaPeace                public/models/hiroshima_peace_memorial.glb
+  naraDeer                      public/models/nara_deer_park.glb
+  osakaCastle                   public/models/osaka_castle.glb
+  arashiyamaBamboo              public/models/arashiyama_bamboo.glb
+  himejCastle                   public/models/himeji_castle.glb
+  hokkaidoLav                   public/models/hokkaido_lavender.glb
+  shibuyaCrossing               public/models/shibuya_crossing.glb
+  kyotoTemple                   public/models/kyoto_golden_pavilion.glb
+
+── Australia ─────────────────────────────────────────
+  sydneyOpera                   public/models/sydney_opera_house.glb
+  uluru                         public/models/uluru.glb
+  blueMountains                 public/models/blue_mountains.glb
+  greatOceanRoad                public/models/great_ocean_road.glb
+  kakaduNP                      public/models/kakadu_np.glb
+  whitsundays                   public/models/whitsunday_islands.glb
+  bondiBeach                    public/models/bondi_beach.glb
+  daintreeRF                    public/models/daintree_rainforest.glb
+  purnululu                     public/models/purnululu_bungle_bungle.glb
+  tasmaniaFreycinet             public/models/tasmania_freycinet.glb
+
+── China ─────────────────────────────────────────────
+  forbiddenCity                 public/models/forbidden_city.glb
+  terracottaArmy                public/models/terracotta_army.glb
+  liRiverChina                  public/models/li_river.glb
+  zhangjiajie                   public/models/zhangjiajie.glb
+  yellowMountain                public/models/huangshan_yellow_mountain.glb
+  potalaLhasa                   public/models/potala_palace.glb
+  westLakeHangzhou              public/models/west_lake_hangzhou.glb
+  guilinKarst                   public/models/guilin_karst.glb
+  summerPalaceB                 public/models/summer_palace_beijing.glb
+  lijiangOldTown                public/models/lijiang_old_town.glb
+
+── India ─────────────────────────────────────────────
+  jaipurAmber                   public/models/jaipur_amber_fort.glb
+  keralaBackwaters              public/models/kerala_backwaters.glb
+  varanasiGhats                 public/models/varanasi_ghats.glb
+  goaBeaches                    public/models/goa_beaches.glb
+  goldenTempleAm                public/models/golden_temple_amritsar.glb
+  mumbaiGateway                 public/models/mumbai_gateway_of_india.glb
+  hawaMahal                     public/models/hawa_mahal.glb
+  ajantaCaves                   public/models/ajanta_caves.glb
+  ranthambore                   public/models/ranthambore.glb
+  delhiQutub                    public/models/delhi_qutub_minar.glb
+
+── Thailand ──────────────────────────────────────────
+  grandPalaceBKK                public/models/grand_palace_bangkok.glb
+  phiPhiIslands                 public/models/phi_phi_islands.glb
+  chiangMaiTemple               public/models/chiang_mai_doi_suthep.glb
+  ayutthaya                     public/models/ayutthaya.glb
+  railayBeach                   public/models/railay_beach.glb
+  whiteTempleCR                 public/models/white_temple_chiang_rai.glb
+  erawanFalls                   public/models/erawan_waterfall.glb
+  sukhothai                     public/models/sukhothai.glb
+
+── Greece ────────────────────────────────────────────
+  santoriniGreece               public/models/santorini.glb
+  meteora                       public/models/meteora.glb
+  delphi                        public/models/delphi.glb
+  olympia                       public/models/ancient_olympia.glb
+  rhodesOldCity                 public/models/rhodes_old_city.glb
+  corfuOldTown                  public/models/corfu_old_town.glb
+  knossosCrete                  public/models/knossos.glb
+  mykonos                       public/models/mykonos_windmills.glb
+  navagioBeach                  public/models/navagio_beach.glb
+  nafplio                       public/models/nafplio.glb
+
+── Turkey ────────────────────────────────────────────
+  pamukkale                     public/models/pamukkale.glb
+  ephesus                       public/models/ephesus.glb
+  blueMosque                    public/models/blue_mosque.glb
+  topkapiPalace                 public/models/topkapi_palace.glb
+  bodrumTurkey                  public/models/bodrum_castle.glb
+  gobekliTepe                   public/models/gobekli_tepe.glb
+  nemrutDag                     public/models/nemrut_dag.glb
+  sumelaMonastery               public/models/sumela_monastery.glb
+
+── Brazil ────────────────────────────────────────────
+  amazonManaus                  public/models/amazon_manaus.glb
+  copacabana                    public/models/copacabana_beach.glb
+  pantanal                      public/models/pantanal.glb
+  fernandoNoronha               public/models/fernando_de_noronha.glb
+  salvadorHistoric              public/models/salvador_pelourinho.glb
+  lencoisM                      public/models/lencois_maranhenses.glb
+  ouroPreto                     public/models/ouro_preto.glb
+
+── Mexico ────────────────────────────────────────────
+  teotihuacan                   public/models/teotihuacan.glb
+  palenqueMx                    public/models/palenque.glb
+  tulumMx                       public/models/tulum.glb
+  copperCanyonMx                public/models/copper_canyon.glb
+  guanajuatoMx                  public/models/guanajuato.glb
+  caboSanLucas                  public/models/cabo_san_lucas.glb
+
+── Peru ──────────────────────────────────────────────
+  lakeTiticaca                  public/models/lake_titicaca.glb
+  nazcaLines                    public/models/nazca_lines.glb
+  cusco                         public/models/cusco.glb
+  colcaCanyon                   public/models/colca_canyon.glb
+  chanChan                      public/models/chan_chan.glb
+
+── Egypt ─────────────────────────────────────────────
+  valleyOfKings                 public/models/valley_of_the_kings.glb
+  karnakTemple                  public/models/karnak_temple.glb
+  luxorTemple                   public/models/luxor_temple.glb
+  alexandriaEgypt               public/models/alexandria.glb
+  mountSinai                    public/models/mount_sinai.glb
+
+── Africa ────────────────────────────────────────────
+  maasaiMara                    public/models/maasai_mara.glb
+  serengeti                     public/models/serengeti.glb
+  kilimanjaro                   public/models/kilimanjaro.glb
+  krugerNP                      public/models/kruger_np.glb
+  capePointSA                   public/models/cape_point.glb
+  moroccoMar                    public/models/marrakech_medina.glb
+  moroccoSahara                 public/models/sahara_dunes.glb
+  zanzibar                      public/models/zanzibar_stone_town.glb
+  lalibelaEth                   public/models/lalibela_rock_churches.glb
+  drakensberg                   public/models/drakensberg.glb
+  nairobiNP                     public/models/nairobi_np.glb
+  ngorongoroCrater              public/models/ngorongoro_crater.glb
+
+── Iceland ───────────────────────────────────────────
+  reykjavikH                    public/models/reykjavik_hallgrimskirkja.glb
+  geysirIceland                 public/models/geysir.glb
+  skogafoss                     public/models/skogafoss_waterfall.glb
+
+── Norway ────────────────────────────────────────────
+  geirangerfjord                public/models/geiranger_fjord.glb
+  tromsoLights                  public/models/tromso_northern_lights.glb
+  bergenWharf                   public/models/bergen_bryggen.glb
+
+── Canada ────────────────────────────────────────────
+  banffNP                       public/models/banff_np.glb
+  quebecOldCity                 public/models/old_quebec_city.glb
+  whistlerBC                    public/models/whistler_mountain.glb
+  haida                         public/models/haida_gwaii.glb
+
+── New Zealand ───────────────────────────────────────
+  hobbiton                      public/models/hobbiton.glb
+  rotoruaNZ                     public/models/rotorua_geothermal.glb
+  fiordlandNZ                   public/models/fiordland_np.glb
+
+── Jordan ────────────────────────────────────────────
+  wadiRum                       public/models/wadi_rum.glb
+  deadSea                       public/models/dead_sea.glb
+
+── Russia ────────────────────────────────────────────
+  stBasils                      public/models/st_basils_cathedral.glb
+  lakeBaikal                    public/models/lake_baikal.glb
+  hermitageSPB                  public/models/hermitage_museum.glb
+
+── Vietnam ───────────────────────────────────────────
+  hoiAnVietnam                  public/models/hoi_an.glb
+  hanoiHoanKiem                 public/models/hanoi_hoan_kiem.glb
+
+── Indonesia ─────────────────────────────────────────
+  baliUluwatu                   public/models/bali_uluwatu.glb
+  komodoPark                    public/models/komodo_park.glb
+  prambananJava                 public/models/prambanan_temple.glb
+
+── Portugal ──────────────────────────────────────────
+  lisbonBelem                   public/models/lisbon_belem_tower.glb
+  sintraPortugal                public/models/sintra_palace.glb
+
+── Netherlands ───────────────────────────────────────
+  keukenhofTulips               public/models/keukenhof_tulips.glb
+  kinderdijkMills               public/models/kinderdijk_windmills.glb
+
+── Czech Republic ────────────────────────────────────
+  pragueCastle                  public/models/prague_castle.glb
+
+── Austria ───────────────────────────────────────────
+  hallstatt                     public/models/hallstatt.glb
+
+── Switzerland ───────────────────────────────────────
+  interlaken                    public/models/interlaken.glb
+
+── Cambodia ──────────────────────────────────────────
+  taProhm                       public/models/ta_prohm_temple.glb
+
+── Sri Lanka ─────────────────────────────────────────
+  sigiriya                      public/models/sigiriya_rock.glb
+  dalleTeaFields                public/models/nuwara_eliya_tea_fields.glb
+
+── South Korea ───────────────────────────────────────
+  gyeongbokgung                 public/models/gyeongbokgung_palace.glb
+  jejuIsland                    public/models/jeju_island.glb
+
+── Argentina ─────────────────────────────────────────
+  buenosAires                   public/models/buenos_aires_obelisk.glb
+  patagoniaArg                  public/models/patagonia_torres_del_paine.glb
+
+── Chile ─────────────────────────────────────────────
+  atacamaDesert                 public/models/atacama_desert.glb
+  easterIsland                  public/models/easter_island_moai.glb
+
+── Colombia ──────────────────────────────────────────
+  cartagenaCO                   public/models/cartagena_walled_city.glb
+
+── Cuba ──────────────────────────────────────────────
+  havanaOldCity                 public/models/old_havana.glb
+
+── Nepal ─────────────────────────────────────────────
+  kathmanduPatan                public/models/kathmandu_patan.glb
+
+── Myanmar ───────────────────────────────────────────
+  bagan                         public/models/bagan_temples.glb
+
+── Iran ──────────────────────────────────────────────
+  persepolisIran                public/models/persepolis.glb

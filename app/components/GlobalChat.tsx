@@ -1,0 +1,420 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
+import { flyToGlobe, zoomCamera } from '@/lib/globeAnim';
+
+interface ChatMessage { role: 'user' | 'assistant'; content: string; }
+
+// ─── Page context hook ────────────────────────────────────────────────────────
+
+function usePageContext() {
+  const pathname   = usePathname();
+  const params     = useSearchParams();
+
+  const location      = params.get('location')      ?? '';
+  const purpose       = params.get('purpose')       ?? '';
+  const style         = params.get('style')         ?? '';
+  const budget        = params.get('budget')        ?? '';
+  const interests     = params.get('interests')     ?? '';
+  const nights        = params.get('nights')        ?? '';
+  const startDate     = params.get('startDate')     ?? '';
+  const endDate       = params.get('endDate')       ?? '';
+  const travelingFrom = params.get('travelingFrom') ?? '';
+
+  const page = pathname === '/plan/style'   ? 'style'
+             : pathname === '/plan/dates'   ? 'dates'
+             : pathname === '/plan/summary' ? 'summary'
+             : pathname === '/plan/book'    ? 'book'
+             : 'globe';
+
+  const placeholders: Record<string, string> = {
+    globe:   'Ask me where to go next...',
+    style:   'Ask me about travel styles or preferences...',
+    dates:   'Ask me about the best time to visit...',
+    summary: 'Ask me about your itinerary...',
+    book:    'Ask me about flights, hotels, or activities...',
+  };
+
+  const pageDesc =
+    page === 'globe'   ? 'The user is on the globe destination discovery page, browsing the interactive 3D globe to choose a travel destination.'
+    : page === 'style' ? `The user is on the travel preferences page, setting up a trip to ${location || 'their destination'}. They are selecting: travel purpose, style (${style || 'not yet chosen'}), budget (${budget || 'not yet set'}), interests (${interests || 'none yet'}), departure city, and arrival airport.`
+    : page === 'dates' ? `The user is selecting travel dates for ${location || 'their destination'}. They are choosing departure and return dates and setting up multi-city stops if any.`
+    : page === 'summary' ? `The user is viewing their AI-generated itinerary for ${location} — ${nights} nights, ${startDate} to ${endDate}. Purpose: ${purpose}. Style: ${style}. Budget: ${budget}.`
+    : `The user is on the booking page for ${location} (${nights} nights, ${startDate}–${endDate}). They are booking flights from ${travelingFrom || 'their origin'}, hotels, and activities.`;
+
+  return { page, pageDesc, placeholder: placeholders[page], location, purpose, style, budget, nights, startDate, endDate, travelingFrom };
+}
+
+// ─── Inner component (uses hooks that need Suspense) ─────────────────────────
+
+function GlobalChatInner() {
+  const pathname = usePathname();
+  const ctx      = usePageContext();
+
+  // Don't render on summary page — it has its own inline chat
+  if (pathname === '/plan/summary') return null;
+
+  return <GlobalChatUI ctx={ctx} />;
+}
+
+// ─── Main UI ─────────────────────────────────────────────────────────────────
+
+function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
+  const STAR   = String.fromCodePoint(0x2726);
+  const router = useRouter();
+
+  const [open, setOpen]           = useState(false);
+  const [messages, setMessages]   = useState<ChatMessage[]>([]);
+  const [input, setInput]         = useState('');
+  const [streaming, setStreaming] = useState(false);
+
+  // Destination input (globe page only)
+  const [destInput,     setDestInput]     = useState('');
+  const [destLoading,   setDestLoading]   = useState(false);
+  const [destError,     setDestError]     = useState('');
+  const [destFlying,    setDestFlying]    = useState(''); // city name while animating
+  const [confirming,    setConfirming]    = useState(''); // city name waiting for confirmation
+  const [confirmLoc,    setConfirmLoc]    = useState(''); // encoded location for push
+  const destRef = useRef<HTMLInputElement>(null);
+
+  const endRef   = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { if (open && ctx.page !== 'globe') inputRef.current?.focus(); }, [open, ctx.page]);
+  useEffect(() => { if (open && ctx.page === 'globe') destRef.current?.focus(); }, [open, ctx.page]);
+
+  const handleDest = useCallback(async () => {
+    const city = destInput.trim();
+    if (!city || destLoading) return;
+    setDestError('');
+    setDestLoading(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(city)}`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'GeKnee-travel-app' } },
+      );
+      const data = await res.json() as Array<{ lat: string; lon: string; display_name: string }>;
+      if (!data.length) { setDestError('City not found — try a different name.'); setDestLoading(false); return; }
+      const lat = parseFloat(data[0].lat);
+      const lon = parseFloat(data[0].lon);
+      setDestFlying(city);
+      // Phase 1: rotate globe to face (lat, lon)
+      flyToGlobe(lat, lon, () => {
+        // Phase 2: zoom camera in close enough to show city labels
+        zoomCamera(13, () => {
+          setDestFlying('');
+          setDestLoading(false);
+          setConfirming(city);
+          setConfirmLoc(encodeURIComponent(city));
+          setOpen(true);
+          setDestInput('');
+          setTimeout(() => destRef.current?.focus(), 80);
+        });
+      });
+    } catch {
+      setDestError('Could not geocode — check your connection.');
+      setDestLoading(false);
+    }
+  }, [destInput, destLoading]);
+
+  const sendGenie = useCallback(async () => {
+    if (!input.trim() || streaming) return;
+    const userMsg: ChatMessage = { role: 'user', content: input.trim() };
+    const next = [...messages, userMsg];
+    setMessages([...next, { role: 'assistant', content: '' }]);
+    setInput('');
+    setStreaming(true);
+    try {
+      const itinerary = typeof window !== 'undefined'
+        ? (sessionStorage.getItem('geknee_itinerary') ?? '') : '';
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: next,
+          itinerary,
+          pageContext: ctx.pageDesc,
+          tripInfo: {
+            location: ctx.location,
+            nights:   ctx.nights,
+            purpose:  ctx.purpose,
+            style:    ctx.style,
+            budget:   ctx.budget,
+          },
+        }),
+      });
+      if (!res.body) throw new Error('no body');
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let acc = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += dec.decode(value, { stream: true });
+        setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: acc }]);
+      }
+    } catch {
+      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: 'My magic fizzled! Please try again.' }]);
+    } finally {
+      setStreaming(false);
+    }
+  }, [input, streaming, messages, ctx]);
+
+  return (
+    <>
+      <style>{`
+        @keyframes chatSlideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes geniePulse { 0%,100%{box-shadow:0 0 0 0 rgba(167,139,250,0.4)} 50%{box-shadow:0 0 0 8px rgba(167,139,250,0)} }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* Floating toggle button */}
+      <div style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9000 }}>
+        {!open && (
+          <button
+            onClick={() => setOpen(true)}
+            style={{
+              width: 56, height: 56, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, color: '#fff',
+              animation: 'geniePulse 2.5s ease-in-out infinite',
+            }}
+            title="Open GeKnee AI Genie"
+          >
+            {STAR}
+          </button>
+        )}
+
+        {/* Chat panel */}
+        {open && (
+          <div style={{
+            position: 'absolute', bottom: 68, right: 0, width: 340, maxHeight: '65vh',
+            background: 'rgba(6,8,22,0.97)', backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(129,140,248,0.3)', borderRadius: 20,
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.08)',
+            animation: 'chatSlideUp 0.22s ease-out', overflow: 'hidden',
+            zIndex: 9001,
+          }}>
+            {/* Header */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(129,140,248,0.15)', background: 'rgba(109,40,217,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ color: '#a78bfa', fontSize: 13, fontWeight: 700 }}>GeKnee {STAR} AI Genie</span>
+                <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
+                  {ctx.page === 'globe'   ? 'Destination Discovery'
+                  : ctx.page === 'style'  ? 'Travel Preferences'
+                  : ctx.page === 'dates'  ? 'Travel Dates'
+                  : ctx.page === 'book'   ? `Booking \u2014 ${ctx.location}`
+                  :                        `Itinerary \u2014 ${ctx.location}`}
+                </p>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>
+                {String.fromCodePoint(0x00D7)}
+              </button>
+            </div>
+
+            {/* ── Destination input (globe page only) ── */}
+            {ctx.page === 'globe' && (
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                {destFlying ? (
+                  /* ── Animating to location ── */
+                  <div style={{ textAlign: 'center', color: '#a78bfa', fontSize: 13, fontWeight: 600, padding: '6px 0' }}>
+                    {String.fromCodePoint(0x1F30D)} Flying to {destFlying}...
+                  </div>
+                ) : confirming ? (
+                  /* ── Confirmation step ── */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: '0.04em', textAlign: 'center' }}>
+                      READY TO PLAN YOUR TRIP?
+                    </div>
+                    <div style={{ textAlign: 'center', color: '#e2e8f0', fontSize: 15, fontWeight: 700 }}>
+                      {confirming}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => router.push(`/plan/style?location=${confirmLoc}`)}
+                        style={{
+                          flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+                          background: 'linear-gradient(135deg,#06b6d4,#6366f1)', color: '#fff',
+                          fontSize: 13, fontWeight: 700,
+                        }}
+                      >
+                        Yes, let&apos;s go! {String.fromCodePoint(0x27A4)}
+                      </button>
+                      <button
+                        onClick={() => { setConfirming(''); setConfirmLoc(''); setDestInput(''); setDestError(''); zoomCamera(26); }}
+                        style={{
+                          padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)',
+                          cursor: 'pointer', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)',
+                          fontSize: 12,
+                        }}
+                      >
+                        Change
+                      </button>
+                    </div>
+                    {/* Search another place */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 10 }}>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6, letterSpacing: '0.04em' }}>
+                        OR FLY SOMEWHERE ELSE
+                      </div>
+                      <div style={{ display: 'flex', gap: 7 }}>
+                        <input
+                          ref={destRef}
+                          value={destInput}
+                          onChange={e => { setDestInput(e.target.value); setDestError(''); }}
+                          onKeyDown={e => { if (e.key === 'Enter') { setConfirming(''); setConfirmLoc(''); handleDest(); } }}
+                          placeholder="City or country..."
+                          disabled={destLoading}
+                          style={{
+                            flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(129,140,248,0.3)',
+                            borderRadius: 10, color: '#fff', fontSize: 13, padding: '9px 12px', outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={() => { setConfirming(''); setConfirmLoc(''); handleDest(); }}
+                          disabled={destLoading || !destInput.trim()}
+                          style={{
+                            width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
+                            background: destInput.trim() && !destLoading ? 'linear-gradient(135deg,#06b6d4,#6366f1)' : 'rgba(255,255,255,0.08)',
+                            color: '#fff', fontSize: 15, cursor: destInput.trim() && !destLoading ? 'pointer' : 'not-allowed',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          {destLoading ? (
+                            <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                          ) : String.fromCodePoint(0x27A4)}
+                        </button>
+                      </div>
+                      {destError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 5 }}>{destError}</div>}
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Default destination input ── */
+                  <>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 7, fontWeight: 600, letterSpacing: '0.04em' }}>
+                      WHERE DO YOU WANT TO TRAVEL?
+                    </div>
+                    <div style={{ display: 'flex', gap: 7 }}>
+                      <input
+                        ref={destRef}
+                        value={destInput}
+                        onChange={e => { setDestInput(e.target.value); setDestError(''); }}
+                        onKeyDown={e => { if (e.key === 'Enter') handleDest(); }}
+                        placeholder="City or country..."
+                        disabled={destLoading}
+                        style={{
+                          flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(129,140,248,0.3)',
+                          borderRadius: 10, color: '#fff', fontSize: 13, padding: '9px 12px', outline: 'none',
+                        }}
+                      />
+                      <button
+                        onClick={handleDest}
+                        disabled={destLoading || !destInput.trim()}
+                        style={{
+                          width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
+                          background: destInput.trim() && !destLoading ? 'linear-gradient(135deg,#06b6d4,#6366f1)' : 'rgba(255,255,255,0.08)',
+                          color: '#fff', fontSize: 15, cursor: destInput.trim() && !destLoading ? 'pointer' : 'not-allowed',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        {destLoading ? (
+                          <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                        ) : String.fromCodePoint(0x27A4)}
+                      </button>
+                    </div>
+                    {destError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 5 }}>{destError}</div>}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {messages.length === 0 && (
+                <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, textAlign: 'center', marginTop: 24, lineHeight: 1.7 }}>
+                  {ctx.page === 'globe'   ? 'Ask me where to go!\nTry: \u201cBest places for beaches\u201d or \u201cHidden gems in Asia\u201d'
+                  : ctx.page === 'style'  ? 'Ask me about travel styles!\nTry: \u201cWhat style suits a foodie?\u201d'
+                  : ctx.page === 'dates'  ? 'Ask me about timing!\nTry: \u201cBest month to visit Tokyo\u201d'
+                  : ctx.page === 'book'   ? 'Ask me about your booking!\nTry: \u201cBest hotels near the city center\u201d'
+                  :                         'Ask me about your trip!\nTry: \u201cSwap Day 2 dinner\u201d or \u201cWhat should I pack?\u201d'}
+                </p>
+              )}
+              {messages.map((msg, i) => (
+                <div key={i} style={{
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '88%', padding: '9px 13px',
+                  borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                  background: msg.role === 'user'
+                    ? 'linear-gradient(135deg,rgba(56,189,248,0.2),rgba(129,140,248,0.2))'
+                    : 'rgba(255,255,255,0.07)',
+                  border: msg.role === 'user'
+                    ? '1px solid rgba(56,189,248,0.3)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  color: '#e2e8f0', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                }}>
+                  {msg.content}
+                  {i === messages.length - 1 && msg.role === 'assistant' && streaming && (
+                    <span style={{ display: 'inline-block', width: 2, height: 12, background: '#a78bfa', marginLeft: 2, animation: 'blink 0.9s step-end infinite', verticalAlign: 'text-bottom' }} />
+                  )}
+                </div>
+              ))}
+              <div ref={endRef} />
+            </div>
+
+            {/* Input */}
+            <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendGenie(); } }}
+                placeholder={ctx.placeholder}
+                disabled={streaming}
+                style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#fff', fontSize: 13, padding: '9px 12px', outline: 'none' }}
+              />
+              <button
+                onClick={sendGenie}
+                disabled={streaming || !input.trim()}
+                style={{
+                  width: 36, height: 36, borderRadius: 10, border: 'none', flexShrink: 0,
+                  background: input.trim() && !streaming ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'rgba(255,255,255,0.08)',
+                  color: '#fff', fontSize: 15, cursor: input.trim() && !streaming ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >{String.fromCodePoint(0x27A4)}</button>
+            </div>
+          </div>
+        )}
+
+        {/* Close button when open */}
+        {open && (
+          <button
+            onClick={() => setOpen(false)}
+            style={{
+              width: 56, height: 56, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 20, color: '#fff',
+            }}
+          >{String.fromCodePoint(0x00D7)}</button>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Export with Suspense boundary ───────────────────────────────────────────
+
+export default function GlobalChat() {
+  return (
+    <Suspense fallback={null}>
+      <GlobalChatInner />
+    </Suspense>
+  );
+}
