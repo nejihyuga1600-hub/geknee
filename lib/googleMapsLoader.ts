@@ -13,8 +13,8 @@ export function loadGoogleMaps(): Promise<void> {
     }
 
     const cb = '__googleMapsReady__';
-    (window as Record<string, unknown>)[cb] = () => {
-      delete (window as Record<string, unknown>)[cb];
+    (window as unknown as Record<string, unknown>)[cb] = () => {
+      delete (window as unknown as Record<string, unknown>)[cb];
       resolve();
     };
 
