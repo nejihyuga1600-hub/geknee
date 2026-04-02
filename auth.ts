@@ -10,6 +10,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true,
 
+  // Override PKCE cookie to remove __Host- prefix which breaks on Vercel's proxy
+  cookies: {
+    pkceCodeVerifier: {
+      name: 'authjs.pkce.code_verifier',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax' as const,
+        path: '/',
+        secure: true,
+      },
+    },
+  },
+
   // JWT sessions — no DB lookup on every request
   session: { strategy: 'jwt' },
 
