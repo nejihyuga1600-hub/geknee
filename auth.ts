@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
+  trustHost: true,
 
   // JWT sessions — no DB lookup on every request
   session: { strategy: 'jwt' },
