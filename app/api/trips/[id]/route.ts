@@ -33,6 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updated = await prisma.tripDraft.update({
     where: { id },
     data: {
+      title:     body.title     !== undefined ? body.title     : trip.title,
       notes:     body.notes     !== undefined ? body.notes     : trip.notes,
       itinerary: body.itinerary !== undefined ? body.itinerary : trip.itinerary,
       itineraryUpdatedAt: body.itinerary !== undefined ? new Date() : trip.itineraryUpdatedAt,

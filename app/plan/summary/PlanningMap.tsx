@@ -421,7 +421,7 @@ export default function PlanningMap({
             }}
             onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            placeholder="Search a destination, or click any place on the map\u2026"
+            placeholder="Search a destination, or click any place on the map..."
             style={{
               flex: 1, background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.13)', borderRadius: 10,

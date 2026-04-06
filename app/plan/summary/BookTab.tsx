@@ -579,7 +579,7 @@ function SectionHeader({ icon, title, count, loading: l }: { icon: string; title
       <span style={{ fontSize: 26 }}>{icon}</span>
       <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#1e293b" }}>{title}</h2>
       {l ? (
-        <span style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, background: "#ede9fe", borderRadius: 20, padding: "2px 10px" }}>Finding options\u2026</span>
+        <span style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, background: "#ede9fe", borderRadius: 20, padding: "2px 10px" }}>Finding options&hellip;</span>
       ) : count !== undefined ? (
         <span style={{ fontSize: 12, color: "#78350f", fontWeight: 700, background: "#fef3c7", borderRadius: 20, padding: "2px 10px" }}>{count} options</span>
       ) : null}
@@ -725,7 +725,7 @@ function FlightCard({ flight, origin, destination, startDate, endDate }: {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
           <div>
             <span style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{flight.airline}</span>
-            <span style={{ display: "block", fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{flight.cabin} \u00B7 {flight.highlight}</span>
+            <span style={{ display: "block", fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{flight.cabin} &middot; {flight.highlight}</span>
           </div>
           <div style={{ textAlign: "right" }}>
             <span style={{ fontWeight: 700, fontSize: 15, color: "#16a34a" }}>{flight.price}</span>
@@ -824,7 +824,7 @@ function HotelCard({ hotel, location, checkIn, checkOut }: { hotel: Hotel; locat
         <div style={{ marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{hotel.name}</span>
           {hotel.fromItinerary && <ItineraryBadge />}
-          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{hotel.neighborhood} \u00B7 {hotel.priceRange}</span>
+          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{hotel.neighborhood} &middot; {hotel.priceRange}</span>
         </div>
         <p style={{ margin: "0 0 10px", fontSize: 12, color: "#475569", lineHeight: 1.6 }}>{hotel.description}</p>
         <div style={{ display: "flex", gap: 14, marginBottom: 12 }}>
@@ -856,7 +856,7 @@ function RestaurantCard({ restaurant, location, startDate }: { restaurant: Resta
         <div style={{ marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{restaurant.name}</span>
           {restaurant.fromItinerary && <ItineraryBadge />}
-          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{restaurant.cuisine} \u00B7 {restaurant.neighborhood} \u00B7 {restaurant.priceRange}</span>
+          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{restaurant.cuisine} &middot; {restaurant.neighborhood} &middot; {restaurant.priceRange}</span>
         </div>
         <p style={{ margin: "0 0 8px", fontSize: 12, color: "#475569", lineHeight: 1.5 }}>{restaurant.description}</p>
         {restaurant.reservationNote && (
@@ -882,7 +882,7 @@ function ActivityCard({ activity, location, startDate, endDate }: { activity: Ac
         <div style={{ marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{activity.name}</span>
           {activity.fromItinerary && <ItineraryBadge />}
-          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{activity.duration} \u00B7 {activity.priceEstimate}</span>
+          <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>{activity.duration} &middot; {activity.priceEstimate}</span>
         </div>
         <p style={{ margin: "0 0 8px", fontSize: 12, color: "#475569", lineHeight: 1.55 }}>{activity.description}</p>
         {activity.tip && (
@@ -1208,7 +1208,7 @@ function SubwayPassBox({ city, budget }: { city: string; budget: string }) {
       border: "1.5px solid #c7d2fe",
     }}>
       <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#3730a3" }}>
-        {String.fromCodePoint(0x1F3AB)} Transit passes &amp; cards \u2014 {city}
+        {String.fromCodePoint(0x1F3AB)} Transit passes &amp; cards &mdash; {city}
       </p>
       {loading && !text ? (
         <Skeleton h={72} />
@@ -1432,7 +1432,7 @@ function LocalTransitSection({ legs, cities, budget, startDate, railPasses }: {
           border: "1px solid #bfdbfe",
         }}>
           <p style={{ margin: "0 0 10px", fontSize: 13, color: "#1e40af" }}>
-            No inter-city bus or subway legs on this route \u2014 see local transit options below.
+            No inter-city bus or subway legs on this route &mdash; see local transit options below.
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(() => {
@@ -1673,8 +1673,8 @@ export default function BookTab({
                 <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>{String.fromCodePoint(0x2708, 0xFE0F)}</span>
               )}
             </div>
-            {fromAirport && <p style={{ fontSize: 11, color: "#94a3b8", margin: "5px 0 0" }}>Nearest commercial airport \u2014 edit if needed</p>}
-            {geoStatus === "denied" && !fromAirport && <p style={{ fontSize: 11, color: "#ef4444", margin: "5px 0 0" }}>Location access denied \u2014 type your departure airport above</p>}
+            {fromAirport && <p style={{ fontSize: 11, color: "#94a3b8", margin: "5px 0 0" }}>Nearest commercial airport &mdash; edit if needed</p>}
+            {geoStatus === "denied" && !fromAirport && <p style={{ fontSize: 11, color: "#ef4444", margin: "5px 0 0" }}>Location access denied &mdash; type your departure airport above</p>}
           </div>
 
           {/* Traveling to */}
@@ -1698,8 +1698,8 @@ export default function BookTab({
               return (
                 <p style={{ fontSize: 11, color: "#94a3b8", margin: "5px 0 0" }}>
                   {isLandmark
-                    ? `Nearest commercial airport to ${location} (${resolved.city}) \u2014 edit if needed`
-                    : 'Nearest commercial airport \u2014 edit if needed'}
+                    ? `Nearest commercial airport to ${location} (${resolved.city}) — edit if needed`
+                    : 'Nearest commercial airport — edit if needed'}
                 </p>
               );
             })()}

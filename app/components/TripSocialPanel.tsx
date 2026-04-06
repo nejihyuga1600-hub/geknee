@@ -85,11 +85,14 @@ export default function TripSocialPanel({
   const [usernameSaving,  setUsernameSaving]  = useState(false);
 
   // ── Trips ──────────────────────────────────────────────────────────────────
-  const [trips,        setTrips]        = useState<TripDraft[]>([]);
-  const [tripsLoading, setTripsLoading] = useState(false);
-  const [saveTitle,    setSaveTitle]    = useState('');
-  const [saving,       setSaving]       = useState(false);
-  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [trips,          setTrips]          = useState<TripDraft[]>([]);
+  const [tripsLoading,   setTripsLoading]   = useState(false);
+  const [saveTitle,      setSaveTitle]      = useState('');
+  const [saving,         setSaving]         = useState(false);
+  const [showSaveForm,   setShowSaveForm]   = useState(false);
+  const [renamingId,     setRenamingId]     = useState<string | null>(null);
+  const [renameValue,    setRenameValue]    = useState('');
+  const [renameSaving,   setRenameSaving]   = useState(false);
 
   // ── Friends ────────────────────────────────────────────────────────────────
   const [friends,         setFriends]         = useState<Friend[]>([]);
@@ -236,6 +239,24 @@ export default function TripSocialPanel({
   async function deleteTrip(id: string) {
     await fetch(`/api/trips/${id}`, { method: 'DELETE' });
     setTrips(p => p.filter(t => t.id !== id));
+  }
+
+  async function saveRename(id: string) {
+    const title = renameValue.trim();
+    if (!title) return;
+    setRenameSaving(true);
+    try {
+      const res = await fetch(`/api/trips/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      const d = await res.json();
+      if (d.trip) setTrips(p => p.map(t => t.id === id ? { ...t, title: d.trip.title } : t));
+    } catch { /**/ } finally {
+      setRenameSaving(false);
+      setRenamingId(null);
+    }
   }
 
   function continueTrip(trip: TripDraft) {
@@ -492,17 +513,43 @@ export default function TripSocialPanel({
                 )}
                 {trips.map(trip => (
                   <div key={trip.id} style={CARD}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#e0e7ff', lineHeight: 1.3 }}>{trip.title}</div>
-                      <button onClick={() => deleteTrip(trip.id)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 0 0 8px', flexShrink: 0 }}>×</button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                      {renamingId === trip.id ? (
+                        <div style={{ display: 'flex', gap: 6, flex: 1, marginRight: 8 }}>
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveRename(trip.id); if (e.key === 'Escape') setRenamingId(null); }}
+                            style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(129,140,248,0.5)', borderRadius: 6, color: '#e0e7ff', fontSize: 13, padding: '3px 8px', outline: 'none' }}
+                          />
+                          <button onClick={() => saveRename(trip.id)} disabled={renameSaving} style={{ ...BTN('#4f46e5'), fontSize: 11, padding: '3px 10px' }}>
+                            {renameSaving ? '…' : 'Save'}
+                          </button>
+                          <button onClick={() => setRenamingId(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{ fontSize: 14, fontWeight: 700, color: '#e0e7ff', lineHeight: 1.3, cursor: 'pointer' }}
+                            title="Click to rename"
+                            onClick={() => { setRenamingId(trip.id); setRenameValue(trip.title); }}
+                          >
+                            {trip.title}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+                            {String.fromCodePoint(0x1F4CD)} {trip.location}
+                          </div>
+                        </div>
+                      )}
+                      <button onClick={() => deleteTrip(trip.id)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 0 0 8px', flexShrink: 0 }}>&#x00D7;</button>
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 4 }}>{String.fromCodePoint(0x1F4CD)} {trip.location}</div>
                     {trip.startDate && (
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>
-                        {fmtDate(trip.startDate)}{trip.endDate ? ` – ${fmtDate(trip.endDate)}` : ''}{trip.nights ? ` · ${trip.nights} nights` : ''}
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>
+                        {fmtDate(trip.startDate)}{trip.endDate ? ` \u2013 ${fmtDate(trip.endDate)}` : ''}{trip.nights ? ` \u00B7 ${trip.nights} nights` : ''}
                       </div>
                     )}
-                    <button onClick={() => continueTrip(trip)} style={{ ...BTN('#0891b2'), fontSize: 12, padding: '5px 12px' }}>Continue Planning →</button>
+                    <button onClick={() => continueTrip(trip)} style={{ ...BTN('#0891b2'), fontSize: 12, padding: '5px 12px' }}>Continue Planning &#x2192;</button>
                   </div>
                 ))}
               </>
