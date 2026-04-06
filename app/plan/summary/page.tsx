@@ -2350,8 +2350,8 @@ function SummaryContent() {
 
         </>)}
 
-        {/* ── Book tab ──────────────────────────────────────────────────────── */}
-        {mainTab === 'book' && (
+        {/* ── Book tab — always mounted to preserve state across tab switches ── */}
+        <div style={{ display: mainTab === 'book' ? 'block' : 'none' }}>
           <BookTabDynamic
             location={location}
             purpose={purpose}
@@ -2365,7 +2365,7 @@ function SummaryContent() {
             travelingFrom={travelingFrom}
             fullItinerary={fullItinerary}
           />
-        )}
+        </div>
 
         {mainTab === 'files' && (
           <div style={{ padding: '24px 28px', maxWidth: 680, margin: '0 auto' }}>
