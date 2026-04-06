@@ -6,8 +6,10 @@ import {
 } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { useSession } from 'next-auth/react';
 
 const BookTabDynamic = dynamic(() => import('./BookTab'), { ssr: false });
+const FileVault      = dynamic(() => import('@/app/components/FileVault'), { ssr: false });
 
 const DayMap = dynamic(() => import('./DayMap'), {
   ssr: false,
@@ -270,6 +272,12 @@ interface ChatPanelProps {
   genieInput: string;
   onGenieInputChange: (v: string) => void;
   onGenieSend: () => void;
+  // inspiration image
+  inspImagePreview: string;
+  inspIsVideo: boolean;
+  inspFileRef: React.RefObject<HTMLInputElement | null>;
+  onInspFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClearInspImage: () => void;
   // friends
   friendMessages: {id:string;author:string;content:string;timestamp:number}[];
   friendInput: string;
@@ -283,6 +291,7 @@ interface ChatPanelProps {
 function ChatPanel({
   tab, onTabChange,
   genieMessages, chatStreaming, genieInput, onGenieInputChange, onGenieSend,
+  inspImagePreview, inspIsVideo, inspFileRef, onInspFileSelect, onClearInspImage,
   friendMessages, friendInput, friendAuthor, onFriendInputChange, onFriendAuthorChange, onFriendSend,
   onClose,
 }: ChatPanelProps) {
@@ -376,13 +385,29 @@ function ChatPanel({
                 </span>
               </div>
             ) : (
+              <>
+                {inspImagePreview && (
+                  <div style={{ padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <img src={inspImagePreview} alt="preview" style={{ height: 52, width: 72, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(129,140,248,0.4)' }} />
+                      {inspIsVideo && <div style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.65)', borderRadius: 4, fontSize: 9, color: '#fff', padding: '1px 4px', fontWeight: 700 }}>VIDEO</div>}
+                    </div>
+                    <div style={{ flex: 1, fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{String.fromCodePoint(0x2728)} {inspIsVideo ? 'Video frame captured' : 'Image ready'} — caption optional</div>
+                    <button onClick={onClearInspImage} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 16 }}>{String.fromCodePoint(0x00D7)}</button>
+                  </div>
+                )}
               <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input ref={inspFileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={onInspFileSelect} />
+                <button onClick={() => inspFileRef.current?.click()} title="Add inspiration image/video"
+                  style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: inspImagePreview ? 'rgba(129,140,248,0.2)' : 'rgba(255,255,255,0.06)', color: inspImagePreview ? '#a78bfa' : 'rgba(255,255,255,0.5)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {String.fromCodePoint(0x1F4F7)}
+                </button>
                 <input
                   ref={inputRef}
                   value={genieInput}
                   onChange={e => onGenieInputChange(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onGenieSend(); } }}
-                  placeholder="Ask your genie..."
+                  placeholder={inspImagePreview ? 'Add a caption (optional)...' : 'Ask your genie...'}
                   disabled={chatStreaming}
                   style={{
                     flex: 1, background: 'rgba(255,255,255,0.07)',
@@ -393,10 +418,10 @@ function ChatPanel({
                 />
                 <button
                   onClick={onGenieSend}
-                  disabled={chatStreaming || !genieInput.trim()}
+                  disabled={chatStreaming || (!genieInput.trim() && !inspImagePreview)}
                   style={{
                     width: 36, height: 36, borderRadius: 10, border: 'none',
-                    background: genieInput.trim() && !chatStreaming
+                    background: (genieInput.trim() || inspImagePreview) && !chatStreaming
                       ? 'linear-gradient(135deg, #7c3aed, #4f46e5)'
                       : 'rgba(255,255,255,0.08)',
                     color: '#fff', fontSize: 15,
@@ -407,6 +432,7 @@ function ChatPanel({
                   {String.fromCodePoint(0x27A4)}
                 </button>
               </div>
+              </>
             );
           })()}
         </>
@@ -1199,6 +1225,8 @@ function SectionCard({
 function SummaryContent() {
   const params = useSearchParams();
   const router = useRouter();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as { id?: string })?.id ?? '';
 
   const location    = params.get('location')    ?? '';
   const purpose     = params.get('purpose')     ?? '';
@@ -1233,7 +1261,17 @@ function SummaryContent() {
 
   // ── Weather state ─────────────────────────────────────────────────────────────
   const [weatherByCity,  setWeatherByCity]  = useState<Map<string, DayWeather[]>>(new Map());
-  const [weatherUnit,    setWeatherUnit]    = useState<'C'|'F'>('C');
+  const [weatherUnit,    setWeatherUnit]    = useState<'C'|'F'>(() => {
+    if (typeof window === 'undefined') return 'C';
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      // Match US-specific IANA timezones (excludes Canada/LatAm which also use America/)
+      if (/^(America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Adak|Detroit|Boise|Juneau|Nome|Sitka|Yakutat|Metlakatla|Unalaska|Indiana|Kentucky|North_Dakota)|Pacific\/Honolulu)/.test(tz)) {
+        return 'F';
+      }
+    } catch { /* ignore */ }
+    return 'C';
+  });
   const weatherFetchedRef = useRef(false);
 
   // ── Replan state ──────────────────────────────────────────────────────────────
@@ -1241,7 +1279,8 @@ function SummaryContent() {
 
   // ── Streaming state ──────────────────────────────────────────────────────────
   const [lines, setLines]         = useState<string[]>([]);
-  const [streaming, setStreaming] = useState(!loadedFromSave.current);
+  const [streaming, setStreaming] = useState(false); // only true once user triggers generation
+  const [itineraryRequested, setItineraryRequested] = useState(loadedFromSave.current);
   const [error, setError]         = useState('');
   const bufferRef = useRef('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1261,6 +1300,45 @@ function SummaryContent() {
   const [genieSpeak, setGenieSpeak]       = useState(false);
   const [geniePrefill, setGeniePrefill]   = useState('');
   const genieRef = useRef<HTMLDivElement>(null);
+
+  // ── Inspiration image state ──────────────────────────────────────────────────
+  const [inspImageFile,    setInspImageFile]    = useState<File | null>(null);
+  const [inspImagePreview, setInspImagePreview] = useState('');
+  const [inspIsVideo,      setInspIsVideo]      = useState(false);
+  const inspFileRef = useRef<HTMLInputElement>(null);
+
+  const handleInspFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const isVid = file.type.startsWith('video/');
+    setInspIsVideo(isVid);
+    if (isVid) {
+      const videoEl = document.createElement('video');
+      const objUrl  = URL.createObjectURL(file);
+      videoEl.src = objUrl; videoEl.currentTime = 1; videoEl.muted = true; videoEl.playsInline = true;
+      videoEl.onloadeddata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth || 640; canvas.height = videoEl.videoHeight || 360;
+        canvas.getContext('2d')?.drawImage(videoEl, 0, 0);
+        URL.revokeObjectURL(objUrl);
+        canvas.toBlob(blob => {
+          if (!blob) return;
+          setInspImageFile(new File([blob], 'frame.jpg', { type: 'image/jpeg' }));
+          setInspImagePreview(canvas.toDataURL('image/jpeg', 0.8));
+        }, 'image/jpeg', 0.8);
+      };
+      videoEl.onerror = () => URL.revokeObjectURL(objUrl);
+    } else {
+      setInspImageFile(file);
+      setInspImagePreview(URL.createObjectURL(file));
+    }
+  }, []);
+
+  const clearInspImage = useCallback(() => {
+    if (inspImagePreview && !inspImagePreview.startsWith('data:')) URL.revokeObjectURL(inspImagePreview);
+    setInspImageFile(null); setInspImagePreview(''); setInspIsVideo(false);
+  }, [inspImagePreview]);
 
   // ── Friends chat state ───────────────────────────────────────────────────────
   const [friendMessages, setFriendMessages] = useState<{id:string;author:string;content:string;timestamp:number}[]>([]);
@@ -1283,7 +1361,7 @@ function SummaryContent() {
   }, [location, startDate, endDate, nights, travelStyle]);
 
   // ── Planning tab ──────────────────────────────────────────────────────────────
-  const [mainTab, setMainTab]         = useState<'itinerary' | 'planning' | 'book'>('itinerary');
+  const [mainTab, setMainTab]         = useState<'itinerary' | 'planning' | 'book' | 'files'>(loadedFromSave.current ? 'itinerary' : 'planning');
   const [bookmarks, setBookmarks]     = useState<Bookmark[]>([]);
   const [optimizingItinerary, setOptimizingItinerary] = useState(false);
   const [lastOptimized, setLastOptimized] = useState<Date | null>(null);
@@ -1308,10 +1386,15 @@ function SummaryContent() {
 
   // ── Fetch itinerary ──────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!itineraryRequested) return; // wait until user clicks "Generate"
     if (loadedFromSave.current) return; // skip — loading from DB instead
     let cancelled = false;
     async function fetch_() {
       try {
+        const mustVisit = bookmarks.map(b => ({ name: b.name, category: b.category }));
+        // Read language preference from localStorage
+        let userLang = 'en';
+        try { userLang = JSON.parse(localStorage.getItem('geknee_settings') ?? '{}').language ?? 'en'; } catch { /* ignore */ }
         const res = await fetch('/api/itinerary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1319,6 +1402,8 @@ function SummaryContent() {
             location, purpose, style: travelStyle, budget,
             interests, constraints, startDate, endDate, nights,
             stops: stopsRaw ? JSON.parse(stopsRaw) : undefined,
+            mustVisit: mustVisit.length > 0 ? mustVisit : undefined,
+            language: userLang !== 'en' ? userLang : undefined,
           }),
         });
         if (!res.ok || !res.body) {
@@ -1349,7 +1434,7 @@ function SummaryContent() {
     fetch_();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [itineraryRequested]);
 
 
   // ── Section-boundary detection — count ## headings to know when to commit ────
@@ -1653,6 +1738,34 @@ function SummaryContent() {
   // ── Chat send ────────────────────────────────────────────────────────────────
   const GENIE_MSG_LIMIT = 15;
   const sendChat = useCallback(async () => {
+    if ((!chatInput.trim() && !inspImageFile) || chatStreaming) return;
+
+    // ── Image inspiration flow ──
+    if (inspImageFile) {
+      const caption = chatInput.trim() || 'How does this relate to my trip? What should I add or change?';
+      setChatMessages(prev => [...prev,
+        { role: 'user', content: `${String.fromCodePoint(0x1F4F8)} ${caption}` },
+        { role: 'assistant', content: '' },
+      ]);
+      setChatInput(''); clearInspImage(); setChatStreaming(true); setGenieSpeak(true);
+      try {
+        const form = new FormData();
+        form.append('image', inspImageFile);
+        form.append('prompt', caption);
+        const res = await fetch('/api/inspiration', { method: 'POST', body: form });
+        if (!res.body) throw new Error('no body');
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let acc = '';
+        while (true) {
+          const { done, value } = await reader.read(); if (done) break;
+          acc += dec.decode(value, { stream: true });
+          setChatMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: acc }]);
+        }
+      } catch {
+        setChatMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: 'Could not analyze the image. Please try again.' }]);
+      } finally { setChatStreaming(false); setGenieSpeak(false); }
+      return;
+    }
+
     if (!chatInput.trim() || chatStreaming) return;
     const userCount = chatMessages.filter(m => m.role === 'user').length;
     if (userCount >= GENIE_MSG_LIMIT) {
@@ -1835,7 +1948,7 @@ function SummaryContent() {
         }}>
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
-            {(['planning', 'itinerary', 'book'] as const).map(tab => (
+            {(['planning', 'itinerary', 'book', 'files'] as const).map(tab => (
               <button key={tab} onClick={() => setMainTab(tab)} style={{
                 padding: '10px 24px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 background: 'transparent', border: 'none',
@@ -1847,6 +1960,8 @@ function SummaryContent() {
                   ? String.fromCodePoint(0x1F5FA) + '\u00A0 Itinerary'
                   : tab === 'planning'
                   ? String.fromCodePoint(0x1F4CD) + '\u00A0 Planning'
+                  : tab === 'files'
+                  ? String.fromCodePoint(0x1F4C2) + '\u00A0 Files'
                   : String.fromCodePoint(0x1F4CB) + '\u00A0 Book'}
                 {tab === 'planning' && bookmarks.length > 0 && (
                   <span style={{
@@ -1979,6 +2094,48 @@ function SummaryContent() {
                   ))}
                 </div>
               )}
+
+              {/* ── Generate Itinerary CTA ─────────────────────────────────── */}
+              <div style={{
+                marginTop: 8, padding: '20px 24px',
+                background: 'linear-gradient(135deg, rgba(56,189,248,0.08) 0%, rgba(167,139,250,0.08) 100%)',
+                border: '1.5px solid rgba(56,189,248,0.2)',
+                borderRadius: 14, display: 'flex', alignItems: 'center',
+                gap: 16, flexWrap: 'wrap',
+              }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
+                    {bookmarks.length > 0
+                      ? `${bookmarks.length} place${bookmarks.length !== 1 ? 's' : ''} saved \u2014 ready to build your itinerary?`
+                      : 'Pin places above, then generate your itinerary'}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+                    {bookmarks.length > 0
+                      ? 'Your pinned places will be woven into the itinerary based on your travel personality.'
+                      : 'Search and save restaurants, attractions, hotels, and activities you want to visit. Or skip straight to generation.'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setItineraryRequested(true);
+                    setStreaming(true);
+                    setLines([]);
+                    setSections([]);
+                    setError('');
+                    setMainTab('itinerary');
+                  }}
+                  style={{
+                    flexShrink: 0, padding: '12px 28px', borderRadius: 12,
+                    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                    background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+                    border: 'none', color: '#0a0f1e',
+                    boxShadow: '0 4px 20px rgba(56,189,248,0.3)',
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  {String.fromCodePoint(0x2728)} Generate Itinerary
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -2010,6 +2167,33 @@ function SummaryContent() {
                 {s.heading}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Not yet requested — prompt user to visit planning tab */}
+        {!itineraryRequested && !error && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', gap: 16, padding: '60px 32px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 48 }}>{String.fromCodePoint(0x1F5FA)}</div>
+            <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#e2e8f0' }}>
+              Start in the Planning tab
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.45)', maxWidth: 340, lineHeight: 1.6 }}>
+              Pin the places you want to visit, then hit <strong style={{ color: '#38bdf8' }}>Generate Itinerary</strong> to build a day-by-day plan around your selections and travel personality.
+            </p>
+            <button
+              onClick={() => setMainTab('planning')}
+              style={{
+                padding: '11px 28px', borderRadius: 12, fontSize: 13, fontWeight: 700,
+                background: 'rgba(56,189,248,0.12)', border: '1.5px solid rgba(56,189,248,0.35)',
+                color: '#38bdf8', cursor: 'pointer',
+              }}
+            >
+              {String.fromCodePoint(0x1F4CD)} Go to Planning
+            </button>
           </div>
         )}
 
@@ -2182,6 +2366,22 @@ function SummaryContent() {
             fullItinerary={fullItinerary}
           />
         )}
+
+        {mainTab === 'files' && (
+          <div style={{ padding: '24px 28px', maxWidth: 680, margin: '0 auto' }}>
+            {!savedTripId ? (
+              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 14, marginTop: 40 }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>{String.fromCodePoint(0x1F4C2)}</div>
+                Save your trip first to use the File Vault.
+              </div>
+            ) : (
+              <FileVault
+                tripId={savedTripId}
+                currentUserId={currentUserId}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Genie + Friends chat */}
@@ -2196,6 +2396,11 @@ function SummaryContent() {
               genieInput={chatInput}
               onGenieInputChange={setChatInput}
               onGenieSend={sendChat}
+              inspImagePreview={inspImagePreview}
+              inspIsVideo={inspIsVideo}
+              inspFileRef={inspFileRef}
+              onInspFileSelect={handleInspFileSelect}
+              onClearInspImage={clearInspImage}
               friendMessages={friendMessages}
               friendInput={friendInput}
               friendAuthor={friendAuthor}

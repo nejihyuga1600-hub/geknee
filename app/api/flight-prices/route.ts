@@ -127,7 +127,47 @@ async function fetchAmadeusPrices(
   }
 }
 
-// ─── 2. AI price estimation using Opus ───────────────────────────────────────
+// ─── 2. Travelpayouts month-matrix — real affiliate prices ───────────────────
+async function fetchTravelpayoutsPrices(
+  origin: string,
+  destination: string,
+  month: string        // YYYY-MM
+): Promise<Record<string, number> | null> {
+  const token = process.env.TRAVELPAYOUTS_TOKEN;
+  if (!token) return null;
+
+  const url = `https://api.travelpayouts.com/v2/prices/month-matrix`
+    + `?currency=usd`
+    + `&origin=${encodeURIComponent(origin)}`
+    + `&destination=${encodeURIComponent(destination)}`
+    + `&month=${encodeURIComponent(month)}`
+    + `&token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("Travelpayouts month-matrix error:", res.status);
+      return null;
+    }
+    const data = await res.json();
+    const items: Array<{ depart_date: string; value: number }> = data?.data ?? [];
+    if (!items.length) return null;
+
+    const prices: Record<string, number> = {};
+    for (const item of items) {
+      if (item.depart_date && typeof item.value === "number") {
+        prices[item.depart_date] = Math.round(item.value);
+      }
+    }
+    console.log(`Travelpayouts: got ${Object.keys(prices).length} prices for ${origin}→${destination}`);
+    return Object.keys(prices).length > 0 ? prices : null;
+  } catch (err) {
+    console.error("Travelpayouts fetch exception:", err);
+    return null;
+  }
+}
+
+// ─── 3. AI price estimation using Opus ───────────────────────────────────────
 async function fetchAIPrices(
   origin: string,
   destination: string,
@@ -198,13 +238,19 @@ export async function GET(req: Request) {
   const daysInMonth = new Date(year, mon, 0).getDate();
 
   try {
-    // 1️⃣  Amadeus GDS (most accurate, same source as Skyscanner/Kayak)
-    const amadeusPrices = await fetchAmadeusPrices(origin, destination, month, daysInMonth, nights);
-    if (amadeusPrices && Object.keys(amadeusPrices).length > 0) {
-      return Response.json({ prices: amadeusPrices, source: "amadeus" });
+    // 1️⃣  RapidAPI Skyscanner (real-time prices)
+    const skyScrapper = await fetchSkyScrapper(origin, destination, month);
+    if (skyScrapper && Object.keys(skyScrapper).length > 0) {
+      return Response.json({ prices: skyScrapper, source: "skyscanner" });
     }
 
-    // 2️⃣  AI estimate using Opus (accurate route-specific pricing knowledge)
+    // 2️⃣  Travelpayouts month-matrix (affiliate real prices, free tier)
+    const tpPrices = await fetchTravelpayoutsPrices(origin, destination, month);
+    if (tpPrices && Object.keys(tpPrices).length > 0) {
+      return Response.json({ prices: tpPrices, source: "travelpayouts" });
+    }
+
+    // 3️⃣  AI estimate (always-available fallback)
     const aiPrices = await fetchAIPrices(origin, destination, month, daysInMonth, nights);
     return Response.json({ prices: aiPrices, source: "ai-estimate" });
 

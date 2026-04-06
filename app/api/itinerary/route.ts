@@ -8,6 +8,11 @@ interface StopParam {
   endDate?: string;
 }
 
+interface MustVisitPlace {
+  name: string;
+  category: string; // food | activities | hotels | shopping | other
+}
+
 interface TripParams {
   location: string;
   purpose: string;
@@ -19,11 +24,40 @@ interface TripParams {
   endDate: string;
   nights: string;
   stops?: StopParam[];
+  mustVisit?: MustVisitPlace[];
+  language?: string; // BCP-47 code e.g. "es", "ja", "ar"
 }
+
+const LANG_NAMES: Record<string, string> = {
+  zh: "Chinese (中文)", es: "Spanish (Español)", pt: "Portuguese (Português)",
+  ar: "Arabic (العربية)", fr: "French (Français)", de: "German (Deutsch)",
+  id: "Indonesian (Bahasa Indonesia)", it: "Italian (Italiano)", hi: "Hindi (हिन्दी)",
+  ja: "Japanese (日本語)", ms: "Malay (Bahasa Melayu)", pl: "Polish (Polski)",
+  ru: "Russian (Русский)", ko: "Korean (한국어)",
+};
 
 function buildPrompt(p: TripParams): string {
   const interestList = p.interests ? p.interests.split(",").join(", ") : "general sightseeing";
-  const constraintList = p.constraints ? `\nConstraints/needs: ${p.constraints.split(",").join(", ")}` : "";
+
+  // Language instruction
+  const langInstruction = p.language && p.language !== "en" && LANG_NAMES[p.language]
+    ? `\nIMPORTANT: Write your ENTIRE response in ${LANG_NAMES[p.language]}. Every heading, description, tip, and recommendation must be in ${LANG_NAMES[p.language]}.\n`
+    : "";
+
+  // Build must-visit section
+  const mustVisitBlock = p.mustVisit && p.mustVisit.length > 0
+    ? `\nMUST-INCLUDE PLACES (the traveler has specifically selected these — every one must appear in the itinerary on an appropriate day):\n${p.mustVisit.map(v => `- ${v.name} [${v.category}]`).join("\n")}\n`
+    : "";
+
+  // Build personality emphasis block
+  const personalityBlock = [
+    p.purpose    && `Purpose: ${p.purpose}`,
+    p.style      && `Travel style: ${p.style}`,
+    p.budget     && `Budget level: ${p.budget}`,
+    interestList && `Key interests: ${interestList}`,
+    p.constraints && `Special needs/constraints: ${p.constraints.split(",").join(", ")}`,
+  ].filter(Boolean).join("\n");
+
 
   const isMultiStop = p.stops && p.stops.length > 0;
 
@@ -42,13 +76,10 @@ function buildPrompt(p: TripParams): string {
       : `Cities to visit: ${route}\n\nIMPORTANT: The traveler has ${p.nights} nights total. You must decide the optimal number of nights at each city based on what each destination deserves and the traveler's interests. Recommend the best allocation.`;
 
     return `Plan a detailed multi-city trip: ${route} (${p.nights} nights total, ${p.startDate} to ${p.endDate}).
-
-Trip details:
-- Travel purpose: ${p.purpose}
-- Travel style: ${p.style}
-- Budget: ${p.budget}
-- Interests: ${interestList}${constraintList}
-
+${langInstruction}
+TRAVELER PERSONALITY (every decision — pace, restaurant tier, activity intensity, transport mode — must reflect this):
+${personalityBlock}
+${mustVisitBlock}
 ${scheduleNote}
 
 Create a complete day-by-day itinerary covering ALL stops. For each city section use "## [City Name]" as a heading.
@@ -57,43 +88,43 @@ Include:
 2. For each city: a full day-by-day schedule with precise clock times for every activity, travel time and transport mode between each activity, specific restaurant recommendations with cuisine and price range, local highlights
 3. Transport between each city (mode, journey time, booking tips, departure station/airport)
 4. Top highlights across the whole trip
-5. Practical tips and budget breakdown per city
+5. Practical tips and budget breakdown per city that align with the traveler's budget level and style
 
 CRITICAL: Every activity must have a start time (e.g. **9:00 AM**), a duration *(~X hrs)*, and the travel segment to the next activity must show mode emoji + minutes + route name. Do not skip transit segments.
-
+${p.mustVisit && p.mustVisit.length > 0 ? "CRITICAL: Every place listed in MUST-INCLUDE PLACES above must appear in the itinerary. Schedule them on appropriate days and integrate them naturally.\n" : ""}
 Write in an engaging, friendly tone. Be specific — real place names, dish names, neighborhoods.`;
   }
 
   return `Plan a detailed ${p.nights}-night trip to ${p.location}.
-
-Trip details:
-- Dates: ${p.startDate} to ${p.endDate} (${p.nights} nights)
-- Travel purpose: ${p.purpose}
-- Travel style: ${p.style}
-- Budget: ${p.budget}
-- Interests: ${interestList}${constraintList}
+${langInstruction}
+TRAVELER PERSONALITY (shape every recommendation — pace, venue tier, activity type, transport choice — around this profile):
+${personalityBlock}
+${mustVisitBlock}
+Dates: ${p.startDate} to ${p.endDate} (${p.nights} nights)
 
 Create a complete day-by-day itinerary. Format your response clearly with:
 
 HEADING FORMAT (critical): Use "## " (double hash + space) for every section heading. Example: ## Day 1: Arrival & First Impressions, ## Day 2: City Highlights, ## Practical Tips. Do NOT use bold text (**Day 1:**) or triple-hash (###) for headings.
 
-1. A brief trip overview (## Overview heading) and what makes this destination perfect for their purpose/style
+1. A brief trip overview (## Overview heading) explaining why this destination and this itinerary match the traveler's personality and purpose
 2. A full day-by-day schedule, each day as its own ## Day N: [Title] heading (Day 1 through Day ${p.nights}), where EVERY activity has:
    - A precise start time (e.g. **9:00 AM**)
    - The activity name in bold with approximate duration *(~X hrs)*
    - A transit segment immediately after showing how to reach the next stop: mode emoji + travel time + route/line name
      Examples: 🚶 8 min walk | 🚇 12 min subway (Line 1 → Central Station) | 🚕 15 min taxi | 🚌 20 min bus (Route 38)
-   - Lunch and dinner with restaurant name, cuisine, and price per person
-3. Top 5 must-see/must-do highlights
-4. Practical tips tailored to their travel style and budget
-5. A rough daily budget breakdown in USD
-
+   - Lunch and dinner with restaurant name, cuisine, and price per person that fit the budget level (${p.budget})
+3. Top 5 must-see/must-do highlights chosen to match the traveler's interests (${interestList})
+4. Practical tips tailored to their travel style (${p.style}) and budget (${p.budget})
+5. A rough daily budget breakdown in USD matching the ${p.budget} budget level
+${p.mustVisit && p.mustVisit.length > 0 ? "\nCRITICAL: Every place listed in MUST-INCLUDE PLACES above must appear in the itinerary on an appropriate day. Do not omit any of them.\n" : ""}
 CRITICAL: Do not skip transit segments. Every activity must flow into the next with real travel info.
 Write in an engaging, friendly tone. Be specific — use real place names, dish names, and neighborhood names.`;
 }
 
 const SYSTEM = `You are an expert travel planner with deep knowledge of destinations worldwide.
-You create personalized, practical itineraries that match each traveler's unique style and preferences.
+You create personalized, practical itineraries that are laser-focused on the traveler's specific personality, purpose, style, and budget.
+CRITICAL: Never suggest generic tourist activities that conflict with the stated travel style or budget. A budget backpacker should not get Michelin-star restaurants; a luxury traveler should not get hostel recommendations. An adventure traveler should not get museum-heavy days unless they asked for it. Always match every suggestion to the stated personality.
+If the traveler has pinned specific places (MUST-INCLUDE), every single one must appear in the itinerary — do not skip or replace them.
 Be specific, enthusiastic, and helpful. Use real place names and practical details.
 
 FORMATTING RULES:

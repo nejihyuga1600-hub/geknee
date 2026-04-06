@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { flyToGlobe, zoomCamera } from '@/lib/globeAnim';
+import { GenieAvatar } from './GenieCharacters';
+import { useSelectedGenie } from './GenieSelector';
+
+const GenieSelector = dynamic(() => import('./GenieSelector'), { ssr: false });
 
 interface ChatMessage { role: 'user' | 'assistant'; content: string; }
 
@@ -61,10 +66,11 @@ function GlobalChatInner() {
 // ─── Main UI ─────────────────────────────────────────────────────────────────
 
 function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
-  const STAR   = String.fromCodePoint(0x2726);
   const router = useRouter();
 
-  const [open, setOpen]           = useState(false);
+  const { genieId } = useSelectedGenie();
+  const [open, setOpen]               = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -78,9 +84,10 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   const [confirmLoc,    setConfirmLoc]    = useState(''); // encoded location for push
   const destRef = useRef<HTMLInputElement>(null);
 
-  // Inspiration image upload
+  // Inspiration image/video upload
   const [imageFile,    setImageFile]    = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [isVideo,      setIsVideo]      = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const endRef   = useRef<HTMLDivElement>(null);
@@ -149,16 +156,43 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    const url = URL.createObjectURL(file);
-    setImagePreview(url);
     e.target.value = '';
+    const video = file.type.startsWith('video/');
+    setIsVideo(video);
+
+    if (video) {
+      // Extract first frame from video for preview + Vision API
+      const videoEl = document.createElement('video');
+      const objUrl  = URL.createObjectURL(file);
+      videoEl.src          = objUrl;
+      videoEl.currentTime  = 1;
+      videoEl.muted        = true;
+      videoEl.playsInline  = true;
+      videoEl.onloadeddata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width  = videoEl.videoWidth  || 640;
+        canvas.height = videoEl.videoHeight || 360;
+        canvas.getContext('2d')?.drawImage(videoEl, 0, 0);
+        URL.revokeObjectURL(objUrl);
+        canvas.toBlob(blob => {
+          if (!blob) return;
+          const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' });
+          setImageFile(frameFile);
+          setImagePreview(canvas.toDataURL('image/jpeg', 0.8));
+        }, 'image/jpeg', 0.8);
+      };
+      videoEl.onerror = () => URL.revokeObjectURL(objUrl);
+    } else {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
   }, []);
 
   const clearImage = useCallback(() => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    if (imagePreview && !imagePreview.startsWith('data:')) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
     setImagePreview('');
+    setIsVideo(false);
   }, [imagePreview]);
 
   const sendGenie = useCallback(async () => {
@@ -246,22 +280,25 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
+      {/* Genie selector modal */}
+      {selectorOpen && <GenieSelector onClose={() => setSelectorOpen(false)} />}
+
       {/* Floating toggle button */}
       <div style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9000 }}>
         {!open && (
           <button
             onClick={() => setOpen(true)}
             style={{
-              width: 56, height: 56, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
-              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              width: 68, height: 68, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'radial-gradient(circle at 40% 40%, #1e3a7a, #0d1a40)',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.5), 0 0 0 2px rgba(245,197,24,0.35)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, color: '#fff',
+              padding: 6, overflow: 'hidden',
               animation: 'geniePulse 2.5s ease-in-out infinite',
             }}
             title="Open GeKnee AI Genie"
           >
-            {STAR}
+            <img src="/lamp.png" alt="Genie lamp" style={{ width: 56, height: 56, objectFit: 'contain', filter: 'drop-shadow(0 0 6px rgba(245,197,24,0.6))' }} />
           </button>
         )}
 
@@ -277,16 +314,25 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             zIndex: 9001,
           }}>
             {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(129,140,248,0.15)', background: 'rgba(109,40,217,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <span style={{ color: '#a78bfa', fontSize: 13, fontWeight: 700 }}>GeKnee {STAR} AI Genie</span>
-                <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
-                  {ctx.page === 'globe'   ? 'Destination Discovery'
-                  : ctx.page === 'style'  ? 'Travel Preferences'
-                  : ctx.page === 'dates'  ? 'Travel Dates'
-                  : ctx.page === 'book'   ? `Booking \u2014 ${ctx.location}`
-                  :                        `Itinerary \u2014 ${ctx.location}`}
-                </p>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(129,140,248,0.15)', background: 'rgba(109,40,217,0.12)', display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={() => setSelectorOpen(true)}
+                  title="Change your Genie"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, lineHeight: 0 }}
+                >
+                  <GenieAvatar id={genieId} size={34} />
+                </button>
+                <div>
+                  <span style={{ color: '#a78bfa', fontSize: 13, fontWeight: 700 }}>GeKnee {String.fromCodePoint(0x2726)} AI Genie</span>
+                  <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
+                    {ctx.page === 'globe'   ? 'Destination Discovery'
+                    : ctx.page === 'style'  ? 'Travel Preferences'
+                    : ctx.page === 'dates'  ? 'Travel Dates'
+                    : ctx.page === 'book'   ? `Booking \u2014 ${ctx.location}`
+                    :                        `Itinerary \u2014 ${ctx.location}`}
+                  </p>
+                </div>
               </div>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>
                 {String.fromCodePoint(0x00D7)}
@@ -331,41 +377,6 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
                       >
                         Change
                       </button>
-                    </div>
-                    {/* Search another place */}
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 10 }}>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6, letterSpacing: '0.04em' }}>
-                        OR FLY SOMEWHERE ELSE
-                      </div>
-                      <div style={{ display: 'flex', gap: 7 }}>
-                        <input
-                          ref={destRef}
-                          value={destInput}
-                          onChange={e => { setDestInput(e.target.value); setDestError(''); }}
-                          onKeyDown={e => { if (e.key === 'Enter') { setConfirming(''); setConfirmLoc(''); handleDest(); } }}
-                          placeholder="City or country..."
-                          disabled={destLoading}
-                          style={{
-                            flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(129,140,248,0.3)',
-                            borderRadius: 10, color: '#fff', fontSize: 13, padding: '9px 12px', outline: 'none',
-                          }}
-                        />
-                        <button
-                          onClick={() => { setConfirming(''); setConfirmLoc(''); handleDest(); }}
-                          disabled={destLoading || !destInput.trim()}
-                          style={{
-                            width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
-                            background: destInput.trim() && !destLoading ? 'linear-gradient(135deg,#06b6d4,#6366f1)' : 'rgba(255,255,255,0.08)',
-                            color: '#fff', fontSize: 15, cursor: destInput.trim() && !destLoading ? 'pointer' : 'not-allowed',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
-                        >
-                          {destLoading ? (
-                            <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
-                          ) : String.fromCodePoint(0x27A4)}
-                        </button>
-                      </div>
-                      {destError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 5 }}>{destError}</div>}
                     </div>
                   </div>
                 ) : (
@@ -444,9 +455,16 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             {/* Image preview */}
             {imagePreview && (
               <div style={{ padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <img src={imagePreview} alt="inspiration preview" style={{ height: 52, width: 72, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(129,140,248,0.4)' }} />
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <img src={imagePreview} alt="inspiration preview" style={{ height: 52, width: 72, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(129,140,248,0.4)' }} />
+                  {isVideo && (
+                    <div style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.65)', borderRadius: 4, fontSize: 9, color: '#fff', padding: '1px 4px', fontWeight: 700, letterSpacing: '0.04em' }}>
+                      VIDEO
+                    </div>
+                  )}
+                </div>
                 <div style={{ flex: 1, fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
-                  {String.fromCodePoint(0x2728)} Image ready — add a caption or send now
+                  {String.fromCodePoint(0x2728)} {isVideo ? 'Video frame captured' : 'Image ready'} — add a caption or send now
                 </div>
                 <button onClick={clearImage} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>
                   {String.fromCodePoint(0x00D7)}
@@ -456,7 +474,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
 
             {/* Input */}
             <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileSelect} />
+              <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFileSelect} />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Add inspiration image"
@@ -495,13 +513,16 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
           <button
             onClick={() => setOpen(false)}
             style={{
-              width: 56, height: 56, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
-              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              width: 68, height: 68, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'radial-gradient(circle at 40% 40%, #1e3a7a, #0d1a40)',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.5), 0 0 0 2px rgba(245,197,24,0.35)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, color: '#fff',
+              padding: 6, overflow: 'hidden', position: 'relative',
             }}
-          >{String.fromCodePoint(0x00D7)}</button>
+          >
+            <img src="/lamp.png" alt="Genie lamp" style={{ width: 56, height: 56, objectFit: 'contain', filter: 'drop-shadow(0 0 6px rgba(245,197,24,0.6)) brightness(0.6)' }} />
+            <span style={{ position: 'absolute', fontSize: 18, color: '#fff', fontWeight: 700, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{String.fromCodePoint(0x00D7)}</span>
+          </button>
         )}
       </div>
     </>

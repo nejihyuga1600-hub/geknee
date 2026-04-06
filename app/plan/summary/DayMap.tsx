@@ -99,7 +99,11 @@ function stepIconSvg(gmMode: string, vehicleType?: string): string {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function detectMode(lines: string[]): TransportMode {
   const text = lines.join(' ').toLowerCase();
-  if (/\b(flight|fly|flew|plane|aircraft|airline|airport)\b/.test(text)) return 'flight';
+  // Only treat as flight if the day is explicitly a travel/transit day between cities.
+  // Mentioning "airport" or "flight" in passing (e.g. "arrive at airport") on a day
+  // that also has local activities should not trigger inter-continental flight paths.
+  const flightKeywords = /\b(take.*flight|board.*plane|depart.*airport|fly from|flight from|fly to)\b/;
+  if (flightKeywords.test(text)) return 'flight';
   if (/\b(subway|metro|tube|underground|tram|train|rail|bus|transit|shuttle)\b/.test(text)) return 'transit';
   if (/\b(bike|cycling|cycle|bicycle|scooter)\b/.test(text)) return 'cycling';
   if (/\b(walk|stroll|on foot|hike|hiking|pedestrian|wander|wanders|strolling)\b/.test(text)) return 'walking';
@@ -203,10 +207,28 @@ export default function DayMap({ heading, lines, location, height = 220, namedPl
 
       if (mapRef.current) { if (!cancelled) setMapReady(true); return; }
 
+      // Geocode the destination so the map opens centered on it immediately
+      let initialCenter: google.maps.LatLngLiteral = { lat: 35.6895, lng: 139.6917 };
+      if (location) {
+        try {
+          const geo = new google.maps.Geocoder();
+          const res = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) =>
+            geo.geocode({ address: location }, (results, status) =>
+              status === 'OK' && results ? resolve(results) : reject(status)
+            )
+          );
+          if (res[0]) {
+            initialCenter = {
+              lat: res[0].geometry.location.lat(),
+              lng: res[0].geometry.location.lng(),
+            };
+          }
+        } catch { /* fall back to Tokyo */ }
+      }
+
       const map = new google.maps.Map(divRef.current!, {
         zoom: 12,
-        center: { lat: 35.6895, lng: 139.6917 },
-        // Light mode — no custom styles
+        center: initialCenter,
         disableDefaultUI: true,
         zoomControl: true,
         gestureHandling: 'cooperative',
@@ -308,14 +330,21 @@ export default function DayMap({ heading, lines, location, height = 220, namedPl
       const detectedMode = detectMode(lines);
       if (!cancelled) setMode(detectedMode);
 
+      // Always anchor to the destination (e.g. "Houston") — never the departure city
       const anchor = await geocode(location);
       if (!anchor || cancelled) return;
 
+      // Extract city from heading (e.g. "Day 1: Houston" → "Houston")
+      // Fall back to location prop so we never lose the destination context
       const cityMatch = heading.match(/:\s*([^—–\-|,\n]+)/);
-      const city = cityMatch ? cityMatch[1].trim() : location;
+      const rawCity   = cityMatch ? cityMatch[1].trim() : '';
+      const city      = rawCity || location;
+
       let center = anchor;
-      if (city !== location) {
-        const bias: google.maps.LatLngBoundsLiteral = { north: anchor.lat + 6, south: anchor.lat - 6, east: anchor.lng + 6, west: anchor.lng - 6 };
+      // Only re-geocode if heading city is meaningfully different from location
+      if (rawCity && rawCity.toLowerCase() !== location.toLowerCase()) {
+        // Tight bias: within 8° of destination so we never jump continents
+        const bias: google.maps.LatLngBoundsLiteral = { north: anchor.lat + 8, south: anchor.lat - 8, east: anchor.lng + 8, west: anchor.lng - 8 };
         const cc = await geocode(city, bias);
         if (cc) center = cc;
       }
@@ -325,14 +354,27 @@ export default function DayMap({ heading, lines, location, height = 220, namedPl
         ? namedPlaces.map(n => ({ name: n, snippet: n }))
         : extractPlaces(lines);
 
-      const resolved: Place[] = [];
-      const bias: google.maps.LatLngBoundsLiteral = { north: center.lat + 1.5, south: center.lat - 1.5, east: center.lng + 1.5, west: center.lng - 1.5 };
-      for (const p of rawPlaces) {
-        if (cancelled) break;
-        const coords = await geocode(`${p.name}, ${city}`, bias);
-        if (coords) resolved.push({ name: p.name, coords, snippet: p.snippet });
-      }
+      // Very tight bias: 0.5° (~55km) around the destination city center
+      // This prevents "Space Needle" geocoding to somewhere in Europe
+      const bias: google.maps.LatLngBoundsLiteral = {
+        north: center.lat + 0.5, south: center.lat - 0.5,
+        east:  center.lng + 0.5, west:  center.lng - 0.5,
+      };
+
+      // Geocode all places in parallel — much faster than sequential awaits
+      const geocodeResults = await Promise.all(
+        rawPlaces.map(async p => {
+          const query = `${p.name}, ${city}`;
+          const coords = await geocode(query, bias);
+          // Reject results more than 1.5°/2.0° outside center — continent guard
+          if (coords && Math.abs(coords.lat - center.lat) < 1.5 && Math.abs(coords.lng - center.lng) < 2.0) {
+            return { name: p.name, coords, snippet: p.snippet } as Place;
+          }
+          return null;
+        })
+      );
       if (cancelled) return;
+      const resolved = geocodeResults.filter((p): p is Place => p !== null);
 
       setPlaces(resolved);
       onPlacesResolved?.(resolved.map(p => p.name));

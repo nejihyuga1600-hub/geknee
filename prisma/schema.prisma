@@ -27,6 +27,7 @@ model User {
   accounts Account[]
   sessions Session[]
   trips    TripDraft[]
+  tripFiles TripFile[]
   sentFriendRequests     Friendship[] @relation("SentRequests")
   receivedFriendRequests Friendship[] @relation("ReceivedRequests")
 
@@ -88,7 +89,25 @@ model TripDraft {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files TripFile[]
+}
+
+// ── Trip File Vault ───────────────────────────────────────────────────────────
+
+model TripFile {
+  id        String   @id @default(cuid())
+  tripId    String
+  userId    String
+  name      String   // original filename
+  url       String   // Supabase Storage public URL
+  storagePath String // path in bucket for deletion
+  size      Int      // bytes
+  tag       String   @default("other") // passport | booking | insurance | photo | other
+  createdAt DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip TripDraft @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 // ── Friends ───────────────────────────────────────────────────────────────────

@@ -1,11 +1,11 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Sphere, Stars, Html, useGLTF, Text } from "@react-three/drei";
+import { OrbitControls, Sphere, Stars, Html, useGLTF, Text, useTexture } from "@react-three/drei";
 import { useEffect, useRef, useState, useMemo, Component, Suspense, type ReactNode } from "react";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
-import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
+import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
 
 const R = 10;
 
@@ -4754,9 +4754,9 @@ function GeoLabels({ countries, states, zoomLevel }: {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const base = it.kind === "country" ? 0.18 : 0.12;
+      const base = it.kind === "country" ? 0.20 : 0.115;
       const thr  = it.kind === "country" ? 18   : 12;
-      const min  = it.kind === "country" ? 0.07  : 0.05;
+      const min  = it.kind === "country" ? 0.08  : 0.05;
       const fontSize = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
       return { ...it, fontSize };
     });
@@ -4771,74 +4771,219 @@ function GeoLabels({ countries, states, zoomLevel }: {
           quaternion={orientation}
           fontSize={fontSize}
           color={kind === "country" ? "#ffffff" : "#b8ccff"}
-          outlineWidth={kind === "country" ? 0.012 : 0.008}
+          outlineWidth={kind === "country" ? 0.013 : 0.008}
           outlineColor="#000000"
           anchorX="center"
           anchorY="middle"
-          letterSpacing={kind === "country" ? 0.06 : 0.02}
+          letterSpacing={kind === "country" ? 0.10 : 0.04}
           sdfGlyphSize={64}
           material-side={THREE.FrontSide}
           material-depthTest
         >
-          {kind === "country" ? name.toUpperCase() : name}
+          {name.toUpperCase()}
         </Text>
       ))}
     </>
   );
 }
 
-// --- Major world city labels ---------------------------------------------------
+// --- Major world city labels (coords: WGS-84 decimal degrees) -----------------
 const CITIES: { n: string; lat: number; lon: number }[] = [
-  { n: "Tokyo",          lat:  35.68, lon:  139.69 },
-  { n: "Delhi",          lat:  28.61, lon:   77.23 },
-  { n: "Shanghai",       lat:  31.23, lon:  121.47 },
-  { n: "Sao Paulo",      lat: -23.55, lon:  -46.63 },
-  { n: "Mexico City",    lat:  19.43, lon:  -99.13 },
-  { n: "Cairo",          lat:  30.06, lon:   31.25 },
-  { n: "Beijing",        lat:  39.91, lon:  116.39 },
-  { n: "Mumbai",         lat:  19.08, lon:   72.88 },
-  { n: "Osaka",          lat:  34.69, lon:  135.50 },
-  { n: "New York",       lat:  40.71, lon:  -74.01 },
-  { n: "Buenos Aires",   lat: -34.60, lon:  -58.38 },
-  { n: "Istanbul",       lat:  41.01, lon:   28.96 },
-  { n: "Lagos",          lat:   6.52, lon:    3.38 },
-  { n: "Rio de Janeiro", lat: -22.91, lon:  -43.17 },
-  { n: "Paris",          lat:  48.86, lon:    2.35 },
-  { n: "Jakarta",        lat:  -6.21, lon:  106.85 },
-  { n: "London",         lat:  51.51, lon:   -0.13 },
-  { n: "Bangkok",        lat:  13.75, lon:  100.52 },
-  { n: "Moscow",         lat:  55.75, lon:   37.62 },
-  { n: "Los Angeles",    lat:  34.05, lon: -118.24 },
-  { n: "Chicago",        lat:  41.88, lon:  -87.63 },
-  { n: "Bogota",         lat:   4.71, lon:  -74.07 },
-  { n: "Sydney",         lat: -33.87, lon:  151.21 },
-  { n: "Dubai",          lat:  25.20, lon:   55.27 },
-  { n: "Singapore",      lat:   1.35, lon:  103.82 },
-  { n: "Seoul",          lat:  37.57, lon:  126.98 },
-  { n: "Toronto",        lat:  43.65, lon:  -79.38 },
-  { n: "Berlin",         lat:  52.52, lon:   13.40 },
-  { n: "Madrid",         lat:  40.42, lon:   -3.70 },
-  { n: "Rome",           lat:  41.90, lon:   12.50 },
-  { n: "Cape Town",      lat: -33.93, lon:   18.42 },
-  { n: "Nairobi",        lat:  -1.29, lon:   36.82 },
-  { n: "Riyadh",         lat:  24.69, lon:   46.72 },
-  { n: "Tehran",         lat:  35.69, lon:   51.39 },
-  { n: "Karachi",        lat:  24.86, lon:   67.01 },
-  { n: "Lahore",         lat:  31.55, lon:   74.35 },
-  { n: "Lima",           lat: -12.05, lon:  -77.04 },
-  { n: "Santiago",       lat: -33.45, lon:  -70.67 },
-  { n: "Kuala Lumpur",   lat:   3.14, lon:  101.69 },
-  { n: "Melbourne",      lat: -37.81, lon:  144.96 },
-  { n: "Addis Ababa",    lat:   9.03, lon:   38.74 },
-  { n: "Johannesburg",   lat: -26.20, lon:   28.04 },
-  { n: "Kinshasa",       lat:  -4.32, lon:   15.32 },
-  { n: "Manila",         lat:  14.60, lon:  120.98 },
-  { n: "Kolkata",        lat:  22.57, lon:   88.36 },
-  { n: "Bangalore",      lat:  12.97, lon:   77.59 },
-  { n: "Baghdad",        lat:  33.34, lon:   44.40 },
-  { n: "Dhaka",          lat:  23.72, lon:   90.41 },
-  { n: "Chongqing",      lat:  29.56, lon:  106.55 },
-  { n: "Tianjin",        lat:  39.14, lon:  117.18 },
+  // ── United States ────────────────────────────────────────────────────────────
+  { n: "New York",         lat:  40.71, lon:  -74.01 },
+  { n: "Los Angeles",      lat:  34.05, lon: -118.24 },
+  { n: "Chicago",          lat:  41.88, lon:  -87.63 },
+  { n: "Houston",          lat:  29.76, lon:  -95.37 },
+  { n: "Phoenix",          lat:  33.45, lon: -112.07 },
+  { n: "Philadelphia",     lat:  39.95, lon:  -75.17 },
+  { n: "San Antonio",      lat:  29.42, lon:  -98.49 },
+  { n: "San Diego",        lat:  32.72, lon: -117.15 },
+  { n: "Dallas",           lat:  32.78, lon:  -96.80 },
+  { n: "Austin",           lat:  30.27, lon:  -97.74 },
+  { n: "Fort Worth",       lat:  32.75, lon:  -97.33 },
+  { n: "El Paso",          lat:  31.76, lon: -106.49 },
+  { n: "Lubbock",          lat:  33.58, lon: -101.86 },
+  { n: "Arlington",        lat:  32.74, lon:  -97.11 },
+  { n: "Corpus Christi",   lat:  27.80, lon:  -97.40 },
+  { n: "Plano",            lat:  33.02, lon:  -96.70 },
+  { n: "Jacksonville",     lat:  30.33, lon:  -81.66 },
+  { n: "San Francisco",    lat:  37.77, lon: -122.42 },
+  { n: "Seattle",          lat:  47.61, lon: -122.33 },
+  { n: "Denver",           lat:  39.74, lon: -104.98 },
+  { n: "Washington DC",    lat:  38.91, lon:  -77.04 },
+  { n: "Nashville",        lat:  36.17, lon:  -86.78 },
+  { n: "Oklahoma City",    lat:  35.47, lon:  -97.52 },
+  { n: "Las Vegas",        lat:  36.17, lon: -115.14 },
+  { n: "Portland",         lat:  45.52, lon: -122.68 },
+  { n: "Memphis",          lat:  35.15, lon:  -90.05 },
+  { n: "Louisville",       lat:  38.25, lon:  -85.76 },
+  { n: "Baltimore",        lat:  39.29, lon:  -76.61 },
+  { n: "Milwaukee",        lat:  43.04, lon:  -87.91 },
+  { n: "Albuquerque",      lat:  35.08, lon: -106.65 },
+  { n: "Tucson",           lat:  32.22, lon: -110.97 },
+  { n: "Atlanta",          lat:  33.75, lon:  -84.39 },
+  { n: "Kansas City",      lat:  39.10, lon:  -94.58 },
+  { n: "Omaha",            lat:  41.26, lon:  -96.01 },
+  { n: "Cleveland",        lat:  41.50, lon:  -81.69 },
+  { n: "Raleigh",          lat:  35.78, lon:  -78.64 },
+  { n: "Colorado Springs", lat:  38.83, lon: -104.82 },
+  { n: "Miami",            lat:  25.77, lon:  -80.19 },
+  { n: "Minneapolis",      lat:  44.98, lon:  -93.27 },
+  { n: "New Orleans",      lat:  29.95, lon:  -90.07 },
+  { n: "Detroit",          lat:  42.33, lon:  -83.05 },
+  { n: "Charlotte",        lat:  35.23, lon:  -80.84 },
+  { n: "St. Louis",        lat:  38.63, lon:  -90.20 },
+  { n: "Pittsburgh",       lat:  40.44, lon:  -80.00 },
+  { n: "Tampa",            lat:  27.95, lon:  -82.46 },
+  { n: "Cincinnati",       lat:  39.10, lon:  -84.51 },
+  { n: "Orlando",          lat:  28.54, lon:  -81.38 },
+  { n: "Salt Lake City",   lat:  40.76, lon: -111.89 },
+  { n: "Sacramento",       lat:  38.58, lon: -121.49 },
+  { n: "Indianapolis",     lat:  39.77, lon:  -86.16 },
+  { n: "Columbus",         lat:  39.96, lon:  -82.99 },
+  { n: "Virginia Beach",   lat:  36.85, lon:  -76.29 },
+  { n: "Fresno",           lat:  36.74, lon: -119.79 },
+  { n: "Baton Rouge",      lat:  30.44, lon:  -91.13 },
+  { n: "Tulsa",            lat:  36.15, lon:  -95.99 },
+  { n: "Wichita",          lat:  37.69, lon:  -97.34 },
+  { n: "Honolulu",         lat:  21.31, lon: -157.86 },
+  { n: "Anchorage",        lat:  61.22, lon: -149.90 },
+  // ── Canada ───────────────────────────────────────────────────────────────────
+  { n: "Toronto",          lat:  43.65, lon:  -79.38 },
+  { n: "Montreal",         lat:  45.51, lon:  -73.55 },
+  { n: "Vancouver",        lat:  49.25, lon: -123.12 },
+  { n: "Calgary",          lat:  51.05, lon: -114.07 },
+  { n: "Ottawa",           lat:  45.42, lon:  -75.70 },
+  { n: "Edmonton",         lat:  53.55, lon: -113.47 },
+  // ── Mexico & Central America ─────────────────────────────────────────────────
+  { n: "Mexico City",      lat:  19.43, lon:  -99.13 },
+  { n: "Guadalajara",      lat:  20.67, lon: -103.35 },
+  { n: "Monterrey",        lat:  25.69, lon: -100.32 },
+  { n: "Tijuana",          lat:  32.52, lon: -117.04 },
+  { n: "Puebla",           lat:  19.04, lon:  -98.20 },
+  { n: "Havana",           lat:  23.11, lon:  -82.37 },
+  { n: "Guatemala City",   lat:  14.64, lon:  -90.51 },
+  // ── South America ────────────────────────────────────────────────────────────
+  { n: "Sao Paulo",        lat: -23.55, lon:  -46.63 },
+  { n: "Rio de Janeiro",   lat: -22.91, lon:  -43.17 },
+  { n: "Buenos Aires",     lat: -34.60, lon:  -58.38 },
+  { n: "Bogota",           lat:   4.71, lon:  -74.07 },
+  { n: "Lima",             lat: -12.05, lon:  -77.04 },
+  { n: "Santiago",         lat: -33.45, lon:  -70.67 },
+  { n: "Caracas",          lat:  10.48, lon:  -66.88 },
+  { n: "Medellin",         lat:   6.25, lon:  -75.56 },
+  { n: "Quito",            lat:  -0.22, lon:  -78.51 },
+  { n: "Belo Horizonte",   lat: -19.92, lon:  -43.94 },
+  { n: "Fortaleza",        lat:  -3.72, lon:  -38.54 },
+  { n: "Recife",           lat:  -8.05, lon:  -34.90 },
+  { n: "Manaus",           lat:  -3.10, lon:  -60.02 },
+  // ── Europe ───────────────────────────────────────────────────────────────────
+  { n: "London",           lat:  51.51, lon:   -0.13 },
+  { n: "Paris",            lat:  48.86, lon:    2.35 },
+  { n: "Berlin",           lat:  52.52, lon:   13.40 },
+  { n: "Madrid",           lat:  40.42, lon:   -3.70 },
+  { n: "Rome",             lat:  41.90, lon:   12.50 },
+  { n: "Barcelona",        lat:  41.39, lon:    2.16 },
+  { n: "Amsterdam",        lat:  52.37, lon:    4.90 },
+  { n: "Vienna",           lat:  48.21, lon:   16.37 },
+  { n: "Stockholm",        lat:  59.33, lon:   18.07 },
+  { n: "Warsaw",           lat:  52.23, lon:   21.01 },
+  { n: "Brussels",         lat:  50.85, lon:    4.35 },
+  { n: "Prague",           lat:  50.08, lon:   14.44 },
+  { n: "Lisbon",           lat:  38.72, lon:   -9.14 },
+  { n: "Budapest",         lat:  47.50, lon:   19.04 },
+  { n: "Oslo",             lat:  59.91, lon:   10.75 },
+  { n: "Copenhagen",       lat:  55.68, lon:   12.57 },
+  { n: "Helsinki",         lat:  60.17, lon:   24.94 },
+  { n: "Zurich",           lat:  47.38, lon:    8.54 },
+  { n: "Milan",            lat:  45.47, lon:    9.19 },
+  { n: "Munich",           lat:  48.14, lon:   11.58 },
+  { n: "Athens",           lat:  37.97, lon:   23.73 },
+  { n: "Bucharest",        lat:  44.43, lon:   26.10 },
+  { n: "Hamburg",          lat:  53.55, lon:    9.99 },
+  { n: "Kiev",             lat:  50.45, lon:   30.52 },
+  { n: "Minsk",            lat:  53.90, lon:   27.57 },
+  // ── Russia & Central Asia ────────────────────────────────────────────────────
+  { n: "Moscow",           lat:  55.75, lon:   37.62 },
+  { n: "Saint Petersburg", lat:  59.94, lon:   30.32 },
+  { n: "Novosibirsk",      lat:  54.99, lon:   82.90 },
+  { n: "Tashkent",         lat:  41.30, lon:   69.24 },
+  { n: "Almaty",           lat:  43.24, lon:   76.95 },
+  { n: "Baku",             lat:  40.41, lon:   49.87 },
+  // ── Middle East ──────────────────────────────────────────────────────────────
+  { n: "Istanbul",         lat:  41.01, lon:   28.96 },
+  { n: "Tehran",           lat:  35.69, lon:   51.39 },
+  { n: "Riyadh",           lat:  24.69, lon:   46.72 },
+  { n: "Baghdad",          lat:  33.34, lon:   44.40 },
+  { n: "Dubai",            lat:  25.20, lon:   55.27 },
+  { n: "Doha",             lat:  25.29, lon:   51.53 },
+  { n: "Kuwait City",      lat:  29.37, lon:   47.98 },
+  { n: "Muscat",           lat:  23.61, lon:   58.59 },
+  { n: "Amman",            lat:  31.95, lon:   35.93 },
+  { n: "Beirut",           lat:  33.89, lon:   35.50 },
+  { n: "Tel Aviv",         lat:  32.09, lon:   34.79 },
+  // ── South Asia ───────────────────────────────────────────────────────────────
+  { n: "Delhi",            lat:  28.61, lon:   77.23 },
+  { n: "Mumbai",           lat:  19.08, lon:   72.88 },
+  { n: "Karachi",          lat:  24.86, lon:   67.01 },
+  { n: "Dhaka",            lat:  23.72, lon:   90.41 },
+  { n: "Kolkata",          lat:  22.57, lon:   88.36 },
+  { n: "Bangalore",        lat:  12.97, lon:   77.59 },
+  { n: "Lahore",           lat:  31.55, lon:   74.35 },
+  { n: "Chennai",          lat:  13.08, lon:   80.27 },
+  { n: "Hyderabad",        lat:  17.38, lon:   78.49 },
+  { n: "Ahmedabad",        lat:  23.03, lon:   72.59 },
+  { n: "Pune",             lat:  18.52, lon:   73.86 },
+  { n: "Colombo",          lat:   6.93, lon:   79.85 },
+  { n: "Kathmandu",        lat:  27.72, lon:   85.32 },
+  // ── East & Southeast Asia ────────────────────────────────────────────────────
+  { n: "Tokyo",            lat:  35.68, lon:  139.69 },
+  { n: "Shanghai",         lat:  31.23, lon:  121.47 },
+  { n: "Beijing",          lat:  39.91, lon:  116.39 },
+  { n: "Chongqing",        lat:  29.56, lon:  106.55 },
+  { n: "Tianjin",          lat:  39.14, lon:  117.18 },
+  { n: "Shenzhen",         lat:  22.54, lon:  114.06 },
+  { n: "Wuhan",            lat:  30.59, lon:  114.31 },
+  { n: "Guangzhou",        lat:  23.13, lon:  113.26 },
+  { n: "Chengdu",          lat:  30.66, lon:  104.07 },
+  { n: "Osaka",            lat:  34.69, lon:  135.50 },
+  { n: "Seoul",            lat:  37.57, lon:  126.98 },
+  { n: "Taipei",           lat:  25.05, lon:  121.53 },
+  { n: "Bangkok",          lat:  13.75, lon:  100.52 },
+  { n: "Ho Chi Minh City", lat:  10.82, lon:  106.63 },
+  { n: "Hanoi",            lat:  21.03, lon:  105.85 },
+  { n: "Jakarta",          lat:  -6.21, lon:  106.85 },
+  { n: "Manila",           lat:  14.60, lon:  120.98 },
+  { n: "Singapore",        lat:   1.35, lon:  103.82 },
+  { n: "Kuala Lumpur",     lat:   3.14, lon:  101.69 },
+  { n: "Yangon",           lat:  16.87, lon:   96.19 },
+  { n: "Phnom Penh",       lat:  11.57, lon:  104.92 },
+  // ── Africa ───────────────────────────────────────────────────────────────────
+  { n: "Cairo",            lat:  30.06, lon:   31.25 },
+  { n: "Lagos",            lat:   6.52, lon:    3.38 },
+  { n: "Kinshasa",         lat:  -4.32, lon:   15.32 },
+  { n: "Johannesburg",     lat: -26.20, lon:   28.04 },
+  { n: "Cape Town",        lat: -33.93, lon:   18.42 },
+  { n: "Nairobi",          lat:  -1.29, lon:   36.82 },
+  { n: "Addis Ababa",      lat:   9.03, lon:   38.74 },
+  { n: "Khartoum",         lat:  15.55, lon:   32.53 },
+  { n: "Dar es Salaam",    lat:  -6.79, lon:   39.21 },
+  { n: "Abidjan",          lat:   5.35, lon:   -4.00 },
+  { n: "Accra",            lat:   5.56, lon:   -0.20 },
+  { n: "Casablanca",       lat:  33.59, lon:   -7.62 },
+  { n: "Luanda",           lat:  -8.84, lon:   13.23 },
+  { n: "Kampala",          lat:   0.32, lon:   32.58 },
+  { n: "Algiers",          lat:  36.74, lon:    3.06 },
+  { n: "Tunis",            lat:  36.82, lon:   10.17 },
+  { n: "Dakar",            lat:  14.72, lon:  -17.47 },
+  { n: "Maputo",           lat: -25.97, lon:   32.59 },
+  // ── Oceania ──────────────────────────────────────────────────────────────────
+  { n: "Sydney",           lat: -33.87, lon:  151.21 },
+  { n: "Melbourne",        lat: -37.81, lon:  144.96 },
+  { n: "Brisbane",         lat: -27.47, lon:  153.03 },
+  { n: "Perth",            lat: -31.95, lon:  115.86 },
+  { n: "Adelaide",         lat: -34.93, lon:  138.60 },
+  { n: "Auckland",         lat: -36.87, lon:  174.77 },
 ];
 
 function CityLabels({ visible }: { visible: boolean }) {
@@ -4856,31 +5001,44 @@ function CityLabels({ visible }: { visible: boolean }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const fontSize = minDeg >= 8 ? 0.10 : Math.max(0.04, 0.10 * (minDeg / 8));
+      const fontSize = minDeg >= 10 ? 0.08 : Math.max(0.04, 0.08 * (minDeg / 10));
       return { ...it, fontSize };
     });
   }, []);
+
   if (!visible) return null;
+
   return (
     <>
       {items.map(({ n, pos, orientation, fontSize }) => (
-        <Text
-          key={n}
-          position={pos}
-          quaternion={orientation}
-          fontSize={fontSize}
-          color="#ffe090"
-          outlineWidth={0.007}
-          outlineColor="#000000"
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={0.02}
-          sdfGlyphSize={64}
-          material-side={THREE.FrontSide}
-          material-depthTest
-        >
-          {n}
-        </Text>
+        <group key={n} position={pos} quaternion={orientation}>
+          {/* Visual label */}
+          <Text
+            fontSize={fontSize}
+            color="#c8d8ff"
+            outlineWidth={0.006}
+            outlineColor="#111111"
+            anchorX="center"
+            anchorY="middle"
+            letterSpacing={0.01}
+            sdfGlyphSize={64}
+            renderOrder={2}
+            material-depthWrite={false}
+            material-side={THREE.DoubleSide}
+          >
+            {`\u2022 ${n}`}
+          </Text>
+          {/* Sprite hitbox — always faces camera so raycast always works */}
+          <sprite
+            scale={[0.55, 0.13, 1]}
+            renderOrder={2}
+            onClick={(e: any) => { e.stopPropagation(); _lmNav?.(n); }}
+            onPointerOver={(e: any) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+            onPointerOut={(e: any) => { e.stopPropagation(); document.body.style.cursor = 'auto'; }}
+          >
+            <spriteMaterial transparent opacity={0} depthTest={false} />
+          </sprite>
+        </group>
       ))}
     </>
   );
@@ -4916,9 +5074,170 @@ function CameraZoomHandler() {
     if (controls?._spherical) controls._spherical.radius = dist;
     camera.position.setLength(dist);
     if (t >= 1) { animRef.current.onDone?.(); animRef.current = null; }
+    controls?.update();
   }, 1); // priority 1 = runs after OrbitControls (priority 0)
 
   return null;
+}
+
+// ─── Keeps OrbitControls damping ticking every frame ─────────────────────────
+function DampingUpdater() {
+  const controls = useThree((s) => s.controls) as any;
+  useFrame(() => { controls?.update(); });
+  return null;
+}
+
+// ─── Nearby-city glow pins shown after a globe click ─────────────────────────
+
+function CitySelectionPin({
+  city, index,
+}: { city: { n: string; lat: number; lon: number }; index: number }) {
+  const { pos, q } = useMemo(() => geo(city.lat, city.lon), [city.lat, city.lon]);
+  const groupRef   = useRef<THREE.Group>(null);
+  const elapsed    = useRef(0);
+  const hovRef     = useRef(false);
+  const [hovered, setHovered] = useState(false);
+
+  useFrame((_, delta) => {
+    elapsed.current += delta;
+    const delay = index * 0.12;
+    const t     = Math.max(0, Math.min((elapsed.current - delay) / 0.45, 1));
+    const ease  = 1 - Math.pow(1 - t, 3);
+    if (groupRef.current) {
+      groupRef.current.position.y = 0.06 + ease * 0.28;
+      groupRef.current.scale.setScalar(ease);
+    }
+  });
+
+  const handleOver  = (e: any) => { e.stopPropagation(); hovRef.current = true;  setHovered(true);  document.body.style.cursor = 'pointer'; };
+  const handleOut   = (e: any) => { e.stopPropagation(); hovRef.current = false; setHovered(false); document.body.style.cursor = 'auto'; };
+  const handleClick = (e: any) => { e.stopPropagation(); _lmNav?.(city.n); };
+
+  return (
+    <group position={pos} quaternion={q}>
+      <group ref={groupRef} position={[0, 0.06, 0]}>
+        {/* Invisible hover/click hitbox */}
+        <mesh onPointerOver={handleOver} onPointerOut={handleOut} onClick={handleClick}>
+          <sphereGeometry args={[0.18, 8, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+        <pointLight color="#c084fc" intensity={hovered ? 4 : 1.5} distance={1.5} decay={2} />
+        {/* City name — plain text, no pill, fully clickable */}
+        <Html
+          center
+          position={[0, 0.30, 0]}
+          distanceFactor={12}
+          zIndexRange={[300, 200]}
+          style={{ pointerEvents: 'auto', userSelect: 'none' }}
+        >
+          <div
+            onClick={() => _lmNav?.(city.n)}
+            style={{
+              color: hovered ? '#ffffff' : '#e9d5ff',
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: 'system-ui,sans-serif',
+              whiteSpace: 'nowrap',
+              textShadow: hovered
+                ? '0 0 12px #a78bfa, 0 0 24px rgba(167,139,250,0.6), 0 1px 3px rgba(0,0,0,0.9)'
+                : '0 0 8px rgba(167,139,250,0.5), 0 1px 3px rgba(0,0,0,0.9)',
+              transition: 'color 0.15s ease, text-shadow 0.15s ease',
+              cursor: 'pointer',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+            }}
+            onMouseEnter={() => { hovRef.current = true; setHovered(true); document.body.style.cursor = 'pointer'; }}
+            onMouseLeave={() => { hovRef.current = false; setHovered(false); document.body.style.cursor = 'auto'; }}
+          >
+            {city.n}
+          </div>
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+// Haversine angular distance in degrees
+function angDist(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const toR = Math.PI / 180;
+  const dlat = (lat2 - lat1) * toR;
+  const dlon = (lon2 - lon1) * toR;
+  const a = Math.sin(dlat / 2) ** 2 +
+    Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dlon / 2) ** 2;
+  return 2 * Math.asin(Math.sqrt(a)) * (180 / Math.PI);
+}
+
+const NEARBY_MILES = 120;
+const NEARBY_DEG   = NEARBY_MILES / 69.0; // 1° ≈ 69 miles
+const MIN_SEP_DEG  = 0.65;                // ~45 miles min gap between shown pins
+
+function NearbyCities({ lat, lon }: { lat: number; lon: number }) {
+  const nearby = useMemo(() => {
+    const candidates = CITIES
+      .map(c => ({ ...c, deg: angDist(lat, lon, c.lat, c.lon) }))
+      .filter(c => c.deg <= NEARBY_DEG)
+      .sort((a, b) => a.deg - b.deg);
+
+    // Greedy spatial dedup: skip a city if another already-selected city is too close
+    const selected: typeof candidates = [];
+    for (const c of candidates) {
+      const tooClose = selected.some(s => angDist(c.lat, c.lon, s.lat, s.lon) < MIN_SEP_DEG);
+      if (!tooClose) {
+        selected.push(c);
+        if (selected.length >= 5) break;
+      }
+    }
+    return selected;
+  }, [lat, lon]);
+
+  return (
+    <>
+      {nearby.map((city, i) => (
+        <CitySelectionPin key={city.n} city={city} index={i} />
+      ))}
+    </>
+  );
+}
+
+// ─── DroppedStar — animated Geknee pin that falls onto the globe ──────────────
+function DroppedStar({ lat, lon }: { lat: number; lon: number }) {
+  const { pos, q } = useMemo(() => geo(lat, lon), [lat, lon]);
+  const groupRef   = useRef<THREE.Group>(null);
+  const spriteRef  = useRef<THREE.Sprite>(null);
+  const elapsed    = useRef(0);
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    new THREE.TextureLoader().load('/Geknee.png', (t) => setTex(t));
+  }, []);
+
+  useFrame((_, delta) => {
+    elapsed.current += delta * 1.6;
+    const t = Math.min(elapsed.current, 1);
+    let ease: number;
+    if (t < 0.75) {
+      ease = (t / 0.75) * (t / 0.75);
+    } else {
+      const bt = (t - 0.75) / 0.25;
+      ease = 1 + Math.sin(bt * Math.PI) * 0.22 * (1 - bt);
+    }
+    if (groupRef.current) {
+      groupRef.current.position.y = 1.2 - 1.1 * ease;
+    }
+  });
+
+  return (
+    <group position={pos} quaternion={q}>
+      <group ref={groupRef} position={[0, 1.2, 0]}>
+        {tex && (
+          <sprite ref={spriteRef} scale={[0.11, 0.11, 1]}>
+            <spriteMaterial map={tex} transparent sizeAttenuation depthTest={false} />
+          </sprite>
+        )}
+        <pointLight color="#fde68a" intensity={4} distance={2} decay={2} />
+      </group>
+    </group>
+  );
 }
 
 function GlobeScene() {
@@ -4930,12 +5249,15 @@ function GlobeScene() {
   } | null>(null);
   const { gl, camera } = useThree();
 
+  // Dropped star pin state
+  const [starPos, setStarPos] = useState<{ lat: number; lon: number; key: number } | null>(null);
+
   // ── Axis-locked drag rotation ─────────────────────────────────────────────
   // Detects dominant drag direction (H or V) after a small threshold, then
   // locks that gesture to one axis only — no diagonal globe rotation.
   const dragRef = useRef<{
     active: boolean; lastX: number; lastY: number;
-    startX: number; startY: number; axis: 'h' | 'v' | null;
+    startX: number; startY: number; axis: 'h' | 'v' | null; didDrag: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -4945,7 +5267,7 @@ function GlobeScene() {
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY, startX: e.clientX, startY: e.clientY, axis: null };
+      dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY, startX: e.clientX, startY: e.clientY, axis: null, didDrag: false };
       el.setPointerCapture(e.pointerId);
     };
 
@@ -4957,7 +5279,7 @@ function GlobeScene() {
       if (!d.axis) {
         const adx = Math.abs(e.clientX - d.startX);
         const ady = Math.abs(e.clientY - d.startY);
-        if (adx > THRESHOLD || ady > THRESHOLD) d.axis = adx >= ady ? 'h' : 'v';
+        if (adx > THRESHOLD || ady > THRESHOLD) { d.axis = adx >= ady ? 'h' : 'v'; d.didDrag = true; }
       }
       d.lastX = e.clientX;
       d.lastY = e.clientY;
@@ -4997,8 +5319,13 @@ function GlobeScene() {
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change
   useEffect(() => {
-    setTexture(createEarthTexture(countries, states, terrainBitmap));
-  }, [countries, states, terrainBitmap]);
+    const tex = createEarthTexture(countries, states, terrainBitmap);
+    tex.minFilter  = THREE.LinearMipmapLinearFilter;
+    tex.magFilter  = THREE.LinearFilter;
+    tex.anisotropy = gl.capabilities.getMaxAnisotropy();
+    tex.needsUpdate = true;
+    setTexture(tex);
+  }, [countries, states, terrainBitmap, gl]);
 
   // Load all async resources once on mount
   useEffect(() => {
@@ -5019,14 +5346,27 @@ function GlobeScene() {
       } catch { /* keep border-free texture */ }
     })();
 
-    // ── NASA/USGS terrain colour image (/public/earth_terrain.jpg) ──────────
-    // Download from NASA Visible Earth → "Blue Marble Next Generation" topo+bathy
-    // e.g. world.topo.bathy.200412.3x5400x2700.jpg  →  rename to earth_terrain.jpg
-    fetch("/earth_terrain.jpg")
-      .then(r => r.ok ? r.blob() : Promise.reject("not found"))
-      .then(blob => createImageBitmap(blob, { resizeWidth: 8192, resizeHeight: 4096, resizeQuality: "high" }))
-      .then(bmp  => { if (!cancelled) setTerrainBitmap(bmp); })
-      .catch(() => { /* file absent — hand-drawn fallback stays active */ });
+    // ── NASA Blue Marble Next Generation — monthly terrain textures ───────────
+    // Files: /public/earth_terrain_01.jpg … earth_terrain_12.jpg
+    // Download all 12 months from NASA Visible Earth → Blue Marble Next Generation
+    // Rename each: world.topo.bathy.2004XX.3x5400x2700.jpg → earth_terrain_XX.jpg
+    // Falls back through remaining months if current month's file is absent.
+    (async () => {
+      const month = new Date().getMonth() + 1; // 1–12
+      const pad   = (n: number) => String(n).padStart(2, '0');
+      // Build candidate list: current month first, then wrap around
+      const candidates = Array.from({ length: 12 }, (_, i) => ((month - 1 + i) % 12) + 1);
+      for (const m of candidates) {
+        try {
+          const res = await fetch(`/earth_terrain_${pad(m)}.jpg`);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          const bmp  = await createImageBitmap(blob, { resizeWidth: 8192, resizeHeight: 4096, resizeQuality: "high" });
+          if (!cancelled) setTerrainBitmap(bmp);
+          break; // found one — stop
+        } catch { continue; }
+      }
+    })();
 
     // ── SRTM/USGS elevation bump map (/public/earth_bump.jpg) ───────────────
     // Download a grayscale SRTM shaded-relief image:
@@ -5034,13 +5374,25 @@ function GlobeScene() {
     // Or use Natural Earth's grayscale DEM: https://www.naturalearthdata.com/
     new THREE.TextureLoader().load(
       "/earth_bump.jpg",
-      t  => { if (!cancelled) setBumpMap(t); },
+      t  => {
+        if (cancelled) return;
+        // Only use bump map if it's high enough resolution to look good
+        // (low-res maps create blocky stepped displacement on the 256-seg sphere)
+        const img = t.image as HTMLImageElement;
+        if (img && img.naturalWidth >= 1024) {
+          t.minFilter  = THREE.LinearMipmapLinearFilter;
+          t.anisotropy = gl.capabilities.getMaxAnisotropy();
+          t.needsUpdate = true;
+          setBumpMap(t);
+        }
+        // If too small, skip displacement — flat surface looks better than blocky steps
+      },
       undefined,
       () => { /* file absent — run without bump map */ },
     );
 
     return () => { cancelled = true; };
-  }, []);
+  }, [gl]);
 
   // Real-world rotation speed: one revolution per sidereal day
   const EARTH_ROT = (2 * Math.PI) / 86164;
@@ -5129,7 +5481,7 @@ function GlobeScene() {
     }
     // Update zoom level only when crossing thresholds (avoids per-frame setState)
     const dist = camera.position.length();
-    const newZoom = dist < 14 ? 2 : dist < 21 ? 1 : 0;
+    const newZoom = dist < 17 ? 2 : dist < 23 ? 1 : 0;
     if (newZoom !== zoomLevelRef.current) {
       zoomLevelRef.current = newZoom;
       setZoomLevel(newZoom);
@@ -5166,7 +5518,19 @@ function GlobeScene() {
           mountains (white=1) pop above — classic Nintendo planet look.
           Glossy candy roughness 0.18 + metalness 0.14.
         */}
-        <Sphere args={[R, 256, 256]} onClick={(e) => { e.stopPropagation(); _globeClick?.(); }}>
+        <Sphere args={[R, 256, 256]} onClick={(e) => {
+          e.stopPropagation();
+          if (dragRef.current?.didDrag) return; // was a drag, not a click
+          if (!globeRef.current) { _globeClick?.(); return; }
+          // Convert world-space hit → globe-local → lat/lon
+          const local = globeRef.current.worldToLocal(e.point.clone());
+          const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
+          const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
+          // Drop the star pin and light up nearby cities
+          setStarPos({ lat, lon, key: Date.now() });
+          // Fly + zoom in the background
+          flyToGlobe(lat, lon, () => zoomCamera(14));
+        }}>
           <meshStandardMaterial
             key={matKey}
             map={texture ?? undefined}
@@ -5200,6 +5564,10 @@ function GlobeScene() {
         {/* Ocean & land animals */}
         <AllAnimals />
 
+        {/* Dropped star pin + nearby city selection pins */}
+        {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}
+        {starPos && zoomLevel >= 1 && <NearbyCities key={`nc-${starPos.key}`} lat={starPos.lat} lon={starPos.lon} />}
+
         {/* Geographic labels floating above surface */}
         <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />
         <CityLabels visible={zoomLevel >= 2} />
@@ -5215,6 +5583,7 @@ import dynamic from "next/dynamic";
 const AuthModal      = dynamic(() => import("@/app/components/AuthModal"),      { ssr: false });
 const TripSocialPanel = dynamic(() => import("@/app/components/TripSocialPanel"), { ssr: false });
 const SettingsPanel   = dynamic(() => import("@/app/components/SettingsPanel"),   { ssr: false });
+const LanguageBanner  = dynamic(() => import("@/app/components/LanguageBanner"),  { ssr: false });
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LocationPage() {
@@ -5258,7 +5627,8 @@ export default function LocationPage() {
         dpr={[1, Math.min(window.devicePixelRatio, 3)]}
         gl={{ antialias: true, powerPreference: "high-performance" }}
       >
-        <OrbitControls makeDefault enableZoom enablePan={false} enableRotate={false} minDistance={11.5} maxDistance={45} zoomSpeed={0.6} />
+        <OrbitControls makeDefault enableZoom enablePan={false} enableRotate={false} minDistance={11.5} maxDistance={45} zoomSpeed={1.2} enableDamping dampingFactor={0.12} />
+        <DampingUpdater />
         <GlobeScene />
       </Canvas>
 
@@ -5370,6 +5740,16 @@ export default function LocationPage() {
 
       {/* Settings panel */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Language detection banner */}
+      <LanguageBanner onSwitch={(lang) => {
+        try {
+          const raw = localStorage.getItem("geknee_settings");
+          const current = raw ? JSON.parse(raw) : {};
+          localStorage.setItem("geknee_settings", JSON.stringify({ ...current, language: lang }));
+        } catch { /* ignore */ }
+        window.location.reload();
+      }} />
 
     </main>
   );

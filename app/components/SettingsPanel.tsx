@@ -54,17 +54,20 @@ function saveSettings(s: AppSettings) {
 
 const LANGUAGES = [
   { code: "en", label: "English" },
-  { code: "es", label: "Español" },
-  { code: "fr", label: "Français" },
-  { code: "de", label: "Deutsch" },
-  { code: "it", label: "Italiano" },
-  { code: "pt", label: "Português" },
-  { code: "ja", label: "日本語" },
-  { code: "zh", label: "中文" },
-  { code: "ko", label: "한국어" },
-  { code: "ar", label: "العربية" },
-  { code: "hi", label: "हिन्दी" },
-  { code: "ru", label: "Русский" },
+  { code: "zh", label: "中文 (Chinese)" },
+  { code: "es", label: "Español (Spanish)" },
+  { code: "pt", label: "Português (Portuguese)" },
+  { code: "ar", label: "العربية (Arabic)" },
+  { code: "fr", label: "Français (French)" },
+  { code: "de", label: "Deutsch (German)" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "it", label: "Italiano (Italian)" },
+  { code: "hi", label: "हिन्दी (Hindi)" },
+  { code: "ja", label: "日本語 (Japanese)" },
+  { code: "ms", label: "Bahasa Melayu (Malay)" },
+  { code: "pl", label: "Polski (Polish)" },
+  { code: "ru", label: "Русский (Russian)" },
+  { code: "ko", label: "한국어 (Korean)" },
 ];
 
 // ─── Common timezones ─────────────────────────────────────────────────────────

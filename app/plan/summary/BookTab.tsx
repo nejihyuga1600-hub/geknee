@@ -1047,6 +1047,127 @@ function getCityTransitLinks(city: string) {
   return null;
 }
 
+// ─── Transit / car-rental profile ────────────────────────────────────────────
+
+// Cities with meaningful public transit worth booking passes for
+const TRANSIT_CITY_KEYS = new Set([
+  // Europe
+  "london","paris","berlin","amsterdam","rome","barcelona","madrid","vienna",
+  "prague","stockholm","copenhagen","dublin","lisbon","athens","istanbul",
+  "brussels","zurich","geneva","milan","munich","hamburg","frankfurt",
+  "warsaw","budapest","krakow","lyon","marseille","edinburgh","glasgow",
+  "porto","seville","valencia","florence","venice","naples","nice",
+  "rotterdam","oslo","helsinki","tallinn","riga","vilnius","zagreb","sofia",
+  "bucharest","budapest","thessaloniki","bern","basel",
+  // Asia
+  "tokyo","osaka","kyoto","seoul","beijing","shanghai","guangzhou","shenzhen",
+  "hong kong","singapore","bangkok","taipei","kuala lumpur","jakarta",
+  "mumbai","delhi","kolkata","bangalore","chennai","hyderabad","pune",
+  "dubai","abu dhabi","doha","riyadh","tel aviv","jerusalem","cairo",
+  "ho chi minh","hanoi","yangon","phnom penh",
+  // Americas with transit
+  "new york","chicago","san francisco","washington","boston","philadelphia",
+  "seattle","portland","toronto","montreal","vancouver","mexico city",
+  "buenos aires","santiago","lima","bogota","rio de janeiro","sao paulo",
+  "medellin","quito","havana",
+  // Oceania
+  "sydney","melbourne","brisbane","auckland","wellington",
+  // Africa
+  "cairo","cape town","johannesburg","nairobi","casablanca","tunis",
+]);
+
+// Rail pass regions — city key fragments mapped to purchasable passes
+const RAIL_PASS_REGIONS: { keys: string[]; passes: { label: string; url: string; color: string }[] }[] = [
+  {
+    keys: ["japan","tokyo","osaka","kyoto","hiroshima","nagoya","fukuoka","sapporo","nara","hakone"],
+    passes: [
+      { label: "JR Pass", url: "https://www.jrpass.com/", color: "#1a6b3a" },
+      { label: "JR Pass on Klook", url: "https://www.klook.com/en-US/search/?query=Japan+JR+Pass+rail", color: "#e5191b" },
+    ],
+  },
+  {
+    keys: ["paris","berlin","amsterdam","rome","barcelona","madrid","vienna","prague","milan",
+           "europe","eurail","venice","florence","zurich","brussels","lisbon","athens","budapest"],
+    passes: [
+      { label: "Eurail Pass", url: "https://www.eurail.com/en/eurail-passes", color: "#003d99" },
+      { label: "Omio Rail", url: "https://www.omio.com/trains", color: "#1c1f35" },
+      { label: "Rail.ninja", url: "https://rail.ninja/", color: "#e63946" },
+    ],
+  },
+  {
+    keys: ["london","edinburgh","glasgow","manchester","birmingham","uk","england","scotland","ireland","wales","bristol"],
+    passes: [
+      { label: "BritRail Pass", url: "https://www.britrail.com/", color: "#c8102e" },
+      { label: "Trainline", url: "https://www.thetrainline.com/", color: "#00804a" },
+    ],
+  },
+  {
+    keys: ["india","delhi","mumbai","bangalore","chennai","kolkata","hyderabad","jaipur","agra"],
+    passes: [
+      { label: "IRCTC Rail Booking", url: "https://www.irctc.co.in/", color: "#002855" },
+      { label: "India Rail on Klook", url: "https://www.klook.com/en-US/search/?query=India+train+rail", color: "#e5191b" },
+    ],
+  },
+  {
+    keys: ["sydney","melbourne","brisbane","perth","adelaide","australia"],
+    passes: [
+      { label: "NSW TrainLink", url: "https://transportnsw.info/", color: "#009e60" },
+      { label: "Great Southern Rail", url: "https://www.greatsouthernrail.com.au/", color: "#c8102e" },
+    ],
+  },
+  {
+    keys: ["canada","toronto","montreal","vancouver","quebec"],
+    passes: [
+      { label: "VIA Rail Canada", url: "https://www.viarail.ca/en", color: "#003087" },
+    ],
+  },
+  {
+    keys: ["vietnam","ho chi minh","hanoi","hue","da nang","hoi an"],
+    passes: [
+      { label: "Vietnam Railway (Baolau)", url: "https://www.baolau.vn/en", color: "#d42b2b" },
+      { label: "12Go Asia", url: "https://12go.asia/en/travel/vietnam", color: "#f5a623" },
+    ],
+  },
+];
+
+function getTransitProfile(
+  location: string,
+  legs: TransportLeg[],
+  travelStyle: string,
+) {
+  const loc = location.toLowerCase();
+
+  // Check known transit cities
+  let hasLocalTransit = false;
+  for (const key of TRANSIT_CITY_KEYS) {
+    if (loc.includes(key) || (key.length > 4 && key.includes(loc.split(",")[0].trim().toLowerCase()))) {
+      hasLocalTransit = true;
+      break;
+    }
+  }
+
+  // Multi-stop: trust leg data
+  if (legs.length > 0) {
+    const hasTransitLegs = legs.some(l => l.type === "bus" || l.type === "subway" || l.type === "train");
+    hasLocalTransit = hasLocalTransit || hasTransitLegs;
+  }
+
+  // Rail passes
+  let railPasses: { label: string; url: string; color: string }[] = [];
+  for (const region of RAIL_PASS_REGIONS) {
+    if (region.keys.some(k => loc.includes(k))) {
+      railPasses = region.passes;
+      break;
+    }
+  }
+
+  // Car rental: needed when city lacks strong transit, or style implies driving
+  const isRoadTrip = /road.?trip|driv|car.?rent|self.?drive|highway|scenic.?route/i.test(travelStyle);
+  const needsCarRental = !hasLocalTransit || isRoadTrip;
+
+  return { hasLocalTransit, needsCarRental, railPasses };
+}
+
 function SubwayPassBox({ city, budget }: { city: string; budget: string }) {
   const [text, setText]       = useState("");
   const [loading, setLoading] = useState(true);
@@ -1116,11 +1237,136 @@ function SubwayPassBox({ city, budget }: { city: string; budget: string }) {
   );
 }
 
-function LocalTransitSection({ legs, cities, budget, startDate }: {
+// ─── Car Rental ───────────────────────────────────────────────────────────────
+
+function CarRentalSection({ location, startDate, endDate }: {
+  location: string; startDate: string; endDate: string;
+}) {
+  const [text, setText]       = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: `Give exactly 2 sentences of practical driving/car-rental advice for tourists in ${location}: mention whether an international driving permit is needed, a standout road or driving route worth knowing, and one local driving quirk. Be very concise.` }],
+        itinerary: "",
+        tripInfo: { location, budget: "", nights: "" },
+      }),
+    }).then(async res => {
+      if (!res.body) return;
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let acc = "";
+      while (true) { const { done, value } = await reader.read(); if (done || cancelled) break; acc += dec.decode(value, { stream: true }); if (!cancelled) setText(acc); }
+    }).catch(() => setText("")).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [location]);
+
+  const cityEnc = encodeURIComponent(location);
+  const dep = startDate; const ret = endDate;
+  return (
+    <section style={{ marginBottom: 44 }}>
+      <SectionHeader icon={String.fromCodePoint(0x1F697)} title="Car Rental" />
+      <div style={{ background: "linear-gradient(135deg,#f0fdf4,#ecfdf5)", borderRadius: 12, padding: "14px 16px", marginBottom: 12, border: "1.5px solid #bbf7d0" }}>
+        {loading && !text ? <Skeleton h={48} /> : (
+          <p style={{ margin: "0 0 10px", fontSize: 12, color: "#166534", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
+            {text}{loading && <span style={{ animation: "bookTabBlink 0.9s step-end infinite", marginLeft: 2 }}>|</span>}
+          </p>
+        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <LinkBtn href={`https://www.rentalcars.com/en/searchresults/?pickup=${cityEnc}&pickupDate=${dep}&dropoff=${cityEnc}&dropoffDate=${ret}&driversAge=30`} label="RentalCars.com" color="#003580" />
+          <LinkBtn href={`https://www.hertz.com/rentacar/reservation/`} label="Hertz" color="#f5a623" />
+          <LinkBtn href={`https://www.enterprise.com/en/car-rental.html`} label="Enterprise" color="#007b5e" />
+          <LinkBtn href={`https://www.avis.com/en/home`} label="Avis" color="#cc0000" />
+          <LinkBtn href={`https://www.autoeurope.com/car-rental/${encodeURIComponent(location.toLowerCase().replace(/\s+/g,"-"))}/`} label="AutoEurope" color="#0033a0" />
+          <LinkBtn href={`https://www.kayak.com/cars/${cityEnc}/${dep}/${ret}`} label="Kayak Cars" color="#f76400" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Airport Transfer ─────────────────────────────────────────────────────────
+
+function AirportTransferSection({ location }: { location: string }) {
+  const airport = findAirport(location);
+  const airportName = airport ? `${airport.name} (${airport.iata})` : `${location} airport`;
+  const cityEnc = encodeURIComponent(location);
+  return (
+    <section style={{ marginBottom: 44 }}>
+      <SectionHeader icon={String.fromCodePoint(0x1F690)} title="Airport Transfer" />
+      <div style={{ background: "linear-gradient(135deg,#f8fafc,#e0f2fe)", borderRadius: 12, padding: "14px 16px", border: "1.5px solid #bae6fd" }}>
+        <p style={{ margin: "0 0 10px", fontSize: 12, color: "#0c4a6e", lineHeight: 1.6 }}>
+          Pre-book a transfer from {airportName} to skip taxi queues on arrival.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <LinkBtn href={`https://www.klook.com/en-US/search/?query=${cityEnc}+airport+transfer`} label="Klook Transfer" color="#e5191b" />
+          <LinkBtn href={`https://www.viator.com/search/${encodeURIComponent(location + " airport transfer")}`} label="Viator Transfer" color="#23a5cd" />
+          <LinkBtn href={`https://www.gettransfer.com/en/?from=${cityEnc}+airport&to=${cityEnc}+city+center`} label="GetTransfer" color="#f97316" />
+          <LinkBtn href={`https://www.booking.com/taxi/city/${encodeURIComponent(location.toLowerCase().replace(/\s+/g,"-"))}.html`} label="Booking.com Taxi" color="#003580" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Travel Insurance ─────────────────────────────────────────────────────────
+
+function TravelInsuranceSection({ location, startDate, endDate }: {
+  location: string; startDate: string; endDate: string;
+}) {
+  const destEnc = encodeURIComponent(location);
+  return (
+    <section style={{ marginBottom: 44 }}>
+      <SectionHeader icon={String.fromCodePoint(0x1F6E1, 0xFE0F)} title="Travel Insurance" />
+      <div style={{ background: "linear-gradient(135deg,#faf5ff,#f5f3ff)", borderRadius: 12, padding: "14px 16px", border: "1.5px solid #ddd6fe" }}>
+        <p style={{ margin: "0 0 10px", fontSize: 12, color: "#5b21b6", lineHeight: 1.6 }}>
+          Covers medical emergencies, trip cancellations, lost luggage, and flight delays. Strongly recommended for international travel.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <LinkBtn href={`https://www.worldnomads.com/travel-insurance/?from=${startDate}&to=${endDate}&destination=${destEnc}`} label="World Nomads" color="#1a6b3a" />
+          <LinkBtn href="https://safetywing.com/nomad-insurance/" label="SafetyWing" color="#e85d04" />
+          <LinkBtn href="https://www.allianztravelinsurance.com/" label="Allianz" color="#003781" />
+          <LinkBtn href={`https://www.insuremytrip.com/?destination=${destEnc}&departDate=${startDate}&returnDate=${endDate}`} label="InsureMyTrip" color="#0070c0" />
+          <LinkBtn href={`https://www.squaremouth.com/?destination=${destEnc}&departDate=${startDate}&returnDate=${endDate}`} label="Squaremouth" color="#059669" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── SIM Card / eSIM ─────────────────────────────────────────────────────────
+
+function SimCardSection({ location }: { location: string }) {
+  const cityEnc = encodeURIComponent(location);
+  return (
+    <section style={{ marginBottom: 44 }}>
+      <SectionHeader icon={String.fromCodePoint(0x1F4F1)} title="SIM Card &amp; eSIM" />
+      <div style={{ background: "linear-gradient(135deg,#fff7ed,#fef3c7)", borderRadius: 12, padding: "14px 16px", border: "1.5px solid #fed7aa" }}>
+        <p style={{ margin: "0 0 10px", fontSize: 12, color: "#7c2d12", lineHeight: 1.6 }}>
+          Stay connected without roaming fees. eSIMs install instantly on your phone — no physical swap needed. Buy before you land.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <LinkBtn href="https://www.airalo.com/" label="Airalo eSIM" color="#6d28d9" />
+          <LinkBtn href="https://www.getnomad.app/" label="Nomad eSIM" color="#0ea5e9" />
+          <LinkBtn href={`https://www.klook.com/en-US/search/?query=${cityEnc}+SIM+card+tourist`} label="Klook SIM" color="#e5191b" />
+          <LinkBtn href="https://www.simify.com/" label="Simify" color="#059669" />
+          <LinkBtn href="https://esimdb.com/" label="eSIM DB (compare)" color="#374151" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Local Transit Section ────────────────────────────────────────────────────
+
+function LocalTransitSection({ legs, cities, budget, startDate, railPasses }: {
   legs: TransportLeg[];
   cities: string[];
   budget: string;
   startDate: string;
+  railPasses: { label: string; url: string; color: string }[];
 }) {
   const busSubwayLegs = legs.filter(l => l.type === "bus" || l.type === "subway");
   function parseLegDate(raw: string) {
@@ -1214,6 +1460,17 @@ function LocalTransitSection({ legs, cities, budget, startDate }: {
           <SubwayPassBox key={i} city={city} budget={budget} />
         ))}
       </div>
+
+      {railPasses.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: "#1e293b" }}>
+            {String.fromCodePoint(0x1F686)} Rail passes for this destination
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {railPasses.map((p, i) => <LinkBtn key={i} href={p.url} label={p.label} color={p.color} />)}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -1310,12 +1567,18 @@ export default function BookTab({
 
   const isMultiStop = extraStops.length > 0;
 
+  // Compute transit profile once legs are loaded (legs starts empty for single-stop)
+  const [legs, setLegs]           = useState<TransportLeg[]>([]);
+  const [legsLoading, setLegsLoading] = useState(isMultiStop);
+
+  const transitProfile = useMemo(
+    () => getTransitProfile(location, legs, travelStyle),
+    [location, legs, travelStyle],
+  );
+
   const [recommendations, setRecommendations] = useState<Recommendations | null>(null);
   const [recsLoading, setRecsLoading]         = useState(true);
   const [recsError, setRecsError]             = useState("");
-
-  const [legs, setLegs]           = useState<TransportLeg[]>([]);
-  const [legsLoading, setLegsLoading] = useState(isMultiStop);
 
   useEffect(() => {
     // Use provided fullItinerary prop, or fall back to sessionStorage
@@ -1528,13 +1791,25 @@ export default function BookTab({
           <FlightSection key={i} location={stop.city} startDate={stop.startDate ?? tripStartDate} endDate={stop.endDate ?? tripEndDate} travelingFrom={originIata} />
         ))}
 
-        {/* Bus & Subway — local transit tickets + pass recommendations */}
-        <LocalTransitSection
-          legs={legs}
-          cities={allStops.map(s => s.city)}
-          budget={budget}
-          startDate={startDate}
-        />
+        {/* Bus & Subway / transit passes — only for transit-friendly destinations */}
+        {transitProfile.hasLocalTransit && (
+          <LocalTransitSection
+            legs={legs}
+            cities={allStops.map(s => s.city)}
+            budget={budget}
+            startDate={startDate}
+            railPasses={transitProfile.railPasses}
+          />
+        )}
+
+        {/* Car Rental — for car-dependent destinations or road-trip styles */}
+        {transitProfile.needsCarRental && (
+          <CarRentalSection
+            location={location}
+            startDate={tripStartDate}
+            endDate={tripEndDate}
+          />
+        )}
 
         {/* Hotels */}
         <section style={{ marginBottom: 44 }}>
@@ -1583,6 +1858,15 @@ export default function BookTab({
             </div>
           )}
         </section>
+
+        {/* Airport Transfer */}
+        <AirportTransferSection location={location} />
+
+        {/* Travel Insurance */}
+        <TravelInsuranceSection location={location} startDate={tripStartDate} endDate={tripEndDate} />
+
+        {/* SIM Card / eSIM */}
+        <SimCardSection location={location} />
       </div>
     </div>
   );

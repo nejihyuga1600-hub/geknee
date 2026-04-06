@@ -643,6 +643,7 @@ export default function TripSocialPanel({
                 )}
               </>
             )}
+
           </div>
         ) : (
           /* ── Group chat body ── */
