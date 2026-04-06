@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 type PriceMap = Record<string, number>;
-const WINDOW = 14;
-const DOT_HIT = 14; // SVG-unit radius for hit detection
+const WINDOW = 31; // show full month at once
+const DOT_HIT = 10; // SVG-unit radius for hit detection
 
 function priceColor(rank: number): string {
   if (rank < 0.20) return '#22c55e';
@@ -33,8 +33,8 @@ function diffDays(a: string, b: string): number {
 }
 
 // ─── Chart constants ──────────────────────────────────────────────────────────
-const W = 500, H = 155;
-const PL = 50, PR = 10, PT = 16, PB = 28;
+const W = 500, H = 130;
+const PL = 46, PR = 8, PT = 14, PB = 26;
 const cW = W - PL - PR;
 const cH = H - PT - PB;
 
@@ -139,7 +139,7 @@ export default function FlightPriceChart({
     ? `${linePath} L${xOf(known[known.length-1].day).toFixed(1)},${(H-PB).toFixed(1)} L${xOf(known[0].day).toFixed(1)},${(H-PB).toFixed(1)} Z` : '';
 
   const yTicks  = [0, 0.5, 1].map(t => ({ price: minP + t * span, y: PT + cH - t * cH }));
-  const xLabels = pts.filter((_,i) => i===0 || i===pts.length-1 || i%3===0).map(p => p.day);
+  const xLabels = pts.filter((_,i) => i===0 || i===pts.length-1 || i%5===0).map(p => p.day);
 
   const selectedPrice   = startDate ? prices[startDate] : null;
   const endDateInView   = endDate?.startsWith(viewMonth) ?? false;
@@ -392,9 +392,9 @@ export default function FlightPriceChart({
               const isPast  = p.date < today;
               return (
                 <g key={p.date} style={{ pointerEvents:'none' }}>
-                  {isStart && <circle cx={x} cy={y} r={9} fill="none" stroke="#38bdf8" strokeWidth={1} opacity={0.35} />}
+                  {isStart && <circle cx={x} cy={y} r={7} fill="none" stroke="#38bdf8" strokeWidth={1} opacity={0.35} />}
                   <circle cx={x} cy={y}
-                    r={isStart ? 5.5 : isHov ? 4.5 : 3}
+                    r={isStart ? 4 : isHov ? 3.5 : 2}
                     fill={isStart ? '#38bdf8' : isPast ? 'rgba(255,255,255,0.12)' : col}
                     stroke={isStart || isHov ? '#fff' : 'none'} strokeWidth={1.5}
                     opacity={isPast ? 0.4 : 1}
