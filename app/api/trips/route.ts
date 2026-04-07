@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { checkTripSaveLimit } from "@/lib/plan";
 
 export async function GET() {
   const session = await auth();
@@ -23,6 +24,11 @@ export async function POST(req: Request) {
 
   if (!title || !location) {
     return Response.json({ error: "title and location are required" }, { status: 400 });
+  }
+
+  const limitError = await checkTripSaveLimit(userId);
+  if (limitError) {
+    return Response.json({ error: limitError, code: "TRIP_LIMIT" }, { status: 403 });
   }
 
   const trip = await prisma.tripDraft.create({

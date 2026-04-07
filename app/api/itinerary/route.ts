@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { auth } from "@/auth";
+import { checkAndIncrementGeneration } from "@/lib/plan";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -142,6 +144,19 @@ FORMATTING RULES:
    - Factor in realistic travel times between locations — don't pack in activities that are geographically too spread out`;
 
 export async function POST(req: Request) {
+  // ── Auth + generation limit ───────────────────────────────────────────────
+  const session = await auth();
+  const userId = (session?.user as { id?: string })?.id;
+  if (userId) {
+    const { allowed, reason } = await checkAndIncrementGeneration(userId);
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: reason, code: "GENERATION_LIMIT" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   let body: TripParams;
   try {
     body = await req.json();

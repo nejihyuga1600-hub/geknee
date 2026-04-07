@@ -24,6 +24,16 @@ model User {
   username      String?   @unique // chosen display handle e.g. @travelguy — lowercase, no spaces
   lastSeen      DateTime? // updated on presence ping — used for online status
 
+  // ── Billing ────────────────────────────────────────────────────────────────
+  plan                 String    @default("free") // "free" | "pro"
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  planExpiresAt        DateTime?
+
+  // ── Usage tracking ─────────────────────────────────────────────────────────
+  itineraryGenerations Int      @default(0)
+  generationsResetAt   DateTime @default(now())
+
   accounts Account[]
   sessions Session[]
   trips    TripDraft[]
