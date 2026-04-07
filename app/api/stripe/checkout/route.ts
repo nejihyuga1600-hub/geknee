@@ -31,34 +31,15 @@ export async function POST(req: Request) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.geknee.com';
-
-  // Use stripe.request for embedded checkout — ui_mode isn't in older TS types
-  const checkoutSession = await (stripe as unknown as {
-    request: (method: string, path: string, params: Record<string, unknown>) => Promise<{ client_secret?: string | null; url?: string | null }>;
-  }).request('POST', '/v1/checkout/sessions', {
+  const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
-    ui_mode: 'embedded',
-    'payment_method_types[]': 'card',
-    'line_items[0][price]': priceId,
-    'line_items[0][quantity]': '1',
-    return_url: `${appUrl}/?upgrade=success`,
-    'subscription_data[metadata][userId]': userId,
-  }).catch(() => null);
+    payment_method_types: ['card'],
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${appUrl}/?upgrade=success`,
+    cancel_url: `${appUrl}/?upgrade=cancelled`,
+    subscription_data: { metadata: { userId } },
+  });
 
-  // Fallback: if embedded fails (e.g. test mode restriction), use redirect checkout
-  if (!checkoutSession?.client_secret) {
-    const fallback = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${appUrl}/?upgrade=success`,
-      cancel_url: `${appUrl}/?upgrade=cancelled`,
-      subscription_data: { metadata: { userId } },
-    });
-    return Response.json({ url: fallback.url });
-  }
-
-  return Response.json({ clientSecret: checkoutSession.client_secret });
+  return Response.json({ url: checkoutSession.url });
 }
