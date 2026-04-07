@@ -4771,9 +4771,8 @@ function GeoLabels({ countries, states, zoomLevel }: {
           quaternion={orientation}
           fontSize={fontSize}
           color={kind === "country" ? "#ffffff" : "#ddeeff"}
-          outlineWidth={kind === "country" ? 0.028 : 0.020}
-          outlineColor="#05080f"
-          outlineOpacity={0.88}
+          outlineWidth={0}
+          outlineColor="#000000"
           anchorX="center"
           anchorY="middle"
           letterSpacing={kind === "country" ? 0.10 : 0.05}
@@ -5405,9 +5404,8 @@ function CityLabels({ visible }: { visible: boolean }) {
           <Text
             fontSize={fontSize}
             color="#ddeeff"
-            outlineWidth={0.018}
-            outlineColor="#05080f"
-            outlineOpacity={0.85}
+            outlineWidth={0}
+            outlineColor="#000000"
             anchorX="center"
             anchorY="middle"
             letterSpacing={0.01}
