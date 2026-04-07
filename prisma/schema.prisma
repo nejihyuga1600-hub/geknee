@@ -41,6 +41,8 @@ model User {
   sentFriendRequests     Friendship[]   @relation("SentRequests")
   receivedFriendRequests Friendship[]   @relation("ReceivedRequests")
   notifications          Notification[]
+  collectedMonuments     CollectedMonument[]
+  completedMissions      CompletedMission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -133,6 +135,30 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ── Monument Collection (gamification) ───────────────────────────────────────
+
+model CollectedMonument {
+  id          String   @id @default(cuid())
+  userId      String
+  monumentId  String   // e.g. "eiffelTower"
+  skin        String   @default("default") // "default" | "gold" | "night" | "crystal" | "legendary"
+  collectedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, monumentId, skin])
+}
+
+model CompletedMission {
+  id          String   @id @default(cuid())
+  userId      String
+  monumentId  String
+  missionId   String   // e.g. "eiffelTower_night"
+  completedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, missionId])
 }
 
 // ── Friends ───────────────────────────────────────────────────────────────────

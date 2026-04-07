@@ -5933,8 +5933,6 @@ function GlobeScene() {
           />
         </Sphere>
 
-        {/* 3-D landmarks standing perpendicular to the globe surface */}
-        <AllLandmarks />
         {/* Ocean & land animals */}
         <AllAnimals />
 
@@ -5959,6 +5957,7 @@ const TripSocialPanel = dynamic(() => import("@/app/components/TripSocialPanel")
 const SettingsPanel   = dynamic(() => import("@/app/components/SettingsPanel"),   { ssr: false });
 const LanguageBanner  = dynamic(() => import("@/app/components/LanguageBanner"),  { ssr: false });
 const UpgradeModal    = dynamic(() => import("@/app/components/UpgradeModal"),    { ssr: false });
+const MonumentShop    = dynamic(() => import("@/app/components/MonumentShop"),    { ssr: false });
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LocationPage() {
@@ -5967,6 +5966,7 @@ export default function LocationPage() {
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [upgradeOpen,   setUpgradeOpen]   = useState(false);
+  const [shopOpen,      setShopOpen]      = useState(false);
   const [notifUnread,   setNotifUnread]   = useState(0);
   const router = useRouter();
   const { data: session } = useSession();
@@ -6049,6 +6049,21 @@ export default function LocationPage() {
       <div style={{ position: "fixed", top: 18, right: 20, zIndex: 20, display: "flex", alignItems: "center", gap: 8 }}>
         {session?.user ? (
           <>
+            {/* Monument Shop button */}
+            <button
+              onClick={() => setShopOpen(true)}
+              style={{
+                background: "rgba(6,8,22,0.75)", border: "1px solid rgba(139,92,246,0.4)",
+                backdropFilter: "blur(12px)", borderRadius: 10,
+                color: "#c4b5fd", fontSize: 12, fontWeight: 700,
+                padding: "8px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                boxShadow: "0 2px 12px rgba(139,92,246,0.2)",
+              }}
+            >
+              {String.fromCodePoint(0x1F3DB)} Collection
+            </button>
+
             {/* Go Pro button */}
             <button
               onClick={() => setUpgradeOpen(true)}
@@ -6156,6 +6171,9 @@ export default function LocationPage() {
 
       {/* Trips & Friends panel */}
       <TripSocialPanel open={panelOpen} onClose={() => setPanelOpen(false)} currentLocation={location} />
+
+      {/* Monument collection shop */}
+      <MonumentShop open={shopOpen} onClose={() => setShopOpen(false)} />
 
       {/* Upgrade modal */}
       <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
