@@ -104,6 +104,37 @@ export default function TripSocialPanel({
   const [addLoading,      setAddLoading]      = useState(false);
   const [addOpen,         setAddOpen]         = useState(false);
 
+  // ── Notifications ─────────────────────────────────────────────────────────
+  const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; body: string; read: boolean; createdAt: string }[]>([]);
+
+  const tripNotifCount   = notifications.filter(n => !n.read && n.type === 'trip_update').length;
+  const friendNotifCount = notifications.filter(n => !n.read && (n.type === 'friend_message' || n.type === 'friend_request')).length;
+  const unreadCount      = tripNotifCount + friendNotifCount;
+
+  const loadNotifications = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const d = await (await fetch('/api/notifications')).json();
+      setNotifications(d.notifications ?? []);
+    } catch {}
+  }, [userId]);
+
+  useEffect(() => {
+    if (!open || !userId) return;
+    loadNotifications();
+    const iv = setInterval(loadNotifications, 15_000);
+    return () => clearInterval(iv);
+  }, [open, userId, loadNotifications]);
+
+  async function markTabRead(...types: string[]) {
+    const unreadIds = notifications.filter(n => !n.read && types.includes(n.type)).map(n => n.id);
+    if (unreadIds.length === 0) return;
+    setNotifications(n => n.map(x => types.includes(x.type) ? { ...x, read: true } : x));
+    for (const id of unreadIds) {
+      fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {});
+    }
+  }
+
   // ── Group chat ─────────────────────────────────────────────────────────────
   const [activeGroup,    setActiveGroup]    = useState<GroupChat | null>(null);
   const [chatMsgs,       setChatMsgs]       = useState<ChatMsg[]>([]);
@@ -425,14 +456,19 @@ export default function TripSocialPanel({
 
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', margin: '14px 0 0', flexShrink: 0 }}>
-              <button style={TAB(tab === 'trips')} onClick={() => setTab('trips')}>
+              <button style={TAB(tab === 'trips')} onClick={() => { setTab('trips'); markTabRead('trip_update'); }}>
                 {String.fromCodePoint(0x1F9F3)} My Trips
+                {tripNotifCount > 0 && (
+                  <span style={{ marginLeft: 5, background: '#f59e0b', color: '#000', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                    {tripNotifCount}
+                  </span>
+                )}
               </button>
-              <button style={TAB(tab === 'friends')} onClick={() => setTab('friends')}>
+              <button style={TAB(tab === 'friends')} onClick={() => { setTab('friends'); markTabRead('friend_message', 'friend_request'); }}>
                 {String.fromCodePoint(0x1F465)} Friends
-                {pendingIncoming.length > 0 && (
-                  <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                    {pendingIncoming.length}
+                {(pendingIncoming.length + friendNotifCount) > 0 && (
+                  <span style={{ marginLeft: 5, background: friendNotifCount > 0 ? '#f59e0b' : '#ef4444', color: friendNotifCount > 0 ? '#000' : '#fff', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                    {pendingIncoming.length + friendNotifCount}
                   </span>
                 )}
               </button>
@@ -552,6 +588,43 @@ export default function TripSocialPanel({
                     <button onClick={() => continueTrip(trip)} style={{ ...BTN('#0891b2'), fontSize: 12, padding: '5px 12px' }}>Continue Planning &#x2192;</button>
                   </div>
                 ))}
+
+                {/* ── Plan change history ── */}
+                {(() => {
+                  const tripNotifs = notifications.filter(n => n.type === 'trip_update');
+                  if (tripNotifs.length === 0) return null;
+                  return (
+                    <div style={{ marginTop: 24 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+                        PLAN CHANGE HISTORY
+                      </div>
+                      {tripNotifs.map(n => {
+                        const diff = Date.now() - new Date(n.createdAt).getTime();
+                        const age = diff < 60_000 ? 'just now'
+                          : diff < 3_600_000 ? `${Math.floor(diff / 60_000)}m ago`
+                          : diff < 86_400_000 ? `${Math.floor(diff / 3_600_000)}h ago`
+                          : `${Math.floor(diff / 86_400_000)}d ago`;
+                        return (
+                          <div key={n.id} style={{
+                            display: 'flex', gap: 10, alignItems: 'flex-start',
+                            padding: '10px 0',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          }}>
+                            {/* Timeline dot */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 3, flexShrink: 0 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: n.read ? 'rgba(255,255,255,0.2)' : '#f59e0b' }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: n.read ? 'rgba(255,255,255,0.5)' : '#e0e7ff', marginBottom: 2 }}>{n.title}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>{n.body}</div>
+                              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 3 }}>{age}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </>
             )}
 

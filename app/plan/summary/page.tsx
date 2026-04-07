@@ -10,6 +10,7 @@ import { useSession } from 'next-auth/react';
 
 const BookTabDynamic = dynamic(() => import('./BookTab'), { ssr: false });
 const FileVault      = dynamic(() => import('@/app/components/FileVault'), { ssr: false });
+const UpgradeModal   = dynamic(() => import('@/app/components/UpgradeModal'), { ssr: false });
 
 const DayMap = dynamic(() => import('./DayMap'), {
   ssr: false,
@@ -1282,6 +1283,7 @@ function SummaryContent() {
   const [streaming, setStreaming] = useState(false); // only true once user triggers generation
   const [itineraryRequested, setItineraryRequested] = useState(loadedFromSave.current);
   const [error, setError]         = useState('');
+  const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; feature?: string; reason?: string }>({ open: false });
   const bufferRef = useRef('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
@@ -1407,6 +1409,14 @@ function SummaryContent() {
           }),
         });
         if (!res.ok || !res.body) {
+          if (res.status === 403) {
+            const data = await res.json().catch(() => ({}));
+            if (data.code === 'GENERATION_LIMIT') {
+              setUpgradeModal({ open: true, feature: 'Unlimited AI generations', reason: data.error });
+              setStreaming(false);
+              return;
+            }
+          }
           setError('Failed to generate itinerary. Check your API key and try again.');
           setStreaming(false);
           return;
@@ -1822,6 +1832,13 @@ function SummaryContent() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <main style={{ minHeight: '100vh', background: '#060816' }}>
+      <UpgradeModal
+        open={upgradeModal.open}
+        feature={upgradeModal.feature}
+        reason={upgradeModal.reason}
+        onClose={() => setUpgradeModal({ open: false })}
+      />
+
       {/* Background gradient */}
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
@@ -1829,6 +1846,30 @@ function SummaryContent() {
       }} />
 
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1720, margin: '0 auto', padding: '36px 40px 140px' }}>
+
+        {/* Top nav */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
+          <button
+            onClick={() => router.push('/')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 12, padding: '8px 16px', cursor: 'pointer',
+              color: '#fff', textDecoration: 'none',
+            }}
+          >
+            {/* Temporary GeKnee wordmark — replace src with real logo later */}
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'linear-gradient(135deg,#6366f1,#38bdf8)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, fontWeight: 900, color: '#fff', letterSpacing: -1,
+            }}>
+              G
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.3 }}>GeKnee</span>
+          </button>
+        </div>
 
         {/* Trip header */}
         <div style={{

@@ -17,7 +17,21 @@ export async function PUT(_req: Request, { params }: { params: Promise<{ id: str
   const updated = await prisma.friendship.update({
     where: { id },
     data: { status: "accepted" },
+    include: { user: { select: { name: true, username: true } } },
   });
+
+  // Notify the original sender that their request was accepted
+  const accepterName = (await prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true } }));
+  const displayName = accepterName?.username ? `@${accepterName.username}` : (accepterName?.name ?? 'Someone');
+  await prisma.notification.create({
+    data: {
+      userId: friendship.userId,
+      type: 'friend_request',
+      title: 'Friend request accepted',
+      body: `${displayName} accepted your friend request.`,
+    },
+  }).catch(() => {});
+
   return Response.json({ friendship: updated });
 }
 

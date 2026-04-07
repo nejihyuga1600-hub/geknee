@@ -40,11 +40,12 @@ export async function POST(req: Request) {
         const userId = sub.metadata?.userId;
         if (!userId) break;
         const active = sub.status === 'active' || sub.status === 'trialing';
+        const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
         await prisma.user.update({
           where: { id: userId },
           data: {
             plan: active ? 'pro' : 'free',
-            planExpiresAt: active ? null : new Date(sub.current_period_end * 1000),
+            planExpiresAt: active ? null : periodEnd ? new Date(periodEnd * 1000) : null,
           },
         });
         break;
@@ -53,12 +54,13 @@ export async function POST(req: Request) {
         const sub = event.data.object as Stripe.Subscription;
         const userId = sub.metadata?.userId;
         if (!userId) break;
+        const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
         await prisma.user.update({
           where: { id: userId },
           data: {
             plan: 'free',
             stripeSubscriptionId: null,
-            planExpiresAt: new Date(sub.current_period_end * 1000),
+            planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
           },
         });
         break;

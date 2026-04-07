@@ -71,5 +71,18 @@ export async function POST(req: Request) {
   const friendship = await prisma.friendship.create({
     data: { userId, friendId: target.id, status: "pending" },
   });
+
+  // Notify the recipient
+  const sender = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, username: true } });
+  const senderName = sender?.username ? `@${sender.username}` : (sender?.name ?? 'Someone');
+  await prisma.notification.create({
+    data: {
+      userId: target.id,
+      type: 'friend_request',
+      title: 'New friend request',
+      body: `${senderName} sent you a friend request.`,
+    },
+  }).catch(() => {});
+
   return Response.json({ friendship });
 }

@@ -5584,6 +5584,7 @@ const AuthModal      = dynamic(() => import("@/app/components/AuthModal"),      
 const TripSocialPanel = dynamic(() => import("@/app/components/TripSocialPanel"), { ssr: false });
 const SettingsPanel   = dynamic(() => import("@/app/components/SettingsPanel"),   { ssr: false });
 const LanguageBanner  = dynamic(() => import("@/app/components/LanguageBanner"),  { ssr: false });
+const UpgradeModal    = dynamic(() => import("@/app/components/UpgradeModal"),    { ssr: false });
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LocationPage() {
@@ -5591,8 +5592,25 @@ export default function LocationPage() {
   const [authOpen,      setAuthOpen]      = useState(false);
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
+  const [upgradeOpen,   setUpgradeOpen]   = useState(false);
+  const [notifUnread,   setNotifUnread]   = useState(0);
   const router = useRouter();
   const { data: session } = useSession();
+
+  // Poll for unread notification count (background, when panel is closed)
+  useEffect(() => {
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
+    const poll = async () => {
+      try {
+        const d = await (await fetch('/api/notifications')).json();
+        setNotifUnread(d.unreadCount ?? 0);
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 30_000);
+    return () => clearInterval(iv);
+  }, [(session?.user as { id?: string })?.id]);
   // Register globe-click navigation so Lm can navigate without prop-drilling
   useState(() => {
     _setLmNav((loc: string) => {
@@ -5657,15 +5675,31 @@ export default function LocationPage() {
       <div style={{ position: "fixed", top: 18, right: 20, zIndex: 20, display: "flex", alignItems: "center", gap: 8 }}>
         {session?.user ? (
           <>
+            {/* Go Pro button */}
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              style={{
+                background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                border: "none", borderRadius: 10,
+                color: "#fff", fontSize: 12, fontWeight: 700,
+                padding: "8px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                boxShadow: "0 2px 12px rgba(99,102,241,0.4)",
+              }}
+            >
+              {String.fromCodePoint(0x2728)} Go Pro
+            </button>
+
             {/* Trips & Friends button */}
             <button
-              onClick={() => setPanelOpen(true)}
+              onClick={() => { setPanelOpen(true); setNotifUnread(0); }}
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(99,102,241,0.35)",
                 backdropFilter: "blur(12px)", borderRadius: 10, color: "#c7d2fe",
                 fontSize: 12, fontWeight: 600, padding: "8px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 6,
                 boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+                position: "relative",
               }}
             >
               {/* Suitcase icon */}
@@ -5673,6 +5707,17 @@ export default function LocationPage() {
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
               </svg>
               Trips &amp; Friends
+              {notifUnread > 0 && (
+                <span style={{
+                  position: "absolute", top: -6, right: -6,
+                  background: "#f59e0b", color: "#000",
+                  borderRadius: 99, fontSize: 10, fontWeight: 800,
+                  padding: "1px 5px", minWidth: 16, textAlign: "center",
+                  boxShadow: "0 0 0 2px rgba(6,8,22,0.9)",
+                }}>
+                  {notifUnread}
+                </span>
+              )}
             </button>
 
             {/* Avatar — also opens panel */}
@@ -5737,6 +5782,9 @@ export default function LocationPage() {
 
       {/* Trips & Friends panel */}
       <TripSocialPanel open={panelOpen} onClose={() => setPanelOpen(false)} currentLocation={location} />
+
+      {/* Upgrade modal */}
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
       {/* Settings panel */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />

@@ -38,8 +38,9 @@ model User {
   sessions Session[]
   trips    TripDraft[]
   tripFiles TripFile[]
-  sentFriendRequests     Friendship[] @relation("SentRequests")
-  receivedFriendRequests Friendship[] @relation("ReceivedRequests")
+  sentFriendRequests     Friendship[]   @relation("SentRequests")
+  receivedFriendRequests Friendship[]   @relation("ReceivedRequests")
+  notifications          Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -118,6 +119,20 @@ model TripFile {
 
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   trip TripDraft @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String                        // recipient
+  type      String                        // "friend_message" | "friend_request" | "trip_update"
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ── Friends ───────────────────────────────────────────────────────────────────
