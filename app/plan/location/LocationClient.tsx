@@ -5933,8 +5933,7 @@ function GlobeScene() {
           />
         </Sphere>
 
-        {/* Ocean & land animals */}
-        <AllAnimals />
+        {/* Animals removed — now unlockable via the Explorer Collection shop */}
 
         {/* Dropped star pin + nearby city selection pins */}
         {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}
