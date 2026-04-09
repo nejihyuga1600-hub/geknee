@@ -5450,7 +5450,7 @@ function CityLabels({ camDist }: { camDist: number }) {
 
   return (
     <>
-      {items.map(({ n, pos, orientation, fontSize }) => (
+      {visible.map(({ n, pos, orientation, fontSize }) => (
         <group key={n} position={pos} quaternion={orientation}>
           {/* Visual label */}
           <Text
