@@ -323,16 +323,6 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
                 >
                   <GenieAvatar id={genieId} size={34} />
                 </button>
-                <div>
-                  <span style={{ color: '#a78bfa', fontSize: 13, fontWeight: 700 }}>GeKnee {String.fromCodePoint(0x2726)} AI Genie</span>
-                  <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
-                    {ctx.page === 'globe'   ? 'Destination Discovery'
-                    : ctx.page === 'style'  ? 'Travel Preferences'
-                    : ctx.page === 'dates'  ? 'Travel Dates'
-                    : ctx.page === 'book'   ? `Booking \u2014 ${ctx.location}`
-                    :                        `Itinerary \u2014 ${ctx.location}`}
-                  </p>
-                </div>
               </div>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>
                 {String.fromCodePoint(0x00D7)}
