@@ -5373,27 +5373,80 @@ const CITIES: { n: string; lat: number; lon: number }[] = [
   { n: "Kobe",             lat:  34.69, lon:  135.20 },
 ];
 
-function CityLabels({ visible }: { visible: boolean }) {
+// Tier-1: major world cities always shown first when zooming in.
+// Everything not in this set is tier-2 and only appears when the user zooms closer.
+const CITY_TIER1 = new Set([
+  // Americas
+  "New York","Los Angeles","Chicago","Houston","Miami","Atlanta","Dallas",
+  "San Francisco","Seattle","Boston","Washington DC","Phoenix","Denver",
+  "Toronto","Montreal","Vancouver","Mexico City","Guadalajara","Monterrey",
+  "Bogota","Lima","Santiago","Buenos Aires","Sao Paulo","Rio de Janeiro",
+  "Havana","San Juan",
+  // Europe
+  "London","Paris","Berlin","Madrid","Rome","Barcelona","Amsterdam","Vienna",
+  "Stockholm","Warsaw","Brussels","Prague","Lisbon","Budapest","Oslo",
+  "Copenhagen","Helsinki","Zurich","Milan","Munich","Athens","Bucharest",
+  "Hamburg","Kyiv","Istanbul","Dublin","Edinburgh",
+  // Africa & Middle East
+  "Cairo","Lagos","Nairobi","Johannesburg","Cape Town","Casablanca",
+  "Addis Ababa","Dar es Salaam","Accra","Algiers","Tunis","Khartoum",
+  "Riyadh","Dubai","Tel Aviv","Tehran","Amman","Beirut","Baghdad",
+  // Asia
+  "Tokyo","Shanghai","Beijing","Mumbai","Delhi","Karachi","Dhaka",
+  "Bangkok","Ho Chi Minh City","Hanoi","Jakarta","Manila","Singapore",
+  "Seoul","Taipei","Hong Kong","Kuala Lumpur","Kolkata","Bangalore",
+  "Chennai","Hyderabad","Osaka","Chengdu","Shenzhen","Guangzhou",
+  "Colombo","Kathmandu","Tashkent","Almaty","Ulaanbaatar",
+  // Oceania
+  "Sydney","Melbourne","Brisbane","Perth","Auckland",
+]);
+
+function CityLabels({ camDist }: { camDist: number }) {
+  // Dynamic separation threshold: wider zoom = stricter = fewer cities shown.
+  // camDist ~21 → thresh ~4°, camDist ~14 → thresh ~1.5°, camDist <12 → ~0.6°
+  const sepThresh = camDist > 18 ? 4.0 : camDist > 15 ? 2.5 : camDist > 12 ? 1.2 : 0.6;
+
   const items = useMemo(() => {
-    const base = CITIES.map(({ n, lat, lon }) => {
+    return CITIES.map(({ n, lat, lon }) => {
       const pos = geoPos(lat, lon, R * 1.019);
-      return { n, pos, orientation: computeOrientation(pos) };
+      return { n, pos, orientation: computeOrientation(pos), tier: CITY_TIER1.has(n) ? 1 : 2 };
     });
-    const units = base.map(it => new THREE.Vector3(...it.pos).normalize());
-    return base.map((it, i) => {
+  }, []);
+
+  // Greedy spatial dedup: sort tier-1 first, then pick cities that are
+  // at least sepThresh° away from any already-selected city.
+  const visible = useMemo(() => {
+    if (camDist >= 21) return [];
+    const sorted = [...items].sort((a, b) => a.tier - b.tier);
+    const selected: typeof sorted = [];
+    const selUnits: THREE.Vector3[] = [];
+    for (const city of sorted) {
+      if (city.tier === 2 && camDist > 15) continue; // tier-2 only at close zoom
+      const u = new THREE.Vector3(...city.pos).normalize();
+      let tooClose = false;
+      for (const su of selUnits) {
+        const dot = Math.max(-1, Math.min(1, u.dot(su)));
+        const deg = Math.acos(dot) * (180 / Math.PI);
+        if (deg < sepThresh) { tooClose = true; break; }
+      }
+      if (!tooClose) { selected.push(city); selUnits.push(u); }
+    }
+    // Compute font size based on nearest selected neighbour distance
+    return selected.map((city, i) => {
+      const u = selUnits[i];
       let minDeg = 180;
-      for (let j = 0; j < units.length; j++) {
+      for (let j = 0; j < selUnits.length; j++) {
         if (i === j) continue;
-        const dot = Math.max(-1, Math.min(1, units[i].dot(units[j])));
+        const dot = Math.max(-1, Math.min(1, u.dot(selUnits[j])));
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
       const fontSize = minDeg >= 10 ? 0.055 : Math.max(0.026, 0.055 * (minDeg / 10));
-      return { ...it, fontSize };
+      return { ...city, fontSize };
     });
-  }, []);
+  }, [items, camDist, sepThresh]);
 
-  if (!visible) return null;
+  if (camDist >= 21) return null;
 
   return (
     <>
@@ -5660,6 +5713,8 @@ function GlobeScene() {
   // 0 = countries only | 1 = + states | 2 = + cities
   const [zoomLevel, setZoomLevel] = useState(0);
   const zoomLevelRef = useRef(0);
+  const [camDist, setCamDist] = useState(30);
+  const camDistRef = useRef(30);
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change
   useEffect(() => {
@@ -5830,6 +5885,12 @@ function GlobeScene() {
       zoomLevelRef.current = newZoom;
       setZoomLevel(newZoom);
     }
+    // Track camDist at 0.5-unit granularity to avoid per-frame setState
+    const rounded = Math.round(dist * 2) / 2;
+    if (rounded !== camDistRef.current) {
+      camDistRef.current = rounded;
+      setCamDist(rounded);
+    }
   });
 
   // Key encodes loaded assets so Three.js recreates the material on each upgrade
@@ -5911,7 +5972,7 @@ function GlobeScene() {
 
         {/* Geographic labels floating above surface */}
         <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />
-        <CityLabels visible={zoomLevel >= 2} />
+        <CityLabels camDist={camDist} />
 
       </group>
     </>
