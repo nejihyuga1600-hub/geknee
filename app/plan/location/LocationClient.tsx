@@ -5464,7 +5464,8 @@ function CityLabels({ camDist }: { camDist: number }) {
             sdfGlyphSize={64}
             renderOrder={2}
             material-depthWrite={false}
-            material-side={THREE.DoubleSide}
+            material-depthTest={true}
+            material-side={THREE.FrontSide}
           >
             {`\u2022 ${n}`}
           </Text>
