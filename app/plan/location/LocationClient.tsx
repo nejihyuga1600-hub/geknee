@@ -4678,59 +4678,6 @@ const HIGH_ELEVATION_COUNTRIES = new Set([
   "China", "India", "Mexico", "Chile", "Argentina",
 ]);
 
-// States/provinces on high plateaus or mountain ranges — "Country|State" key.
-const HIGH_ELEVATION_STATES = new Set([
-  // Argentine Andes & Altiplano
-  "Argentina|Jujuy","Argentina|Salta","Argentina|Catamarca",
-  "Argentina|La Rioja","Argentina|San Juan","Argentina|Mendoza",
-  "Argentina|Neuquén","Argentina|Tucumán",
-  // Bolivian departments
-  "Bolivia|La Paz","Bolivia|Oruro","Bolivia|Potosí","Bolivia|Cochabamba",
-  // Peruvian sierra
-  "Peru|Cusco","Peru|Puno","Peru|Ayacucho","Peru|Junín",
-  "Peru|Huancavelica","Peru|Apurímac","Peru|Arequipa",
-  // Colombian/Ecuadorian Andes
-  "Colombia|Boyacá","Colombia|Cundinamarca","Colombia|Nariño",
-  "Ecuador|Pichincha","Ecuador|Chimborazo","Ecuador|Tungurahua",
-  // Chilean Norte Grande
-  "Chile|Tarapacá","Chile|Antofagasta","Chile|Atacama",
-  // US Rocky Mountains
-  "United States of America|Colorado","United States of America|Wyoming",
-  "United States of America|Utah","United States of America|Montana",
-  "United States of America|Idaho","United States of America|New Mexico",
-  "United States of America|Nevada","United States of America|Arizona",
-  "United States of America|Alaska",
-  // Chinese high plateau
-  "China|Tibet","China|Qinghai","China|Yunnan","China|Sichuan",
-  "China|Xinjiang","China|Gansu",
-  // India Himalayas
-  "India|Jammu and Kashmir","India|Ladakh","India|Himachal Pradesh",
-  "India|Uttarakhand","India|Sikkim","India|Arunachal Pradesh",
-  // Pakistan
-  "Pakistan|Gilgit-Baltistan","Pakistan|Khyber Pakhtunkhwa",
-  // Ethiopia highlands
-  "Ethiopia|Amhara","Ethiopia|Tigray",
-  // Swiss + Austrian Alps
-  "Switzerland|Valais","Switzerland|Graubünden","Switzerland|Uri",
-  "Switzerland|Bern","Switzerland|Glarus",
-  "Austria|Tyrol","Austria|Vorarlberg","Austria|Salzburg",
-  "Austria|Styria","Austria|Carinthia",
-  // Norway
-  "Norway|Innlandet","Norway|Vestland",
-  // Mongolia
-  "Mongolia|Bayan-Ölgii","Mongolia|Uvs","Mongolia|Khovd",
-]);
-
-// Cities above ~1,500 m that need label clearance.
-const HIGH_ELEVATION_CITIES = new Set([
-  "La Paz","Quito","Bogota","Addis Ababa","Mexico City",
-  "Cusco","Kathmandu","Nairobi","Denver","Ulaanbaatar",
-  "Medellin","Johannesburg","Kabul","Islamabad",
-  "Bishkek","Almaty","Tbilisi","Yerevan",
-  "Colorado Springs","Salt Lake City","Cheyenne","Boise",
-  "Billings","Missoula","Albuquerque",
-]);
-
 // --- Country + State labels ----------------------------------------------------
 function GeoLabels({ countries, states, zoomLevel }: {
   countries:  GeoCollection | null;
@@ -4785,8 +4732,7 @@ function GeoLabels({ countries, states, zoomLevel }: {
         // No size minimum for North America — show every state/province/territory.
         const isNorthAmerica = admin === "United States of America" || admin === "Canada" || admin === "Mexico";
         if (!isNorthAmerica && Math.max(maxLon - minLon, maxLat - minLat) < 2.5) continue;
-        const stateHigh = HIGH_ELEVATION_STATES.has(`${admin}|${name}`);
-        const sPos = geoPos(c[1], c[0], R * (stateHigh ? 1.055 : 1.019));
+        const sPos = geoPos(c[1], c[0], R * 1.019);
         result.push({ key: `s-${admin}-${name}`, name, pos: sPos, kind: "state", orientation: computeOrientation(sPos) });
       }
     }
@@ -5430,7 +5376,7 @@ const CITIES: { n: string; lat: number; lon: number }[] = [
 function CityLabels({ visible }: { visible: boolean }) {
   const items = useMemo(() => {
     const base = CITIES.map(({ n, lat, lon }) => {
-      const pos = geoPos(lat, lon, R * (HIGH_ELEVATION_CITIES.has(n) ? 1.055 : 1.019));
+      const pos = geoPos(lat, lon, R * 1.019);
       return { n, pos, orientation: computeOrientation(pos) };
     });
     const units = base.map(it => new THREE.Vector3(...it.pos).normalize());
