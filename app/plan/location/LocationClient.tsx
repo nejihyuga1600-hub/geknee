@@ -6404,21 +6404,21 @@ export default function LocationPage() {
   };
 
   // Device quality tier — cap DPR on low-end devices to protect frame rate
+  const _dpr = typeof window !== 'undefined' ? (window.devicePixelRatio ?? 1) : 1;
   const deviceTier = (() => {
-    if (typeof window === 'undefined') return 'high';
-    const dpr = window.devicePixelRatio ?? 1;
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
     const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
     const cores = navigator.hardwareConcurrency ?? 4;
     if (mem !== undefined && mem <= 2) return 'low';
     if (cores <= 2) return 'low';
-    if (dpr <= 1.5 && cores <= 4) return 'mid';
+    if (_dpr <= 1.5 && cores <= 4) return 'mid';
     return 'high';
   })();
 
   const dprRange: [number, number] =
     deviceTier === 'low'  ? [1, 1] :
     deviceTier === 'mid'  ? [1, 1.5] :
-                            [1, Math.min(window.devicePixelRatio, 2)];
+                            [1, Math.min(_dpr, 2)];
 
   return (
     // position:fixed on canvas bypasses the entire layout chain — no parent
