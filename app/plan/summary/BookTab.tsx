@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { findAirport, airportLabel, extractIata } from "@/lib/airports";
 
 const FlightPriceChart = dynamic(() => import("../style/FlightPriceChart"), { ssr: false });
+import AffiliateLinks from "@/app/components/AffiliateLinks";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1644,6 +1645,9 @@ export default function BookTab({
           letter-spacing: 0.08em;
         }
       `}</style>
+
+      {/* ── Affiliate booking links ── */}
+      <AffiliateLinks destination={location} startDate={tripStartDate || startDate} endDate={tripEndDate || endDate} />
 
       {/* ── Trip Setup panel ── */}
       <div style={{ background: "linear-gradient(135deg,#f8fafc 0%,#ede9fe 100%)", borderRadius: 16, marginBottom: 28, border: "1px solid #e2e8f0" }}>
