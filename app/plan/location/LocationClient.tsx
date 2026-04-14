@@ -6403,6 +6403,23 @@ export default function LocationPage() {
     resetGlobeTilt();
   };
 
+  // Device quality tier — cap DPR on low-end devices to protect frame rate
+  const deviceTier = (() => {
+    if (typeof window === 'undefined') return 'high';
+    const dpr = window.devicePixelRatio ?? 1;
+    const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    const cores = navigator.hardwareConcurrency ?? 4;
+    if (mem !== undefined && mem <= 2) return 'low';
+    if (cores <= 2) return 'low';
+    if (dpr <= 1.5 && cores <= 4) return 'mid';
+    return 'high';
+  })();
+
+  const dprRange: [number, number] =
+    deviceTier === 'low'  ? [1, 1] :
+    deviceTier === 'mid'  ? [1, 1.5] :
+                            [1, Math.min(window.devicePixelRatio, 2)];
+
   return (
     // position:fixed on canvas bypasses the entire layout chain — no parent
     // needs explicit height. The main just provides the stacking context.
@@ -6419,8 +6436,12 @@ export default function LocationPage() {
       <Canvas
         style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 1 }}
         camera={{ position: [0, 0, 26], fov: 50 }}
-        dpr={[1, Math.min(window.devicePixelRatio, 3)]}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        dpr={dprRange}
+        gl={{
+          antialias: deviceTier !== 'low',
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: true,
+        }}
       >
         <OrbitControls makeDefault enableZoom enablePan={false} enableRotate={false} minDistance={11.5} maxDistance={45} zoomSpeed={1.2} enableDamping dampingFactor={0.12} />
         <DampingUpdater />
