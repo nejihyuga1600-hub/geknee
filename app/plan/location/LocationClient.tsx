@@ -5638,6 +5638,33 @@ const CITY_TIER1 = new Set([
 // Cache fetched city info so we only hit the API once per city per session
 const _cityInfoCache = new Map<string, CityHoverPayload>();
 
+/** Score a sentence for how interesting it is — higher = better */
+function scoreSentence(s: string): number {
+  let score = 0;
+  // Reward numbers, years, stats
+  if (/\d/.test(s)) score += 2;
+  // Reward superlatives and notable words
+  if (/largest|oldest|tallest|first|only|most|biggest|deepest|highest|longest|smallest|ancient|founded|built|century|million|billion|record|world|famous|known for|landmark|capital/i.test(s)) score += 3;
+  // Penalise generic opener sentences
+  if (/is a (city|town|municipality|commune|major|large|small|port)/i.test(s)) score -= 3;
+  if (/one of the world.s greatest/i.test(s)) score -= 5;
+  if (/located in|situated in|in the .* of/i.test(s)) score -= 1;
+  // Prefer medium-length sentences
+  const words = s.split(/\s+/).length;
+  if (words >= 12 && words <= 40) score += 1;
+  return score;
+}
+
+function pickInterestingFact(extract: string, _name: string): string {
+  const sentences = extract.match(/[^.!?]+[.!?]+/g) ?? [];
+  if (!sentences.length) return extract.slice(0, 220);
+  // Score all sentences, pick the best one that isn't the very first
+  const scored = sentences.map((s, i) => ({ s: s.trim(), score: scoreSentence(s) - (i === 0 ? 1 : 0) }));
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0].s;
+  return best.length > 220 ? best.slice(0, 217) + "\u2026" : best;
+}
+
 async function fetchCityInfo(name: string): Promise<CityHoverPayload> {
   if (_cityInfoCache.has(name)) return _cityInfoCache.get(name)!;
 
@@ -5656,11 +5683,8 @@ async function fetchCityInfo(name: string): Promise<CityHoverPayload> {
           if (lead) imgUrl = "https:" + lead.srcset[0].src;
         } catch {}
       }
-      const payload: CityHoverPayload = {
-        name,
-        summary: d.extract.slice(0, 220) + (d.extract.length > 220 ? "\u2026" : ""),
-        imgUrl,
-      };
+      const summary = pickInterestingFact(d.extract, name);
+      const payload: CityHoverPayload = { name, summary, imgUrl };
       _cityInfoCache.set(name, payload);
       return payload;
     }
