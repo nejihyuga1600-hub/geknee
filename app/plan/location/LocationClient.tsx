@@ -5610,26 +5610,31 @@ function CityLabel({ n, pos, orientation, fontSize }: {
   orientation: THREE.Quaternion;
   fontSize: number;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const [imgUrl,  setImgUrl]  = useState<string | null>(null);
-  const [fact,    setFact]    = useState<string>(CITY_FACTS[n] ?? "");
+  const [hovered,  setHovered] = useState(false);
+  const [imgUrl,   setImgUrl]  = useState<string | null>(null);
+  const [fact,     setFact]    = useState<string>(CITY_FACTS[n] ?? "");
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (!hovered) return;
+    if (!hovered || fetchedRef.current) return;
+    // Load from cache immediately if available
     if (_cityCardCache.has(n)) {
       const c = _cityCardCache.get(n)!;
       setImgUrl(c.imgUrl);
       if (c.fact) setFact(c.fact);
+      fetchedRef.current = true;
       return;
     }
+    fetchedRef.current = true; // mark so we don't re-fetch on re-hover
     const slug = encodeURIComponent(n.replace(/ /g, "_"));
-    let cancelled = false;
     Promise.all([
-      fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`, { headers: { "User-Agent": "GeKneeApp/1.0" } }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exsentences=20&explaintext=1&titles=${slug}&format=json&origin=*`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
+        .then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exsentences=20&explaintext=1&titles=${slug}&format=json&origin=*`)
+        .then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([summary, extractData]) => {
-      if (cancelled) return;
-      const img = summary?.thumbnail?.source ?? null;
+      // Try thumbnail; fallback to media-list
+      let img: string | null = summary?.thumbnail?.source ?? null;
       const pages = extractData?.query?.pages ?? {};
       const extract: string = (Object.values(pages)[0] as any)?.extract ?? summary?.extract ?? "";
       const wikiF = extract ? pickBestFact(extract) : "";
@@ -5637,8 +5642,8 @@ function CityLabel({ n, pos, orientation, fontSize }: {
       _cityCardCache.set(n, { imgUrl: img, fact: resolved });
       setImgUrl(img);
       if (resolved) setFact(resolved);
-    });
-    return () => { cancelled = true; };
+    }).catch(() => {});
+    // No cleanup cancel — let fetch always complete so cache is populated
   }, [hovered, n]);
 
   return (
@@ -5671,46 +5676,45 @@ function CityLabel({ n, pos, orientation, fontSize }: {
           <div style={{
             position: "relative",
             background: "linear-gradient(150deg, #0e2a6e 0%, #061840 100%)",
-            border: "2px solid #50c8ff",
-            borderRadius: "16px",
+            border: "1.5px solid #50c8ff",
+            borderRadius: "10px",
             overflow: "hidden",
-            width: "220px",
-            boxShadow: "0 0 22px rgba(60,180,255,0.45), 0 8px 28px rgba(0,0,0,0.55)",
+            width: "115px",
+            boxShadow: "0 0 14px rgba(60,180,255,0.4), 0 4px 14px rgba(0,0,0,0.5)",
             fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
           }}>
             {imgUrl && (
               <img src={imgUrl} alt={n} style={{
-                display: "block", width: "100%", height: "120px",
-                objectFit: "cover", borderBottom: "1.5px solid #50c8ff",
+                display: "block", width: "100%", height: "60px",
+                objectFit: "cover", borderBottom: "1px solid #50c8ff",
               }} />
             )}
-            <div style={{ padding: "9px 13px 12px", textAlign: "center" }}>
+            <div style={{ padding: "5px 7px 7px", textAlign: "center" }}>
               <div style={{
-                fontSize: "13px", fontWeight: 800, color: "#ffffff",
-                letterSpacing: "0.02em", marginBottom: "6px",
-                textShadow: "0 0 12px rgba(100,210,255,0.9)",
+                fontSize: "7px", fontWeight: 800, color: "#ffffff",
+                letterSpacing: "0.02em", marginBottom: "3px",
+                textShadow: "0 0 8px rgba(100,210,255,0.9)",
               }}>{n}</div>
               <div style={{
-                fontSize: "10px", color: "#c0ecff", lineHeight: 1.55,
+                fontSize: "6px", color: "#c0ecff", lineHeight: 1.5,
                 borderTop: imgUrl ? "1px solid rgba(80,200,255,0.2)" : "none",
-                paddingTop: imgUrl ? "7px" : 0,
+                paddingTop: imgUrl ? "4px" : 0,
                 textAlign: "left",
               }}>
-                {fact || "One of the world's great cities — click to explore!"}
+                {fact || "Click to explore!"}
               </div>
             </div>
-            {/* Down arrow */}
             <div style={{
-              position: "absolute", bottom: "-11px", left: "50%", transform: "translateX(-50%)",
+              position: "absolute", bottom: "-7px", left: "50%", transform: "translateX(-50%)",
               width: 0, height: 0,
-              borderLeft: "8px solid transparent", borderRight: "8px solid transparent",
-              borderTop: "11px solid #50c8ff",
+              borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+              borderTop: "7px solid #50c8ff",
             }} />
             <div style={{
-              position: "absolute", bottom: "-8px", left: "50%", transform: "translateX(-50%)",
+              position: "absolute", bottom: "-5px", left: "50%", transform: "translateX(-50%)",
               width: 0, height: 0,
-              borderLeft: "6px solid transparent", borderRight: "6px solid transparent",
-              borderTop: "9px solid #061840",
+              borderLeft: "4px solid transparent", borderRight: "4px solid transparent",
+              borderTop: "6px solid #061840",
             }} />
           </div>
         </Html>
