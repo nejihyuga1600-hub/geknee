@@ -2386,6 +2386,79 @@ function SummaryContent() {
                 {String.fromCodePoint(0x1F4CB)} View Book tab
               </button>
             </div>
+
+            {/* ── Inline booking CTA banner ─────────────────────────────── */}
+            <div style={{
+              marginTop: 28, padding: '20px 24px',
+              background: 'linear-gradient(135deg, rgba(14,22,65,0.95) 0%, rgba(8,12,45,0.95) 100%)',
+              border: '1px solid rgba(140,180,255,0.2)',
+              borderRadius: 16,
+              boxShadow: '0 8px 32px rgba(0,20,120,0.3)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 20 }}>{String.fromCodePoint(0x2708, 0xFE0F)}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>Ready to book?</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginLeft: 4 }}>Quick links for {location}</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <a
+                  href={`https://www.google.com/travel/flights?q=${encodeURIComponent(`flights to ${location} ${startDate}`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10, textDecoration: 'none',
+                    background: 'rgba(26,115,232,0.15)', border: '1px solid rgba(26,115,232,0.4)',
+                    color: '#93c5fd', fontSize: 13, fontWeight: 600, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(26,115,232,0.28)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(26,115,232,0.15)')}
+                >
+                  ✈️ Google Flights
+                </a>
+                <a
+                  href={`https://www.booking.com/searchresults.html?ss=${encodeURIComponent(location)}&checkin=${startDate}&checkout=${endDate}&group_adults=2&no_rooms=1`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10, textDecoration: 'none',
+                    background: 'rgba(0,53,128,0.2)', border: '1px solid rgba(0,53,128,0.5)',
+                    color: '#93c5fd', fontSize: 13, fontWeight: 600, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,53,128,0.35)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(0,53,128,0.2)')}
+                >
+                  🏨 Booking.com
+                </a>
+                <a
+                  href={`https://www.airbnb.com/s/${encodeURIComponent(location)}/homes?checkin=${startDate}&checkout=${endDate}&adults=2`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10, textDecoration: 'none',
+                    background: 'rgba(255,56,92,0.12)', border: '1px solid rgba(255,56,92,0.35)',
+                    color: '#fca5a5', fontSize: 13, fontWeight: 600, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,56,92,0.24)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,56,92,0.12)')}
+                >
+                  🏠 Airbnb
+                </a>
+                <a
+                  href={`https://www.skyscanner.com/transport/flights/${encodeURIComponent(travelingFrom || '')}/${encodeURIComponent(location)}/${startDate?.replace(/-/g,'') ?? ''}/${endDate?.replace(/-/g,'') ?? ''}/?adultsv2=1&rtn=1`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10, textDecoration: 'none',
+                    background: 'rgba(7,112,227,0.12)', border: '1px solid rgba(7,112,227,0.35)',
+                    color: '#7dd3fc', fontSize: 13, fontWeight: 600, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(7,112,227,0.24)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(7,112,227,0.12)')}
+                >
+                  🔍 Skyscanner
+                </a>
+              </div>
+            </div>
           </>
         )}
 

@@ -1113,11 +1113,72 @@ function GlobePicker({ startCity, selectedCities, onToggle, onHover }: {
   const [terrain,  setTerrain]  = useState<THREE.Texture | null>(null);
   const [bump,     setBump]     = useState<THREE.Texture | null>(null);
   const [geojson,  setGeojson]  = useState<GeoCollection | null>(null);
-  const [camZ,     setCamZ]     = useState(1.30); // ~500-mile radius view
+  const [camZ,     setCamZ]     = useState(1.30);
   const ptr      = useRef<{ x: number; y: number; rx: number; ry: number } | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wasDragged = useRef(false);
   const [isDown, setIsDown] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      // Find the WebGL canvas inside the container
+      const glCanvas = innerRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
+      if (!glCanvas) return;
+
+      // Composite: WebGL canvas + watermark on a new 2D canvas
+      const out = document.createElement('canvas');
+      out.width  = glCanvas.width;
+      out.height = glCanvas.height;
+      const ctx = out.getContext('2d')!;
+
+      ctx.drawImage(glCanvas, 0, 0);
+
+      // Watermark pill — bottom right
+      const pad = 12, ph = 28, fs = 13;
+      const text = '✈ GeKnee';
+      ctx.font = `bold ${fs}px system-ui, sans-serif`;
+      const tw = ctx.measureText(text).width;
+      const pw = tw + pad * 2;
+      const px = out.width  - pw - 14;
+      const py = out.height - ph - 14;
+
+      ctx.fillStyle = 'rgba(8,14,50,0.82)';
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(140,180,255,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 8);
+      ctx.stroke();
+
+      ctx.fillStyle = '#c8d8ff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, px + pad, py + ph / 2);
+
+      const blob: Blob = await new Promise(res => out.toBlob(b => res(b!), 'image/png'));
+      const url = URL.createObjectURL(blob);
+
+      // Try native share (mobile), fall back to download
+      if (navigator.share && navigator.canShare?.({ files: [new File([blob], 'geknee-globe.png', { type: 'image/png' })] })) {
+        await navigator.share({
+          title: 'My GeKnee Trip',
+          text: `Planning a trip to ${selectedCities.join(', ')} ✈`,
+          files: [new File([blob], 'geknee-globe.png', { type: 'image/png' })],
+        });
+      } else {
+        const a = document.createElement('a');
+        a.href = url; a.download = 'geknee-globe.png'; a.click();
+      }
+      URL.revokeObjectURL(url);
+    } finally {
+      setSharing(false);
+    }
+  };
 
   // Load textures here (regular React context, NOT inside Canvas) for reliability
   useEffect(() => {
@@ -1225,7 +1286,7 @@ function GlobePicker({ startCity, selectedCities, onToggle, onHover }: {
         camera={{ position: [0, 0, 1.30], fov: 45, near: 0.01, far: 10 }}
         style={{ display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%' }}
         dpr={[1, isMobile ? 1.5 : 2]}
-        gl={{ antialias: !isMobile, alpha: false, powerPreference: isMobile ? "default" : "high-performance" }}
+        gl={{ antialias: !isMobile, alpha: false, powerPreference: isMobile ? "default" : "high-performance", preserveDrawingBuffer: true }}
       >
         <GlobeScene
           rotX={rot[0]} rotY={rot[1]} camZ={camZ}
@@ -1241,6 +1302,29 @@ function GlobePicker({ startCity, selectedCities, onToggle, onHover }: {
           geojson={geojson}
         />
       </Canvas>
+
+      {/* Share button — top right of globe */}
+      <button
+        onClick={(e) => { e.stopPropagation(); handleShare(); }}
+        disabled={sharing}
+        style={{
+          position: 'absolute', top: 10, right: 10, zIndex: 10,
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '7px 14px', borderRadius: 20,
+          background: 'rgba(8,14,50,0.82)',
+          border: '1px solid rgba(140,180,255,0.35)',
+          color: '#c8d8ff', fontSize: 12, fontWeight: 600,
+          cursor: sharing ? 'not-allowed' : 'pointer',
+          opacity: sharing ? 0.6 : 1,
+          backdropFilter: 'blur(8px)',
+          transition: 'background 0.15s',
+          pointerEvents: 'all',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(20,35,100,0.92)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(8,14,50,0.82)')}
+      >
+        {sharing ? '⏳' : '📤'} {sharing ? 'Saving…' : 'Share globe'}
+      </button>
     </div>
   );
 }
