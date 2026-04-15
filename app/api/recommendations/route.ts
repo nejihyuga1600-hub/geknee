@@ -97,7 +97,8 @@ Rules:
     const data = JSON.parse(raw);
     return Response.json(data);
   } catch (err) {
-    console.error("Recommendations error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Recommendations error:", msg);
     return Response.json({ error: "Failed to generate recommendations" }, { status: 500 });
   }
 }

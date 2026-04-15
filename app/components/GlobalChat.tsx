@@ -130,7 +130,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
         { headers: { 'Accept-Language': 'en', 'User-Agent': 'GeKnee-travel-app' } },
       );
       const data = await res.json() as Array<{ lat: string; lon: string; display_name: string }>;
-      if (!data.length) { setDestError('City not found — try a different name.'); setDestLoading(false); return; }
+      if (!data.length) { setDestError('City not found — try adding the country (e.g. "Lyon, France").'); setDestLoading(false); return; }
       const lat = parseFloat(data[0].lat);
       const lon = parseFloat(data[0].lon);
       setDestFlying(city);
@@ -273,13 +273,6 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
 
   return (
     <>
-      <style>{`
-        @keyframes chatSlideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-        @keyframes geniePulse { 0%,100%{box-shadow:0 0 0 0 rgba(167,139,250,0.4)} 50%{box-shadow:0 0 0 8px rgba(167,139,250,0)} }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
-
       {/* Genie selector modal */}
       {selectorOpen && <GenieSelector onClose={() => setSelectorOpen(false)} />}
 
@@ -411,15 +404,36 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
 
             {/* Messages */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {messages.length === 0 && (
-                <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, textAlign: 'center', marginTop: 24, lineHeight: 1.7 }}>
-                  {ctx.page === 'globe'   ? 'Ask me where to go!\nTry: \u201cBest places for beaches\u201d or \u201cHidden gems in Asia\u201d'
-                  : ctx.page === 'style'  ? 'Ask me about travel styles!\nTry: \u201cWhat style suits a foodie?\u201d'
-                  : ctx.page === 'dates'  ? 'Ask me about timing!\nTry: \u201cBest month to visit Tokyo\u201d'
-                  : ctx.page === 'book'   ? 'Ask me about your booking!\nTry: \u201cBest hotels near the city center\u201d'
-                  :                         'Ask me about your trip!\nTry: \u201cSwap Day 2 dinner\u201d or \u201cWhat should I pack?\u201d'}
-                </p>
-              )}
+              {messages.length === 0 && (() => {
+                const examples: Record<string, string[]> = {
+                  globe:   ['Best places for beaches', 'Hidden gems in Asia', 'Where to go with kids?'],
+                  style:   ['What travel style suits a foodie?', 'Difference between budget and backpacker?', 'Best style for solo travel?'],
+                  dates:   ['Best month to visit Tokyo', 'When is cherry blossom season in Japan?', 'Avoid monsoon in Southeast Asia?'],
+                  summary: ['Swap Day 2 dinner for something local', 'What should I pack?', 'Is this itinerary too packed?'],
+                  book:    ['Best hotels near the city center', 'Tips for finding cheap flights', 'Should I book activities in advance?'],
+                };
+                const tips = examples[ctx.page] ?? examples.globe;
+                return (
+                  <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 6, padding: '0 2px' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, textAlign: 'center', fontWeight: 700, letterSpacing: '0.08em', margin: '0 0 4px' }}>
+                      TRY ASKING
+                    </p>
+                    {tips.map((ex) => (
+                      <button
+                        key={ex}
+                        onClick={() => setInput(ex)}
+                        style={{
+                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+                          borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 12, padding: '7px 11px',
+                          cursor: 'pointer', textAlign: 'left', lineHeight: 1.4, transition: 'background 0.15s',
+                        }}
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {messages.map((msg, i) => (
                 <div key={i} style={{
                   alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',

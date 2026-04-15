@@ -1424,6 +1424,9 @@ function _setLmNav(fn: (loc: string) => void) { _lmNav = fn; }
 let _globeClick: (() => void) | null = null;
 function _setGlobeClick(fn: () => void) { _globeClick = fn; }
 
+// ─── Globe data-ready bridge (GlobeScene → LocationPage)
+let _onGlobeReady: (() => void) | null = null;
+
 function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
   const [hovered, setHovered] = useState(false);
   const model   = mk ? MODELS[mk] : undefined;
@@ -6027,8 +6030,12 @@ function GlobeScene() {
   const [zoomLevel, setZoomLevel] = useState(0);
   const zoomLevelRef = useRef(0);
   const [camDist, setCamDist] = useState(30);
-  const [globeReady, setGlobeReady] = useState(false);
   const camDistRef = useRef(30);
+
+  // Signal LocationPage when border data is loaded — delays spinner removal until globe looks complete
+  useEffect(() => {
+    if (countries && states) _onGlobeReady?.();
+  }, [countries, states]);
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change
   useEffect(() => {
@@ -6038,11 +6045,13 @@ function GlobeScene() {
     tex.anisotropy = gl.capabilities.getMaxAnisotropy();
     tex.needsUpdate = true;
     setTexture(tex);
+    return () => { tex.dispose(); };
   }, [countries, states, terrainBitmap, gl]);
 
   // Load all async resources once on mount
   useEffect(() => {
     let cancelled = false;
+    let loadedBump: THREE.Texture | null = null;
 
     // ── GeoJSON border data ──────────────────────────────────────────────────
     (async () => {
@@ -6088,7 +6097,7 @@ function GlobeScene() {
     new THREE.TextureLoader().load(
       "/earth_bump.jpg",
       t  => {
-        if (cancelled) return;
+        if (cancelled) { t.dispose(); return; }
         // Only use bump map if it's high enough resolution to look good
         // (low-res maps create blocky stepped displacement on the 256-seg sphere)
         const img = t.image as HTMLImageElement;
@@ -6096,7 +6105,10 @@ function GlobeScene() {
           t.minFilter  = THREE.LinearMipmapLinearFilter;
           t.anisotropy = gl.capabilities.getMaxAnisotropy();
           t.needsUpdate = true;
+          loadedBump = t;
           setBumpMap(t);
+        } else {
+          t.dispose(); // too low-res — skip and release
         }
         // If too small, skip displacement — flat surface looks better than blocky steps
       },
@@ -6104,7 +6116,10 @@ function GlobeScene() {
       () => { /* file absent — run without bump map */ },
     );
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      loadedBump?.dispose();
+    };
   }, [gl]);
 
   // Real-world rotation speed: one revolution per sidereal day
@@ -6312,6 +6327,7 @@ export default function LocationPage() {
   const [upgradeOpen,   setUpgradeOpen]   = useState(false);
   const [shopOpen,      setShopOpen]      = useState(false);
   const [notifUnread,   setNotifUnread]   = useState(0);
+  const [globeReady,    setGlobeReady]    = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
 
@@ -6338,6 +6354,7 @@ export default function LocationPage() {
     _setGlobeClick(() => {
       window.dispatchEvent(new CustomEvent('geknee:globeselect', { detail: { location: '' } }));
     });
+    _onGlobeReady = () => setGlobeReady(true);
   });
 
   const handleInitialize = () => {
@@ -6370,7 +6387,6 @@ export default function LocationPage() {
           gl.domElement.style.touchAction = "none";
           // Handle WebGL context loss gracefully (Safari drops context during app switch)
           gl.domElement.addEventListener("webglcontextlost", (e) => { e.preventDefault(); }, false);
-          setGlobeReady(true);
         }}
       >
         <OrbitControls
@@ -6403,7 +6419,6 @@ export default function LocationPage() {
             borderTopColor: "#6366f1",
             animation: "spin 0.9s linear infinite",
           }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <span style={{ color: "#818cf8", fontSize: 13, fontWeight: 600, letterSpacing: "0.08em" }}>
             Loading Globe…
           </span>
@@ -6427,7 +6442,7 @@ export default function LocationPage() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
-          Reset Globe
+          Home
         </button>
       </div>
 

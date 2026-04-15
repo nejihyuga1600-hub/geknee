@@ -156,17 +156,24 @@ function RowLast({ label, sub, children }: { label: string; sub?: string; childr
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      role="switch"
+      aria-checked={on}
       onClick={() => onChange(!on)}
       style={{
-        width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
-        background: on ? "#6366f1" : "rgba(255,255,255,0.15)",
-        position: "relative", transition: "background 0.2s", flexShrink: 0,
+        display: "inline-flex", alignItems: "center", padding: "11px 0",
+        background: "none", border: "none", cursor: "pointer", flexShrink: 0,
       }}
     >
       <span style={{
-        position: "absolute", top: 3, left: on ? 21 : 3, width: 16, height: 16,
-        borderRadius: "50%", background: "#fff", transition: "left 0.2s",
-      }} />
+        display: "block", width: 40, height: 22, borderRadius: 11,
+        background: on ? "#6366f1" : "rgba(255,255,255,0.15)",
+        position: "relative", transition: "background 0.2s", pointerEvents: "none",
+      }}>
+        <span style={{
+          position: "absolute", top: 3, left: on ? 21 : 3, width: 16, height: 16,
+          borderRadius: "50%", background: "#fff", transition: "left 0.2s",
+        }} />
+      </span>
     </button>
   );
 }
@@ -177,8 +184,8 @@ function Select({ value, options, onChange }: { value: string; options: { value:
       value={value}
       onChange={e => onChange(e.target.value)}
       style={{
-        background: "rgba(255,255,255,0.08)", border: `1px solid ${BORD2}`, borderRadius: 7,
-        color: TEXT, fontSize: 12, padding: "5px 8px", cursor: "pointer", maxWidth: 150,
+        background: "rgba(255,255,255,0.14)", border: `1px solid ${BORD2}`, borderRadius: 7,
+        color: TEXT, fontSize: 12, padding: "5px 8px", cursor: "pointer", maxWidth: 180,
       }}
     >
       {options.map(o => (
@@ -298,9 +305,12 @@ export default function SettingsPanel({ open, onClose }: Props) {
             </svg>
             <span style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Settings</span>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 20, lineHeight: 1, padding: 4 }}>
-            &#x2715;
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>ESC to close</span>
+            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 20, lineHeight: 1, padding: 4 }}>
+              &#x2715;
+            </button>
+          </div>
         </div>
 
         {/* Scrollable content */}

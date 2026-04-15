@@ -1,7 +1,12 @@
 // Returns proxy URLs for place photos.
 // Pipeline: Google Places → Foursquare → empty array
 
+import { auth } from "@/auth";
+
 export async function GET(req: Request) {
+  const session = await auth();
+  if (!session?.user) return Response.json({ images: [] }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const name     = searchParams.get("name")     ?? "";
   const location = searchParams.get("location") ?? "";

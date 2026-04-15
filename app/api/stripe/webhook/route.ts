@@ -27,7 +27,10 @@ export async function POST(req: Request) {
         if (session.mode !== 'subscription') break;
         const userId = (session as unknown as { subscription_data?: { metadata?: { userId?: string } } }).subscription_data?.metadata?.userId
           ?? session.metadata?.userId;
-        if (!userId) break;
+        if (!userId) {
+          console.warn('checkout.session.completed: missing userId in metadata', { sessionId: session.id });
+          return new Response('Missing userId in metadata', { status: 400 });
+        }
         const sub = await stripe.subscriptions.retrieve(session.subscription as string);
         await prisma.user.update({
           where: { id: userId },
@@ -38,7 +41,10 @@ export async function POST(req: Request) {
       case 'customer.subscription.updated': {
         const sub = event.data.object as Stripe.Subscription;
         const userId = sub.metadata?.userId;
-        if (!userId) break;
+        if (!userId) {
+          console.warn('customer.subscription.updated: missing userId in metadata', { subId: sub.id });
+          return new Response('Missing userId in metadata', { status: 400 });
+        }
         const active = sub.status === 'active' || sub.status === 'trialing';
         const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
         await prisma.user.update({
@@ -53,7 +59,10 @@ export async function POST(req: Request) {
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription;
         const userId = sub.metadata?.userId;
-        if (!userId) break;
+        if (!userId) {
+          console.warn('customer.subscription.deleted: missing userId in metadata', { subId: sub.id });
+          return new Response('Missing userId in metadata', { status: 400 });
+        }
         const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
         await prisma.user.update({
           where: { id: userId },

@@ -174,6 +174,17 @@ export async function POST(req: Request) {
     return new Response("Missing required fields", { status: 400 });
   }
 
+  const nights = parseInt(body.nights, 10);
+  if (isNaN(nights) || nights < 1 || nights > 365) {
+    return new Response("Invalid nights value (must be 1–365)", { status: 400 });
+  }
+  if (body.location.length > 200) {
+    return new Response("Location too long (max 200 characters)", { status: 400 });
+  }
+  if (body.interests && body.interests.length > 1000) {
+    return new Response("Interests too long (max 1000 characters)", { status: 400 });
+  }
+
   const encoder = new TextEncoder();
 
   const readable = new ReadableStream({

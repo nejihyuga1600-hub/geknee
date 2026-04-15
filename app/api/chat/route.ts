@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
+import { auth } from "@/auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -16,6 +17,9 @@ interface ChatBody {
 }
 
 export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+
   let body: ChatBody;
   try {
     body = await req.json();
@@ -23,8 +27,15 @@ export async function POST(req: Request) {
     return new Response("Invalid request body", { status: 400 });
   }
 
-  const { location = "", nights = "", purpose = "", style = "", budget = "" } =
-    body.tripInfo ?? {};
+  const sanitize = (s: string, max = 100) =>
+    String(s).replace(/[\r\n\t]/g, " ").slice(0, max).trim();
+
+  const raw = body.tripInfo ?? {};
+  const location = sanitize(raw.location ?? "");
+  const nights   = sanitize(raw.nights   ?? "", 10);
+  const purpose  = sanitize(raw.purpose  ?? "");
+  const style    = sanitize(raw.style    ?? "");
+  const budget   = sanitize(raw.budget   ?? "");
 
   // Only include itinerary on the first user message — after that the assistant
   // already has context in the conversation history, no need to repeat it.
@@ -80,7 +91,8 @@ Guidelines:
           }
         }
       } catch (err) {
-        console.error("Chat error:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Chat error:", msg);
         controller.enqueue(
           encoder.encode("My magic fizzled for a moment! Please try again.")
         );

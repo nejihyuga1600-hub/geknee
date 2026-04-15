@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { auth } from "@/auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -215,6 +216,9 @@ Requirements:
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
+  const session = await auth();
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const origin      = searchParams.get("origin");
   const destination = searchParams.get("destination");
@@ -246,7 +250,8 @@ export async function GET(req: Request) {
     return Response.json({ prices: aiPrices, source: "ai-estimate" });
 
   } catch (err) {
-    console.error("Flight prices error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Flight prices error:", msg);
     return Response.json({ error: "Failed to get prices" }, { status: 500 });
   }
 }

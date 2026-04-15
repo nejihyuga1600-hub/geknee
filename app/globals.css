@@ -24,3 +24,29 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+
+/* Animation keyframes — centralised here, referenced by components */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes authSpin { to { transform: rotate(360deg); } }
+@keyframes chatSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes geniePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(167, 139, 250, 0); }
+}
+
+/* Accessibility: keyboard focus indicators (WCAG AA) */
+/* Use !important to override inline outline:none on inputs */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.8) !important;
+  outline-offset: 1px !important;
+}
+button:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.8);
+  outline-offset: 2px;
+}

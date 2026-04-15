@@ -32,6 +32,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
+  const [success, setSuccess]   = useState('');
   const [loading, setLoading]   = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +45,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
   useEffect(() => {
     if (!open) {
       setError('');
+      setSuccess('');
       setLoading(false);
     }
   }, [open]);
@@ -87,6 +89,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         setLoading(false);
         return;
       }
+      setSuccess('Account created! Signing in\u2026');
     }
 
     // Sign in with credentials
@@ -152,18 +155,20 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
               {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.08)', border: 'none',
-              width: 32, height: 32, borderRadius: '50%',
-              color: 'rgba(255,255,255,0.6)', fontSize: 16, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {String.fromCodePoint(0x00D7)}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', fontWeight: 500 }}>ESC to close</span>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255,255,255,0.08)', border: 'none',
+                width: 32, height: 32, borderRadius: '50%',
+                color: 'rgba(255,255,255,0.6)', fontSize: 16, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {String.fromCodePoint(0x00D7)}
+            </button>
+          </div>
         </div>
 
         <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -218,6 +223,16 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
               required
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             />
+
+            {success && (
+              <p style={{
+                color: '#34d399', fontSize: 13, margin: 0,
+                background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)',
+                borderRadius: 8, padding: '8px 12px',
+              }}>
+                {success}
+              </p>
+            )}
 
             {error && (
               <p style={{
@@ -283,9 +298,6 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         </div>
       </div>
 
-      <style>{`
-        @keyframes authSpin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

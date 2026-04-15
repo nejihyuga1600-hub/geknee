@@ -1,14 +1,27 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { auth } from '@/auth';
 
 const client = new Anthropic();
 
 export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+
   const form = await req.formData();
   const image = form.get('image') as File | null;
   const prompt = (form.get('prompt') as string | null)
     ?? 'What travel destinations or experiences does this inspire?';
 
   if (!image) return Response.json({ error: 'No image provided' }, { status: 400 });
+
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+  if (!ALLOWED_TYPES.includes(image.type)) {
+    return Response.json({ error: 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.' }, { status: 400 });
+  }
+  if (image.size > MAX_SIZE) {
+    return Response.json({ error: 'Image too large. Maximum size is 5 MB.' }, { status: 400 });
+  }
 
   const bytes = await image.arrayBuffer();
   const base64 = Buffer.from(bytes).toString('base64');
