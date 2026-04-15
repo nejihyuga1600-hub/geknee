@@ -6032,10 +6032,11 @@ function GlobeScene() {
   const [camDist, setCamDist] = useState(30);
   const camDistRef = useRef(30);
 
-  // Signal LocationPage when border data is loaded — delays spinner removal until globe looks complete
+  // Signal LocationPage when border data AND canvas texture are ready — prevents spinner
+  // disappearing before borders are actually painted on the globe surface
   useEffect(() => {
-    if (countries && states) _onGlobeReady?.();
-  }, [countries, states]);
+    if (countries && states && texture) _onGlobeReady?.();
+  }, [countries, states, texture]);
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change
   useEffect(() => {
