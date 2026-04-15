@@ -1226,6 +1226,10 @@ function SectionCard({
 function SummaryContent() {
   const params = useSearchParams();
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768);
+  }, []);
   const { data: session } = useSession();
   const currentUserId = (session?.user as { id?: string })?.id ?? '';
 
@@ -1845,7 +1849,7 @@ function SummaryContent() {
         background: 'radial-gradient(ellipse at 40% 20%, rgba(30,70,200,0.35) 0%, rgba(6,8,22,0.96) 60%, #030510 100%)',
       }} />
 
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1720, margin: '0 auto', padding: '36px 40px 140px' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1720, margin: '0 auto', padding: isMobile ? '16px 14px 120px' : '36px 40px 140px' }}>
 
         {/* Top nav */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
@@ -1874,12 +1878,12 @@ function SummaryContent() {
         {/* Trip header */}
         <div style={{
           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 20, padding: '24px 28px', marginBottom: 28,
+          borderRadius: 20, padding: isMobile ? '16px 16px' : '24px 28px', marginBottom: 28,
         }}>
           <p style={{ color: '#38bdf8', fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 }}>
             Your AI-generated itinerary
           </p>
-          <h1 style={{ color: '#fff', fontSize: 30, fontWeight: 800, marginBottom: 14 }}>{location}</h1>
+          <h1 style={{ color: '#fff', fontSize: isMobile ? 22 : 30, fontWeight: 800, marginBottom: 14 }}>{location}</h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
             {[
               startDate && `${formatDate(startDate)} \u2013 ${formatDate(endDate)}`,
@@ -1984,18 +1988,22 @@ function SummaryContent() {
 
         {/* ── Main tab switcher ─────────────────────────────────────────────── */}
         <div style={{
-          display: 'flex', alignItems: 'center', marginBottom: 20,
+          display: 'flex', alignItems: isMobile ? 'flex-start' : 'center',
+          flexDirection: isMobile ? 'column' : 'row',
+          marginBottom: 20,
           borderBottom: '1px solid rgba(255,255,255,0.08)',
         }}>
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+          <div style={{ display: 'flex', gap: 0, marginBottom: -1, flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
             {(['planning', 'itinerary', 'book', 'files'] as const).map(tab => (
               <button key={tab} onClick={() => setMainTab(tab)} style={{
-                padding: '10px 24px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                padding: isMobile ? '9px 14px' : '10px 24px',
+                fontSize: isMobile ? 12 : 13, fontWeight: 600, cursor: 'pointer',
                 background: 'transparent', border: 'none',
                 borderBottom: `2px solid ${mainTab === tab ? '#38bdf8' : 'transparent'}`,
                 color: mainTab === tab ? '#38bdf8' : 'rgba(255,255,255,0.38)',
                 transition: 'color 0.15s, border-color 0.15s',
+                flex: isMobile ? '1 0 auto' : undefined,
               }}>
                 {tab === 'itinerary'
                   ? String.fromCodePoint(0x1F5FA) + '\u00A0 Itinerary'
@@ -2017,7 +2025,7 @@ function SummaryContent() {
           </div>
 
           {/* Right side — optimize button + last optimized timestamp (itinerary tab only) */}
-          {mainTab === 'itinerary' && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 4 }}>
+          {mainTab === 'itinerary' && <div style={{ marginLeft: isMobile ? 0 : 'auto', marginTop: isMobile ? 6 : 0, display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 4 }}>
             {lastOptimized && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,

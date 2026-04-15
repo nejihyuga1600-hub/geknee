@@ -6407,10 +6407,11 @@ export default function LocationPage() {
       </div>
 
       {/* Auth / user area — top-right corner, above canvas (zIndex 20) */}
-      <div style={{ position: "fixed", top: 18, right: 20, zIndex: 20, display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ position: "fixed", top: 18, right: 20, zIndex: 20, display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
         {session?.user ? (
           <>
             {/* Monument Shop button */}
+            {!isMobile && (
             <button
               onClick={() => setShopOpen(true)}
               style={{
@@ -6424,6 +6425,7 @@ export default function LocationPage() {
             >
               {String.fromCodePoint(0x1F3DB)} Collection
             </button>
+            )}
 
             {/* Go Pro button */}
             <button
@@ -6432,12 +6434,12 @@ export default function LocationPage() {
                 background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
                 border: "none", borderRadius: 10,
                 color: "#fff", fontSize: 12, fontWeight: 700,
-                padding: "8px 14px", cursor: "pointer",
+                padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 6,
                 boxShadow: "0 2px 12px rgba(99,102,241,0.4)",
               }}
             >
-              {String.fromCodePoint(0x2728)} Go Pro
+              {String.fromCodePoint(0x2728)} {isMobile ? "Pro" : "Go Pro"}
             </button>
 
             {/* Trips & Friends button */}
@@ -6446,7 +6448,7 @@ export default function LocationPage() {
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(99,102,241,0.35)",
                 backdropFilter: "blur(12px)", borderRadius: 10, color: "#c7d2fe",
-                fontSize: 12, fontWeight: 600, padding: "8px 14px", cursor: "pointer",
+                fontSize: 12, fontWeight: 600, padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 6,
                 boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
                 position: "relative",
@@ -6456,7 +6458,7 @@ export default function LocationPage() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
               </svg>
-              Trips &amp; Friends
+              {isMobile ? "Trips" : "Trips \u0026 Friends"}
               {notifUnread > 0 && (
                 <span style={{
                   position: "absolute", top: -6, right: -6,
