@@ -43,6 +43,7 @@ model User {
   notifications          Notification[]
   collectedMonuments     CollectedMonument[]
   completedMissions      CompletedMission[]
+  tokenUsage             DailyTokenUsage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -175,4 +176,19 @@ model Friendship {
   friend User @relation("ReceivedRequests", fields: [friendId], references: [id], onDelete: Cascade)
 
   @@unique([userId, friendId])
+}
+
+// ── Claude API token usage tracking ──────────────────────────────────────────
+
+model DailyTokenUsage {
+  userId       String
+  date         String            // "2026-04-15" UTC
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  callCount    Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, date])
 }

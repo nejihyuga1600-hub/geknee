@@ -1346,7 +1346,7 @@ function GlbModel({ path, scale }: { path: string; scale: number }) {
 // ─── Hover label ──────────────────────────────────────────────────────────────
 type LmInfo = { name: string; location: string; fact: string };
 
-function LandmarkLabel({ info }: { info: LmInfo }) {
+function LandmarkLabel({ info, planUrl }: { info: LmInfo; planUrl?: string }) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1369,7 +1369,7 @@ function LandmarkLabel({ info }: { info: LmInfo }) {
       width: "240px",
       boxShadow: "0 0 22px rgba(60,180,255,0.55), 0 8px 28px rgba(0,0,0,0.5)",
       fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
-      pointerEvents: "none",
+      pointerEvents: planUrl ? "auto" : "none",
       userSelect: "none",
     }}>
       {imgUrl && (
@@ -1399,6 +1399,22 @@ function LandmarkLabel({ info }: { info: LmInfo }) {
         }}>
           {info.fact}
         </div>
+
+        {planUrl && (
+          <a
+            href={planUrl}
+            style={{
+              display: "block", marginTop: "10px",
+              padding: "8px 0", borderRadius: "10px", border: "none",
+              background: "linear-gradient(135deg,#06b6d4,#6366f1)",
+              color: "#fff", fontSize: "11px", fontWeight: 700,
+              textAlign: "center", textDecoration: "none",
+              cursor: "pointer",
+            }}
+          >
+            Ready to plan your trip? {String.fromCodePoint(0x27A4)}
+          </a>
+        )}
       </div>
 
       <div style={{
@@ -1421,6 +1437,8 @@ function LandmarkLabel({ info }: { info: LmInfo }) {
 // ─── Globe-click navigation bridge
 let _lmNav: ((loc: string) => void) | null = null;
 function _setLmNav(fn: (loc: string) => void) { _lmNav = fn; }
+let _lmNavDirect: ((loc: string) => void) | null = null;
+function _setLmNavDirect(fn: (loc: string) => void) { _lmNavDirect = fn; }
 let _globeClick: (() => void) | null = null;
 function _setGlobeClick(fn: () => void) { _globeClick = fn; }
 
@@ -1428,10 +1446,38 @@ function _setGlobeClick(fn: () => void) { _globeClick = fn; }
 let _onGlobeReady: (() => void) | null = null;
 
 function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered]         = useState(false);
+  const [mobileActive, setMobileActive] = useState(false);
   const model   = mk ? MODELS[mk] : undefined;
   const density = LM_DENSITY.get(p) ?? 1;
   const effS    = s * density;
+
+  // Dismiss when another mobile city card is activated
+  const posKey = `${p.pos[0]},${p.pos[1]},${p.pos[2]}`;
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const key = (e as CustomEvent<{ key: string }>).detail.key;
+      if (key !== posKey) setMobileActive(false);
+    };
+    window.addEventListener('geknee:mobilecity', handler);
+    return () => window.removeEventListener('geknee:mobilecity', handler);
+  }, [posKey]);
+
+  const handleClick = (e: React.PointerEvent<THREE.Mesh>) => {
+    e.stopPropagation();
+    if (!info) return;
+    if (isMobile) {
+      const key = posKey;
+      if (!mobileActive) {
+        window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key } }));
+      }
+      setMobileActive(prev => !prev);
+    } else {
+      _lmNav?.(info.name);
+    }
+  };
+
+  const showLabel = isMobile ? mobileActive : hovered;
 
   return (
     <group position={p.pos} quaternion={p.q}>
@@ -1452,22 +1498,25 @@ function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?:
           position={[0, 0.5, 0]}
           onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = "pointer"; }}
           onPointerOut={(e)  => { e.stopPropagation(); setHovered(false); document.body.style.cursor = "auto"; }}
-          onClick={(e)       => { e.stopPropagation(); if (info) _lmNav?.(info.name); }}
+          onClick={handleClick as any}
         >
           <sphereGeometry args={[0.7, 6, 4]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </group>
 
-      {hovered && info && (
+      {showLabel && info && (
         <Html
           center
           position={[0, effS * 1.8 + 0.3, 0]}
           distanceFactor={9}
           zIndexRange={[200, 100]}
-          style={{ pointerEvents: "none" }}
+          style={{ pointerEvents: mobileActive ? "auto" : "none" }}
         >
-          <LandmarkLabel info={info} />
+          <LandmarkLabel
+            info={info}
+            planUrl={mobileActive ? `/plan/style?location=${encodeURIComponent(info.name)}` : undefined}
+          />
         </Html>
       )}
     </group>
@@ -4686,6 +4735,176 @@ const HIGH_ELEVATION_COUNTRIES = new Set([
   "China", "India", "Mexico", "Chile", "Argentina",
 ]);
 
+// Cache for geo (country/state) info cards
+const _geoCardCache = new Map<string, { imgUrl: string | null; fact: string }>();
+
+// Interactive country/state label that shows a Wikipedia info card on hover.
+// Used for: countries without state subdivisions, and states without city labels.
+function GeoInfoLabel({ name, pos, orientation, fontSize, kind }: {
+  name: string;
+  pos: [number, number, number];
+  orientation: THREE.Quaternion;
+  fontSize: number;
+  kind: "country" | "state";
+}) {
+  const [hovered, setHovered]           = useState(false);
+  const [mobileActive, setMobileActive] = useState(false);
+  const [imgUrl, setImgUrl]             = useState<string | null>(null);
+  const [fact, setFact]                 = useState<string>("");
+  const fetchedRef = useRef(false);
+
+  // Dismiss when another geo card is activated on mobile
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const key = (e as CustomEvent<{ key: string }>).detail.key;
+      if (key !== `geo:${name}`) setMobileActive(false);
+    };
+    window.addEventListener("geknee:mobilegeo", handler);
+    return () => window.removeEventListener("geknee:mobilegeo", handler);
+  }, [name]);
+
+  const showCard = isMobile ? mobileActive : hovered;
+
+  useEffect(() => {
+    if (!showCard || fetchedRef.current) return;
+    if (_geoCardCache.has(name)) {
+      const c = _geoCardCache.get(name)!;
+      setImgUrl(c.imgUrl);
+      if (c.fact) setFact(c.fact);
+      fetchedRef.current = true;
+      return;
+    }
+    fetchedRef.current = true;
+    const slug = encodeURIComponent(name.replace(/ /g, "_"));
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
+      .then(r => r.ok ? r.json() : null).catch(() => null)
+      .then(summary => {
+        if (!summary) { _geoCardCache.set(name, { imgUrl: null, fact: "" }); return; }
+        const img: string | null = summary.thumbnail?.source ?? null;
+        const extract: string = summary.extract ?? "";
+        const resolved = extract ? pickBestFact(extract) : (summary.description || "");
+        _geoCardCache.set(name, { imgUrl: img, fact: resolved });
+        setImgUrl(img);
+        if (resolved) setFact(resolved);
+      }).catch(() => {});
+  }, [showCard, name]);
+
+  const handleClick = (e: any) => {
+    e.stopPropagation();
+    if (isMobile) {
+      const key = `geo:${name}`;
+      if (!mobileActive) {
+        window.dispatchEvent(new CustomEvent("geknee:mobilegeo", { detail: { key } }));
+      }
+      setMobileActive(prev => !prev);
+    } else {
+      _lmNav?.(name);
+    }
+  };
+
+  const cardWidth = kind === "country" ? "130px" : "115px";
+
+  return (
+    <group position={pos} quaternion={orientation}>
+      <Text
+        fontSize={fontSize}
+        color={(hovered || mobileActive) ? "#ffe066" : kind === "country" ? "#ffffff" : "#b8ccff"}
+        outlineWidth={kind === "country" ? 0.013 : 0.008}
+        outlineColor="#000000"
+        anchorX="center"
+        anchorY="middle"
+        letterSpacing={kind === "country" ? 0.10 : 0.04}
+        sdfGlyphSize={64}
+        material-side={THREE.FrontSide}
+        material-depthTest
+      >
+        {name.toUpperCase()}
+      </Text>
+
+      {showCard && (
+        <Html
+          center
+          position={[0, 0.75, 0]}
+          distanceFactor={9}
+          zIndexRange={[300, 200]}
+          style={{ pointerEvents: mobileActive ? "auto" : "none" }}
+        >
+          <div style={{
+            position: "relative",
+            background: "linear-gradient(150deg, #0e2a6e 0%, #061840 100%)",
+            border: "1.5px solid #50c8ff",
+            borderRadius: "10px",
+            overflow: "hidden",
+            width: cardWidth,
+            boxShadow: "0 0 14px rgba(60,180,255,0.4), 0 4px 14px rgba(0,0,0,0.5)",
+            fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
+            pointerEvents: mobileActive ? "auto" : "none",
+          }}>
+            {imgUrl && (
+              <img src={imgUrl} alt={name} style={{
+                display: "block", width: "100%", height: "60px",
+                objectFit: "cover", borderBottom: "1px solid #50c8ff",
+              }} />
+            )}
+            <div style={{ padding: "5px 7px 7px", textAlign: "center" }}>
+              <div style={{
+                fontSize: "7px", fontWeight: 800, color: "#ffffff",
+                letterSpacing: "0.02em", marginBottom: "3px",
+                textShadow: "0 0 8px rgba(100,210,255,0.9)",
+              }}>{name}</div>
+              <div style={{
+                fontSize: "6px", color: "#c0ecff", lineHeight: 1.5,
+                borderTop: imgUrl ? "1px solid rgba(80,200,255,0.2)" : "none",
+                paddingTop: imgUrl ? "4px" : 0,
+                textAlign: "left",
+              }}>
+                {fact || "Tap to explore!"}
+              </div>
+              {mobileActive && (
+                <a
+                  href={`/plan/style?location=${encodeURIComponent(name)}`}
+                  style={{
+                    display: "block", marginTop: "5px",
+                    padding: "5px 0", borderRadius: "6px",
+                    background: "linear-gradient(135deg,#06b6d4,#6366f1)",
+                    color: "#fff", fontSize: "6px", fontWeight: 700,
+                    textAlign: "center", textDecoration: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Plan my trip {String.fromCodePoint(0x27A4)}
+                </a>
+              )}
+            </div>
+            <div style={{
+              position: "absolute", bottom: "-7px", left: "50%", transform: "translateX(-50%)",
+              width: 0, height: 0,
+              borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+              borderTop: "7px solid #50c8ff",
+            }} />
+            <div style={{
+              position: "absolute", bottom: "-5px", left: "50%", transform: "translateX(-50%)",
+              width: 0, height: 0,
+              borderLeft: "4px solid transparent", borderRight: "4px solid transparent",
+              borderTop: "6px solid #061840",
+            }} />
+          </div>
+        </Html>
+      )}
+
+      <sprite
+        scale={[kind === "country" ? 1.8 : 0.9, kind === "country" ? 0.28 : 0.18, 1]}
+        renderOrder={2}
+        onClick={handleClick}
+        onPointerOver={(e: any) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
+        onPointerOut={(e: any) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = "auto"; }}
+      >
+        <spriteMaterial transparent opacity={0} depthTest={false} />
+      </sprite>
+    </group>
+  );
+}
+
 // --- Country + State labels ----------------------------------------------------
 function GeoLabels({ countries, states, zoomLevel }: {
   countries:  GeoCollection | null;
@@ -4696,6 +4915,7 @@ function GeoLabels({ countries, states, zoomLevel }: {
     const result: Array<{
       key: string; name: string; pos: [number, number, number];
       kind: "country" | "state"; orientation: THREE.Quaternion;
+      isInfoLabel: boolean;
     }> = [];
 
     if (countries) {
@@ -4706,7 +4926,9 @@ function GeoLabels({ countries, states, zoomLevel }: {
         if (!c) continue;
         const labelR = R * (HIGH_ELEVATION_COUNTRIES.has(name) ? 1.075 : 1.019);
         const cPos = geoPos(c[1], c[0], labelR);
-        result.push({ key: `c-${name}`, name, pos: cPos, kind: "country", orientation: computeOrientation(cPos) });
+        // Countries without state subdivisions become interactive info labels
+        const isInfoLabel = !STATE_COUNTRIES.has(name);
+        result.push({ key: `c-${name}`, name, pos: cPos, kind: "country", orientation: computeOrientation(cPos), isInfoLabel });
       }
     }
 
@@ -4741,7 +4963,9 @@ function GeoLabels({ countries, states, zoomLevel }: {
         const isNorthAmerica = admin === "United States of America" || admin === "Canada" || admin === "Mexico";
         if (!isNorthAmerica && Math.max(maxLon - minLon, maxLat - minLat) < 2.5) continue;
         const sPos = geoPos(c[1], c[0], R * 1.019);
-        result.push({ key: `s-${admin}-${name}`, name, pos: sPos, kind: "state", orientation: computeOrientation(sPos) });
+        // States with no city label in their bounding box become interactive info labels
+        const hasCity = CITIES.some(city => city.lat >= minLat && city.lat <= maxLat && city.lon >= minLon && city.lon <= maxLon);
+        result.push({ key: `s-${admin}-${name}`, name, pos: sPos, kind: "state", orientation: computeOrientation(sPos), isInfoLabel: !hasCity });
       }
     }
     return result;
@@ -4772,24 +4996,28 @@ function GeoLabels({ countries, states, zoomLevel }: {
 
   return (
     <>
-      {visibleWithSize.map(({ key, name, pos, kind, orientation, fontSize }) => (
-        <Text
-          key={key}
-          position={pos}
-          quaternion={orientation}
-          fontSize={fontSize}
-          color={kind === "country" ? "#ffffff" : "#b8ccff"}
-          outlineWidth={kind === "country" ? 0.013 : 0.008}
-          outlineColor="#000000"
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={kind === "country" ? 0.10 : 0.04}
-          sdfGlyphSize={64}
-          material-side={THREE.FrontSide}
-          material-depthTest
-        >
-          {name.toUpperCase()}
-        </Text>
+      {visibleWithSize.map(({ key, name, pos, kind, orientation, fontSize, isInfoLabel }) => (
+        isInfoLabel
+          ? <GeoInfoLabel key={key} name={name} pos={pos} orientation={orientation} fontSize={fontSize} kind={kind} />
+          : (
+            <Text
+              key={key}
+              position={pos}
+              quaternion={orientation}
+              fontSize={fontSize}
+              color={kind === "country" ? "#ffffff" : "#b8ccff"}
+              outlineWidth={kind === "country" ? 0.013 : 0.008}
+              outlineColor="#000000"
+              anchorX="center"
+              anchorY="middle"
+              letterSpacing={kind === "country" ? 0.10 : 0.04}
+              sdfGlyphSize={64}
+              material-side={THREE.FrontSide}
+              material-depthTest
+            >
+              {name.toUpperCase()}
+            </Text>
+          )
       ))}
     </>
   );
@@ -5617,13 +5845,26 @@ function CityLabel({ n, pos, orientation, fontSize }: {
   orientation: THREE.Quaternion;
   fontSize: number;
 }) {
-  const [hovered,  setHovered] = useState(false);
-  const [imgUrl,   setImgUrl]  = useState<string | null>(null);
-  const [fact,     setFact]    = useState<string>(CITY_FACTS[n] ?? "");
+  const [hovered,      setHovered]      = useState(false);
+  const [mobileActive, setMobileActive] = useState(false);
+  const [imgUrl,       setImgUrl]       = useState<string | null>(null);
+  const [fact,         setFact]         = useState<string>(CITY_FACTS[n] ?? "");
   const fetchedRef = useRef(false);
 
+  // Dismiss when another mobile city card is activated
   useEffect(() => {
-    if (!hovered || fetchedRef.current) return;
+    const handler = (e: Event) => {
+      const key = (e as CustomEvent<{ key: string }>).detail.key;
+      if (key !== `city:${n}`) setMobileActive(false);
+    };
+    window.addEventListener('geknee:mobilecity', handler);
+    return () => window.removeEventListener('geknee:mobilecity', handler);
+  }, [n]);
+
+  const showCard = isMobile ? mobileActive : hovered;
+
+  useEffect(() => {
+    if (!showCard || fetchedRef.current) return;
     // Load from cache immediately if available
     if (_cityCardCache.has(n)) {
       const c = _cityCardCache.get(n)!;
@@ -5653,13 +5894,26 @@ function CityLabel({ n, pos, orientation, fontSize }: {
         if (resolved) setFact(resolved);
       }).catch(() => {});
     // No cleanup cancel — let fetch always complete so cache is populated
-  }, [hovered, n]);
+  }, [showCard, n]);
+
+  const handleClick = (e: any) => {
+    e.stopPropagation();
+    if (isMobile) {
+      const key = `city:${n}`;
+      if (!mobileActive) {
+        window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key } }));
+      }
+      setMobileActive(prev => !prev);
+    } else {
+      _lmNav?.(n);
+    }
+  };
 
   return (
     <group position={pos} quaternion={orientation}>
       <Text
         fontSize={fontSize}
-        color={hovered ? "#ffffff" : "#c8d8ff"}
+        color={(hovered || mobileActive) ? "#ffffff" : "#c8d8ff"}
         outlineWidth={0.006}
         outlineColor="#111111"
         anchorX="center"
@@ -5674,13 +5928,13 @@ function CityLabel({ n, pos, orientation, fontSize }: {
         {`\u2022 ${n}`}
       </Text>
 
-      {hovered && (
+      {showCard && (
         <Html
           center
           position={[0, 0.75, 0]}
           distanceFactor={9}
           zIndexRange={[300, 200]}
-          style={{ pointerEvents: "none" }}
+          style={{ pointerEvents: mobileActive ? "auto" : "none" }}
         >
           <div style={{
             position: "relative",
@@ -5691,6 +5945,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
             width: "115px",
             boxShadow: "0 0 14px rgba(60,180,255,0.4), 0 4px 14px rgba(0,0,0,0.5)",
             fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
+            pointerEvents: mobileActive ? "auto" : "none",
           }}>
             {imgUrl && (
               <img src={imgUrl} alt={n} style={{
@@ -5710,8 +5965,23 @@ function CityLabel({ n, pos, orientation, fontSize }: {
                 paddingTop: imgUrl ? "4px" : 0,
                 textAlign: "left",
               }}>
-                {fact || "Click to explore!"}
+                {fact || "Tap to explore!"}
               </div>
+              {mobileActive && (
+                <a
+                  href={`/plan/style?location=${encodeURIComponent(n)}`}
+                  style={{
+                    display: "block", marginTop: "5px",
+                    padding: "5px 0", borderRadius: "6px",
+                    background: "linear-gradient(135deg,#06b6d4,#6366f1)",
+                    color: "#fff", fontSize: "6px", fontWeight: 700,
+                    textAlign: "center", textDecoration: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Plan my trip {String.fromCodePoint(0x27A4)}
+                </a>
+              )}
             </div>
             <div style={{
               position: "absolute", bottom: "-7px", left: "50%", transform: "translateX(-50%)",
@@ -5732,7 +6002,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
       <sprite
         scale={[0.65, 0.16, 1]}
         renderOrder={2}
-        onClick={(e: any) => { e.stopPropagation(); _lmNav?.(n); }}
+        onClick={handleClick}
         onPointerOver={(e: any) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={(e: any) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = "auto"; }}
       >
@@ -5865,7 +6135,7 @@ function CitySelectionPin({
 
   const handleOver  = (e: any) => { e.stopPropagation(); hovRef.current = true;  setHovered(true);  document.body.style.cursor = 'pointer'; };
   const handleOut   = (e: any) => { e.stopPropagation(); hovRef.current = false; setHovered(false); document.body.style.cursor = 'auto'; };
-  const handleClick = (e: any) => { e.stopPropagation(); _lmNav?.(city.n); };
+  const handleClick = (e: any) => { e.stopPropagation(); isMobile ? _lmNavDirect?.(city.n) : _lmNav?.(city.n); };
 
   return (
     <group position={pos} quaternion={q}>
@@ -6352,6 +6622,9 @@ export default function LocationPage() {
       setLocation(loc);
       window.dispatchEvent(new CustomEvent('geknee:globeselect', { detail: { location: loc } }));
     });
+    _setLmNavDirect((loc: string) => {
+      router.push(`/plan/style?location=${encodeURIComponent(loc)}`);
+    });
     _setGlobeClick(() => {
       window.dispatchEvent(new CustomEvent('geknee:globeselect', { detail: { location: '' } }));
     });
@@ -6448,22 +6721,23 @@ export default function LocationPage() {
       </div>
 
       {/* Auth / user area — top-right corner, above canvas (zIndex 20) */}
-      <div style={{ position: "fixed", top: 18, right: 20, zIndex: 20, display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
+      <div style={{ position: "fixed", top: 18, right: 14, zIndex: 20, display: "flex", alignItems: "center", gap: isMobile ? 5 : 8 }}>
         {session?.user ? (
           <>
             {/* Monument Shop button */}
             <button
               onClick={() => setShopOpen(true)}
+              title="Monument Collection"
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(139,92,246,0.4)",
                 backdropFilter: "blur(12px)", borderRadius: 10,
-                color: "#c4b5fd", fontSize: 12, fontWeight: 700,
-                padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6,
+                color: "#c4b5fd", fontSize: isMobile ? 16 : 12, fontWeight: 700,
+                padding: isMobile ? "6px 8px" : "8px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: isMobile ? 0 : 6,
                 boxShadow: "0 2px 12px rgba(139,92,246,0.2)",
               }}
             >
-              {String.fromCodePoint(0x1F3DB)} {isMobile ? "Shop" : "Collection"}
+              {String.fromCodePoint(0x1F3DB)}{!isMobile && " Collection"}
             </button>
 
             {/* Go Pro button */}
@@ -6484,20 +6758,22 @@ export default function LocationPage() {
             {/* Trips & Friends button */}
             <button
               onClick={() => { setPanelOpen(true); setNotifUnread(0); }}
+              title="Trips &amp; Friends"
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(99,102,241,0.35)",
                 backdropFilter: "blur(12px)", borderRadius: 10, color: "#c7d2fe",
-                fontSize: 12, fontWeight: 600, padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6,
+                fontSize: isMobile ? 16 : 12, fontWeight: 600,
+                padding: isMobile ? "6px 8px" : "8px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: isMobile ? 0 : 6,
                 boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
                 position: "relative",
               }}
             >
               {/* Suitcase icon */}
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width={isMobile ? 17 : 13} height={isMobile ? 17 : 13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
               </svg>
-              {isMobile ? "Trips" : "Trips \u0026 Friends"}
+              {!isMobile && "Trips \u0026 Friends"}
               {notifUnread > 0 && (
                 <span style={{
                   position: "absolute", top: -6, right: -6,
@@ -6521,10 +6797,10 @@ export default function LocationPage() {
                 <img
                   src={session.user.image}
                   alt={session.user.name ?? "avatar"}
-                  style={{ width: 34, height: 34, borderRadius: "50%", border: "2px solid rgba(99,102,241,0.5)" }}
+                  style={{ width: isMobile ? 30 : 34, height: isMobile ? 30 : 34, borderRadius: "50%", border: "2px solid rgba(99,102,241,0.5)" }}
                 />
               ) : (
-                <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(99,102,241,0.25)", border: "2px solid rgba(99,102,241,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#a5b4fc" }}>
+                <div style={{ width: isMobile ? 30 : 34, height: isMobile ? 30 : 34, borderRadius: "50%", background: "rgba(99,102,241,0.25)", border: "2px solid rgba(99,102,241,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 12 : 13, fontWeight: 700, color: "#a5b4fc" }}>
                   {(session.user.name ?? session.user.email ?? "?")[0].toUpperCase()}
                 </div>
               )}

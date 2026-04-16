@@ -75,13 +75,15 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
 
+  // Token tracking
+  const [lastTokens,  setLastTokens]  = useState<{i:number;o:number}|null>(null);
+  const [todayStats,  setTodayStats]  = useState<{costUsd:number;pct:number|null;callCount:number}|null>(null);
+
   // Destination input (globe page only)
   const [destInput,     setDestInput]     = useState('');
   const [destLoading,   setDestLoading]   = useState(false);
   const [destError,     setDestError]     = useState('');
   const [destFlying,    setDestFlying]    = useState(''); // city name while animating
-  const [confirming,    setConfirming]    = useState(''); // city name waiting for confirmation
-  const [confirmLoc,    setConfirmLoc]    = useState(''); // encoded location for push
   const destRef = useRef<HTMLInputElement>(null);
 
   // Inspiration image/video upload
@@ -97,27 +99,32 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   useEffect(() => { if (open && ctx.page !== 'globe') inputRef.current?.focus(); }, [open, ctx.page]);
   useEffect(() => { if (open && ctx.page === 'globe') destRef.current?.focus(); }, [open, ctx.page]);
 
+  // Fetch today's token usage when chat opens
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/token-usage')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setTodayStats({ costUsd: d.costUsd, pct: d.pct, callCount: d.callCount }))
+      .catch(() => {});
+  }, [open]);
+
   // Listen for globe / landmark clicks from the 3D canvas
   useEffect(() => {
     if (ctx.page !== 'globe') return;
     const handler = (e: Event) => {
       const loc = (e as CustomEvent<{ location: string }>).detail.location;
-      setOpen(true);
-      setDestError('');
       if (loc) {
-        setConfirming(loc);
-        setConfirmLoc(encodeURIComponent(loc));
-        setDestInput('');
+        router.push(`/plan/style?location=${encodeURIComponent(loc)}`);
       } else {
-        setConfirming('');
-        setConfirmLoc('');
+        setOpen(true);
+        setDestError('');
         setDestInput('');
         setTimeout(() => destRef.current?.focus(), 80);
       }
     };
     window.addEventListener('geknee:globeselect', handler);
     return () => window.removeEventListener('geknee:globeselect', handler);
-  }, [ctx.page]);
+  }, [ctx.page, router]);
 
   const handleDest = useCallback(async () => {
     const city = destInput.trim();
@@ -138,13 +145,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
       flyToGlobe(lat, lon, () => {
         // Phase 2: zoom camera in close enough to show city labels
         zoomCamera(13, () => {
-          setDestFlying('');
-          setDestLoading(false);
-          setConfirming(city);
-          setConfirmLoc(encodeURIComponent(city));
-          setOpen(true);
-          setDestInput('');
-          setTimeout(() => destRef.current?.focus(), 80);
+          router.push(`/plan/style?location=${encodeURIComponent(city)}`);
         });
       });
     } catch {
@@ -264,6 +265,21 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
         acc += dec.decode(value, { stream: true });
         setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: acc }]);
       }
+      // Extract token sentinel (\x1F{"i":N,"o":N}) from end of stream
+      const sepIdx = acc.indexOf('\x1F');
+      if (sepIdx !== -1) {
+        try {
+          const tok = JSON.parse(acc.slice(sepIdx + 1)) as {i:number;o:number};
+          setLastTokens(tok);
+          acc = acc.slice(0, sepIdx);
+          setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: acc }]);
+        } catch { /* ignore malformed sentinel */ }
+        // Refresh daily totals
+        fetch('/api/token-usage')
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d && setTodayStats({ costUsd: d.costUsd, pct: d.pct, callCount: d.callCount }))
+          .catch(() => {});
+      }
     } catch {
       setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: 'My magic fizzled! Please try again.' }]);
     } finally {
@@ -316,6 +332,15 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
                 >
                   <GenieAvatar id={genieId} size={34} />
                 </button>
+                {/* Today's token cost summary */}
+                {todayStats && (
+                  <span title={`${todayStats.callCount} API calls today`} style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.03em', lineHeight: 1.2 }}>
+                    Today: ${todayStats.costUsd.toFixed(4)}
+                    {todayStats.pct !== null && (
+                      <> · <span style={{ color: todayStats.pct > 80 ? '#f87171' : todayStats.pct > 50 ? '#fbbf24' : 'rgba(167,139,250,0.7)' }}>{todayStats.pct}%</span></>
+                    )}
+                  </span>
+                )}
               </div>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>
                 {String.fromCodePoint(0x00D7)}
@@ -329,38 +354,6 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
                   /* ── Animating to location ── */
                   <div style={{ textAlign: 'center', color: '#a78bfa', fontSize: 13, fontWeight: 600, padding: '6px 0' }}>
                     {String.fromCodePoint(0x1F30D)} Flying to {destFlying}...
-                  </div>
-                ) : confirming ? (
-                  /* ── Confirmation step ── */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: '0.04em', textAlign: 'center' }}>
-                      READY TO PLAN YOUR TRIP?
-                    </div>
-                    <div style={{ textAlign: 'center', color: '#e2e8f0', fontSize: 15, fontWeight: 700 }}>
-                      {confirming}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => router.push(`/plan/style?location=${confirmLoc}`)}
-                        style={{
-                          flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
-                          background: 'linear-gradient(135deg,#06b6d4,#6366f1)', color: '#fff',
-                          fontSize: 13, fontWeight: 700,
-                        }}
-                      >
-                        Yes, let&apos;s go! {String.fromCodePoint(0x27A4)}
-                      </button>
-                      <button
-                        onClick={() => { setConfirming(''); setConfirmLoc(''); setDestInput(''); setDestError(''); zoomCamera(26); }}
-                        style={{
-                          padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)',
-                          cursor: 'pointer', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)',
-                          fontSize: 12,
-                        }}
-                      >
-                        Change
-                      </button>
-                    </div>
                   </div>
                 ) : (
                   /* ── Default destination input ── */
@@ -434,25 +427,40 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
                   </div>
                 );
               })()}
-              {messages.map((msg, i) => (
-                <div key={i} style={{
-                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '88%', padding: '9px 13px',
-                  borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: msg.role === 'user'
-                    ? 'linear-gradient(135deg,rgba(56,189,248,0.2),rgba(129,140,248,0.2))'
-                    : 'rgba(255,255,255,0.07)',
-                  border: msg.role === 'user'
-                    ? '1px solid rgba(56,189,248,0.3)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  color: '#e2e8f0', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
-                }}>
-                  {msg.content}
-                  {i === messages.length - 1 && msg.role === 'assistant' && streaming && (
-                    <span style={{ display: 'inline-block', width: 2, height: 12, background: '#a78bfa', marginLeft: 2, animation: 'blink 0.9s step-end infinite', verticalAlign: 'text-bottom' }} />
-                  )}
-                </div>
-              ))}
+              {messages.map((msg, i) => {
+                const isLastAssistant = i === messages.length - 1 && msg.role === 'assistant';
+                return (
+                  <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
+                    <div style={{
+                      padding: '9px 13px',
+                      borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      background: msg.role === 'user'
+                        ? 'linear-gradient(135deg,rgba(56,189,248,0.2),rgba(129,140,248,0.2))'
+                        : 'rgba(255,255,255,0.07)',
+                      border: msg.role === 'user'
+                        ? '1px solid rgba(56,189,248,0.3)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      color: '#e2e8f0', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                      {isLastAssistant && streaming && (
+                        <span style={{ display: 'inline-block', width: 2, height: 12, background: '#a78bfa', marginLeft: 2, animation: 'blink 0.9s step-end infinite', verticalAlign: 'text-bottom' }} />
+                      )}
+                    </div>
+                    {/* Token badge on completed assistant messages */}
+                    {isLastAssistant && !streaming && lastTokens && (
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 3, paddingLeft: 4, letterSpacing: '0.03em' }}>
+                        {lastTokens.i.toLocaleString()} in · {lastTokens.o.toLocaleString()} out
+                        {todayStats?.pct != null && (
+                          <span style={{ marginLeft: 6, color: todayStats.pct > 80 ? '#f87171' : todayStats.pct > 50 ? '#fbbf24' : 'rgba(167,139,250,0.6)' }}>
+                            · {todayStats.pct}% of daily budget
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div ref={endRef} />
             </div>
 

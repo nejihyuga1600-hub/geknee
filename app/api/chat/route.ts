@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
 import { auth } from "@/auth";
+import { addTokenUsage } from "@/lib/tokenTracking";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -73,6 +74,8 @@ Guidelines:
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
+      let inputTokens  = 0;
+      let outputTokens = 0;
       try {
         const stream = await client.messages.create({
           model: "claude-sonnet-4-6",
@@ -83,13 +86,22 @@ Guidelines:
         });
 
         for await (const event of stream as AsyncIterable<MessageStreamEvent>) {
-          if (
+          if (event.type === "message_start") {
+            inputTokens = event.message.usage.input_tokens;
+          } else if (event.type === "message_delta" && event.usage) {
+            outputTokens = event.usage.output_tokens;
+          } else if (
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           ) {
             controller.enqueue(encoder.encode(event.delta.text));
           }
         }
+
+        // Append token sentinel (parsed by GlobalChat, stripped before display)
+        controller.enqueue(
+          encoder.encode(`\x1F{"i":${inputTokens},"o":${outputTokens}}`)
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("Chat error:", msg);
@@ -98,6 +110,11 @@ Guidelines:
         );
       } finally {
         controller.close();
+        // Save usage in background — don't await to avoid delaying response close
+        if (inputTokens || outputTokens) {
+          const userId = (session.user as { id: string }).id;
+          addTokenUsage(userId, inputTokens, outputTokens).catch(console.error);
+        }
       }
     },
   });
