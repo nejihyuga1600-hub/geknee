@@ -15,42 +15,6 @@ import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlo
 
 const R = 10;
 
-// Hoisted Fresnel atmosphere shader (avoids per-render GC pressure)
-const FRESNEL_VS = `
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-    gl_Position = projectionMatrix * vec4(vPosition, 1.0);
-  }
-`;
-const FRESNEL_FS = `
-  uniform vec3 glowColor;
-  uniform float intensity;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  void main() {
-    vec3 viewDir = normalize(-vPosition);
-    float rim = 1.0 - abs(dot(viewDir, vNormal));
-    float glow = pow(rim, 3.0) * intensity;
-    gl_FragColor = vec4(glowColor, glow);
-  }
-`;
-const FRESNEL_OUTER_FS = `
-  uniform vec3 glowColor;
-  uniform float intensity;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  void main() {
-    vec3 viewDir = normalize(-vPosition);
-    float rim = 1.0 - abs(dot(viewDir, vNormal));
-    float glow = pow(rim, 2.0) * intensity;
-    gl_FragColor = vec4(glowColor, glow);
-  }
-`;
-const INNER_GLOW_UNIFORMS = { glowColor: { value: new THREE.Color("#4488ff") }, intensity: { value: 0.7 } };
-const OUTER_GLOW_UNIFORMS = { glowColor: { value: new THREE.Color("#6699ff") }, intensity: { value: 0.35 } };
 
 // ─── Surface positioning helpers ──────────────────────────────────────────────
 // Converts geographic coordinates to a 3-D position on the globe surface plus
@@ -1404,7 +1368,7 @@ function LandmarkLabel({ info, planUrl }: { info: LmInfo; planUrl?: string }) {
       border: "2.5px solid #50c8ff",
       borderRadius: "18px",
       overflow: "hidden",
-      width: "240px",
+      width: "320px",
       boxShadow: "0 0 22px rgba(60,180,255,0.55), 0 8px 28px rgba(0,0,0,0.5)",
       fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
       pointerEvents: planUrl ? "auto" : "none",
@@ -1412,7 +1376,7 @@ function LandmarkLabel({ info, planUrl }: { info: LmInfo; planUrl?: string }) {
     }}>
       {imgUrl && (
         <img src={imgUrl} alt={info.name} style={{
-          display: "block", width: "100%", height: "130px",
+          display: "block", width: "100%", height: "170px",
           objectFit: "cover", borderBottom: "1.5px solid #50c8ff",
         }} />
       )}
@@ -1547,7 +1511,7 @@ function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?:
         <Html
           center
           position={[0, effS * 1.8 + 0.3, 0]}
-          distanceFactor={9}
+          distanceFactor={7}
           zIndexRange={[200, 100]}
           style={{ pointerEvents: mobileActive ? "auto" : "none" }}
         >
@@ -4840,7 +4804,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind }: {
     }
   };
 
-  const cardWidth = kind === "country" ? "130px" : "115px";
+  const cardWidth = kind === "country" ? "180px" : "160px";
 
   return (
     <group position={pos} quaternion={orientation}>
@@ -4863,7 +4827,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind }: {
         <Html
           center
           position={[0, 0.75, 0]}
-          distanceFactor={9}
+          distanceFactor={7}
           zIndexRange={[300, 200]}
           style={{ pointerEvents: mobileActive ? "auto" : "none" }}
         >
@@ -5970,7 +5934,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
         <Html
           center
           position={[0, 0.75, 0]}
-          distanceFactor={9}
+          distanceFactor={7}
           zIndexRange={[300, 200]}
           style={{ pointerEvents: mobileActive ? "auto" : "none" }}
         >
@@ -5980,7 +5944,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
             border: "1.5px solid #50c8ff",
             borderRadius: "10px",
             overflow: "hidden",
-            width: "115px",
+            width: "160px",
             boxShadow: "0 0 14px rgba(60,180,255,0.4), 0 4px 14px rgba(0,0,0,0.5)",
             fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
             pointerEvents: mobileActive ? "auto" : "none",
@@ -6590,17 +6554,6 @@ function GlobeScene() {
           />
         </Sphere>
 
-        {/* Fresnel atmosphere glow — bright rim, transparent center */}
-        <Sphere args={[R * 1.025, isMobile ? 48 : 96, isMobile ? 48 : 96]}>
-          <shaderMaterial transparent depthWrite={false} side={THREE.BackSide} uniforms={INNER_GLOW_UNIFORMS} vertexShader={FRESNEL_VS} fragmentShader={FRESNEL_FS} />
-        </Sphere>
-
-        {/* Outer atmosphere halo — softer, wider (desktop only) */}
-        {!isMobile && (
-          <Sphere args={[R * 1.09, 64, 64]}>
-            <shaderMaterial transparent depthWrite={false} side={THREE.BackSide} uniforms={OUTER_GLOW_UNIFORMS} vertexShader={FRESNEL_VS} fragmentShader={FRESNEL_OUTER_FS} />
-          </Sphere>
-        )}
 
         {/* Sparkle burst during fly-to animation (desktop only) */}
         {flying && !isMobile && (
