@@ -15,6 +15,43 @@ import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlo
 
 const R = 10;
 
+// Hoisted Fresnel atmosphere shader (avoids per-render GC pressure)
+const FRESNEL_VS = `
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * vec4(vPosition, 1.0);
+  }
+`;
+const FRESNEL_FS = `
+  uniform vec3 glowColor;
+  uniform float intensity;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  void main() {
+    vec3 viewDir = normalize(-vPosition);
+    float rim = 1.0 - abs(dot(viewDir, vNormal));
+    float glow = pow(rim, 3.0) * intensity;
+    gl_FragColor = vec4(glowColor, glow);
+  }
+`;
+const FRESNEL_OUTER_FS = `
+  uniform vec3 glowColor;
+  uniform float intensity;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  void main() {
+    vec3 viewDir = normalize(-vPosition);
+    float rim = 1.0 - abs(dot(viewDir, vNormal));
+    float glow = pow(rim, 2.0) * intensity;
+    gl_FragColor = vec4(glowColor, glow);
+  }
+`;
+const INNER_GLOW_UNIFORMS = { glowColor: { value: new THREE.Color("#4488ff") }, intensity: { value: 0.7 } };
+const OUTER_GLOW_UNIFORMS = { glowColor: { value: new THREE.Color("#6699ff") }, intensity: { value: 0.35 } };
+
 // ─── Surface positioning helpers ──────────────────────────────────────────────
 // Converts geographic coordinates to a 3-D position on the globe surface plus
 // a quaternion that aligns the local Y-axis with the outward radial direction,
@@ -6473,7 +6510,7 @@ function GlobeScene() {
       const duration = 2.4;
       const t = Math.min(elapsed / duration, 1);
       // Damped spring: overshoots slightly then settles — feels organic
-      const ease = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.8);
+      const ease = Math.min(1, 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.8));
       currentQ.current.slerpQuaternions(animRef.current.startQ, animRef.current.targetQ, ease);
       globeRef.current.quaternion.copy(currentQ.current);
       if (t >= 1) { animRef.current.onDone(); animRef.current = null; }
@@ -6554,83 +6591,20 @@ function GlobeScene() {
         </Sphere>
 
         {/* Fresnel atmosphere glow — bright rim, transparent center */}
-        <Sphere args={[R * 1.025, 96, 96]}>
-          <shaderMaterial
-            transparent
-            depthWrite={false}
-            side={THREE.BackSide}
-            uniforms={{
-              glowColor: { value: new THREE.Color("#4488ff") },
-              intensity: { value: 0.7 },
-            }}
-            vertexShader={`
-              varying vec3 vNormal;
-              varying vec3 vPosition;
-              void main() {
-                vNormal = normalize(normalMatrix * normal);
-                vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-                gl_Position = projectionMatrix * vec4(vPosition, 1.0);
-              }
-            `}
-            fragmentShader={`
-              uniform vec3 glowColor;
-              uniform float intensity;
-              varying vec3 vNormal;
-              varying vec3 vPosition;
-              void main() {
-                vec3 viewDir = normalize(-vPosition);
-                float rim = 1.0 - abs(dot(viewDir, vNormal));
-                float glow = pow(rim, 3.0) * intensity;
-                gl_FragColor = vec4(glowColor, glow);
-              }
-            `}
-          />
+        <Sphere args={[R * 1.025, isMobile ? 48 : 96, isMobile ? 48 : 96]}>
+          <shaderMaterial transparent depthWrite={false} side={THREE.BackSide} uniforms={INNER_GLOW_UNIFORMS} vertexShader={FRESNEL_VS} fragmentShader={FRESNEL_FS} />
         </Sphere>
 
-        {/* Outer atmosphere halo — softer, wider */}
-        <Sphere args={[R * 1.09, 64, 64]}>
-          <shaderMaterial
-            transparent
-            depthWrite={false}
-            side={THREE.BackSide}
-            uniforms={{
-              glowColor: { value: new THREE.Color("#6699ff") },
-              intensity: { value: 0.35 },
-            }}
-            vertexShader={`
-              varying vec3 vNormal;
-              varying vec3 vPosition;
-              void main() {
-                vNormal = normalize(normalMatrix * normal);
-                vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-                gl_Position = projectionMatrix * vec4(vPosition, 1.0);
-              }
-            `}
-            fragmentShader={`
-              uniform vec3 glowColor;
-              uniform float intensity;
-              varying vec3 vNormal;
-              varying vec3 vPosition;
-              void main() {
-                vec3 viewDir = normalize(-vPosition);
-                float rim = 1.0 - abs(dot(viewDir, vNormal));
-                float glow = pow(rim, 2.0) * intensity;
-                gl_FragColor = vec4(glowColor, glow);
-              }
-            `}
-          />
-        </Sphere>
+        {/* Outer atmosphere halo — softer, wider (desktop only) */}
+        {!isMobile && (
+          <Sphere args={[R * 1.09, 64, 64]}>
+            <shaderMaterial transparent depthWrite={false} side={THREE.BackSide} uniforms={OUTER_GLOW_UNIFORMS} vertexShader={FRESNEL_VS} fragmentShader={FRESNEL_OUTER_FS} />
+          </Sphere>
+        )}
 
-        {/* Sparkle burst during fly-to animation */}
-        {flying && (
-          <Sparkles
-            count={60}
-            scale={R * 2.5}
-            size={3}
-            speed={1.5}
-            color="#88bbff"
-            opacity={0.6}
-          />
+        {/* Sparkle burst during fly-to animation (desktop only) */}
+        {flying && !isMobile && (
+          <Sparkles count={60} scale={R * 2.5} size={3} speed={1.5} color="#88bbff" opacity={0.6} />
         )}
 
         {/* Animals removed — now unlockable via the Explorer Collection shop */}

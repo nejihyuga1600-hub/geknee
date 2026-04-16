@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 
 type ToastType = 'success' | 'error' | 'info';
 interface Toast { id: number; message: string; type: ToastType; exiting?: boolean }
@@ -8,18 +8,23 @@ interface Toast { id: number; message: string; type: ToastType; exiting?: boolea
 const ToastCtx = createContext<(message: string, type?: ToastType) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
-let _nextId = 0;
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const nextId = useRef(0);
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
 
   const show = useCallback((message: string, type: ToastType = 'info') => {
-    const id = _nextId++;
+    const id = nextId.current++;
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
+      const t2 = setTimeout(() => { setToasts(prev => prev.filter(t => t.id !== id)); timers.current.delete(t2); }, 300);
+      timers.current.add(t2);
+      timers.current.delete(t1);
     }, 3500);
+    timers.current.add(t1);
   }, []);
 
   const colors: Record<ToastType, string> = {
