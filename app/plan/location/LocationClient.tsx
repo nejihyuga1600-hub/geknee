@@ -1359,7 +1359,7 @@ function LandmarkLabel({ info, planUrl }: { info: LmInfo; planUrl?: string }) {
     const slug = encodeURIComponent(info.name.replace(/ /g, "_"));
     fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => { if (!cancelled && d.thumbnail?.source) setImgUrl(wikiHiRes(d.thumbnail.source)); })
+      .then(d => { if (!cancelled && d.thumbnail?.source) setImgUrl(d.thumbnail.source); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [info.name]);
@@ -1378,7 +1378,7 @@ function LandmarkLabel({ info, planUrl }: { info: LmInfo; planUrl?: string }) {
       userSelect: "none",
     }}>
       {imgUrl && (
-        <img src={imgUrl} alt={info.name} style={{
+        <img src={wikiHiRes(imgUrl)} alt={info.name} onError={e => { (e.target as HTMLImageElement).src = imgUrl; }} style={{
           display: "block", width: "100%", height: "130px",
           objectFit: "cover", borderBottom: "1.5px solid #50c8ff",
         }} />
@@ -4785,7 +4785,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind }: {
       .then(r => r.ok ? r.json() : null).catch(() => null)
       .then(summary => {
         if (!summary) { _geoCardCache.set(name, { imgUrl: null, fact: "" }); return; }
-        const img: string | null = summary.thumbnail?.source ? wikiHiRes(summary.thumbnail.source) : null;
+        const img: string | null = summary.thumbnail?.source ?? null;
         const extract: string = summary.extract ?? "";
         const resolved = extract ? pickBestFact(extract) : (summary.description || "");
         _geoCardCache.set(name, { imgUrl: img, fact: resolved });
@@ -4846,7 +4846,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind }: {
             pointerEvents: mobileActive ? "auto" : "none",
           }}>
             {imgUrl && (
-              <img src={imgUrl} alt={name} style={{
+              <img src={wikiHiRes(imgUrl)} alt={name} onError={e => { (e.target as HTMLImageElement).src = imgUrl; }} style={{
                 display: "block", width: "100%", height: "60px",
                 objectFit: "cover", borderBottom: "1px solid #50c8ff",
               }} />
@@ -4976,7 +4976,7 @@ function GeoLabels({ countries, states, zoomLevel }: {
     return result;
   }, [countries, states]);
 
-  const visible = items.filter(it => it.kind === "country" || zoomLevel >= 1);
+  const visible = items.filter(it => it.kind === "country" || zoomLevel >= 2);
 
   // Scale font size down for densely-packed labels: find each label's nearest
   // angular neighbour and shrink proportionally when below the threshold.
@@ -5889,7 +5889,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
           if (CITY_FACTS[n]) setFact(CITY_FACTS[n]);
           return;
         }
-        const img: string | null = summary.thumbnail?.source ? wikiHiRes(summary.thumbnail.source) : null;
+        const img: string | null = summary.thumbnail?.source ?? null;
         // summary.extract is already curated (2-5 clean sentences) — prefer it
         const extract: string = summary.extract ?? "";
         const wikiF = extract ? pickBestFact(extract) : "";
@@ -5953,7 +5953,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
             pointerEvents: mobileActive ? "auto" : "none",
           }}>
             {imgUrl && (
-              <img src={imgUrl} alt={n} style={{
+              <img src={wikiHiRes(imgUrl)} alt={n} onError={e => { (e.target as HTMLImageElement).src = imgUrl; }} style={{
                 display: "block", width: "100%", height: "60px",
                 objectFit: "cover", borderBottom: "1px solid #50c8ff",
               }} />
@@ -6020,7 +6020,7 @@ function CityLabel({ n, pos, orientation, fontSize }: {
 function CityLabels({ camDist }: { camDist: number }) {
   // Dynamic separation threshold: wider zoom = stricter = fewer cities shown.
   // camDist ~21 → thresh ~4°, camDist ~14 → thresh ~1.5°, camDist <12 → ~0.6°
-  const sepThresh = camDist > 18 ? 4.0 : camDist > 15 ? 2.5 : camDist > 12 ? 1.2 : 0.6;
+  const sepThresh = camDist > 18 ? 6.0 : camDist > 15 ? 4.0 : camDist > 12 ? 2.0 : 1.0;
 
   const items = useMemo(() => {
     return CITIES.map(({ n, lat, lon }) => {
@@ -6037,7 +6037,7 @@ function CityLabels({ camDist }: { camDist: number }) {
     const selected: typeof sorted = [];
     const selUnits: THREE.Vector3[] = [];
     for (const city of sorted) {
-      if (city.tier === 2 && camDist > 15) continue; // tier-2 only at close zoom
+      if (city.tier === 2 && camDist > 13) continue; // tier-2 only at close zoom
       const u = new THREE.Vector3(...city.pos).normalize();
       let tooClose = false;
       for (const su of selUnits) {
@@ -6057,7 +6057,7 @@ function CityLabels({ camDist }: { camDist: number }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const fontSize = minDeg >= 10 ? 0.055 : Math.max(0.026, 0.055 * (minDeg / 10));
+      const fontSize = minDeg >= 10 ? 0.045 : Math.max(0.022, 0.045 * (minDeg / 10));
       return { ...city, fontSize };
     });
   }, [items, camDist, sepThresh]);
