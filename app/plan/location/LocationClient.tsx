@@ -1475,7 +1475,12 @@ function _setGlobeClick(fn: () => void) { _globeClick = fn; }
 // ─── Globe data-ready bridge (GlobeScene → LocationPage)
 let _onGlobeReady: (() => void) | null = null;
 
+// ─── Collected monuments bridge (LocationPage → Lm)
+let _collectedMonuments = new Set<string>();
+function _setCollectedMonuments(ids: Set<string>) { _collectedMonuments = ids; }
+
 function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
+  const isCollected = mk ? _collectedMonuments.has(mk) : false;
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
   const model   = mk ? MODELS[mk] : undefined;
@@ -1516,10 +1521,13 @@ function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?:
           </ModelErrorBoundary>
         ) : children}
 
-        {/* Invisible sphere that reliably captures pointer events.
-            GLB meshes live inside <primitive> and are outside React's fiber
-            tree, so onClick on a parent group never fires for them.
-            This dedicated mesh IS a proper R3F component and always works. */}
+        {isCollected && (
+          <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.6, 0.8, 32]} />
+            <meshBasicMaterial color="#f59e0b" transparent opacity={0.7} />
+          </mesh>
+        )}
+
         <mesh
           position={[0, 0.5, 0]}
           onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = "pointer"; }}
@@ -6697,6 +6705,32 @@ export default function LocationPage() {
     });
     _onGlobeReady = () => setGlobeReady(true);
   });
+
+  // Fetch collected monuments and update the bridge so Lm can show them
+  useEffect(() => {
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/monuments');
+        if (!res.ok) return;
+        const data = await res.json() as { collected: { monumentId: string; skin: string }[] };
+        const ids = new Set(data.collected.filter((c: { skin: string }) => c.skin === 'default').map((c: { monumentId: string }) => c.monumentId));
+        _setCollectedMonuments(ids);
+      } catch { /* silent */ }
+    })();
+
+    // Re-fetch when monument shop closes (user may have collected something)
+    const handler = () => {
+      fetch('/api/monuments').then(r => r.ok ? r.json() : null).then(data => {
+        if (!data) return;
+        const ids = new Set<string>(data.collected.filter((c: { skin: string }) => c.skin === 'default').map((c: { monumentId: string }) => c.monumentId));
+        _setCollectedMonuments(ids);
+      }).catch(() => {});
+    };
+    window.addEventListener('geknee:monuments-updated', handler);
+    return () => window.removeEventListener('geknee:monuments-updated', handler);
+  }, [(session?.user as { id?: string })?.id]);
 
   const handleInitialize = () => {
     resetGlobeTilt();

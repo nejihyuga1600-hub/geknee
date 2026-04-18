@@ -584,7 +584,7 @@ export default function MonumentShop({ open, onClose }: Props) {
       body: JSON.stringify({ action: 'unlock', monumentId: item.id }),
     });
     const data = await res.json();
-    if (res.ok) { setMsg(`${item.name} added to your collection!`); await load(); }
+    if (res.ok) { setMsg(`${item.name} added to your collection!`); await load(); window.dispatchEvent(new Event('geknee:monuments-updated')); }
     else setMsg(data.error ?? 'Error');
     setLoading(false);
   }
