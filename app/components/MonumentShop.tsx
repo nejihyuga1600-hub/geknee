@@ -1,5 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+
+const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -382,7 +385,7 @@ type MissionItem   = { missionId: string };
 // ─── Sub-component: Detail view for a single collectible ──────────────────────
 
 function DetailView({
-  item, collected, missions, tripLocs, loading,
+  item, collected, missions, tripLocs, loading, isDev,
   onUnlock, onMission, onBack,
 }: {
   item: CollectibleBase;
@@ -390,6 +393,7 @@ function DetailView({
   missions: MissionItem[];
   tripLocs: string[];
   loading: boolean;
+  isDev: boolean;
   onUnlock: (item: CollectibleBase) => void;
   onMission: (item: CollectibleBase, mission: Mission) => void;
   onBack: () => void;
@@ -397,7 +401,7 @@ function DetailView({
   const unlocked   = collected.some(c => c.monumentId === item.id && c.skin === 'default');
   const hasSkin    = (sk: string) => collected.some(c => c.monumentId === item.id && c.skin === sk);
   const missionDone = (mid: string) => missions.some(m => m.missionId === mid);
-  const canUnlock  = !unlocked && item.cityKeys.some(k => tripLocs.some(t => t.includes(k)));
+  const canUnlock  = !unlocked && (isDev || item.cityKeys.some(k => tripLocs.some(t => t.includes(k))));
 
   return (
     <div>
@@ -542,6 +546,8 @@ function DetailView({
 interface Props { open: boolean; onClose: () => void }
 
 export default function MonumentShop({ open, onClose }: Props) {
+  const { data: session } = useSession();
+  const isDev = DEV_EMAILS.has(session?.user?.email?.toLowerCase() ?? '');
   const [tab,       setTab]       = useState<'monuments' | 'animals'>('monuments');
   const [collected, setCollected] = useState<CollectedItem[]>([]);
   const [missions,  setMissions]  = useState<MissionItem[]>([]);
@@ -567,7 +573,7 @@ export default function MonumentShop({ open, onClose }: Props) {
 
   const isCollected = (id: string) => collected.some(c => c.monumentId === id && c.skin === 'default');
   const canUnlock   = (item: CollectibleBase) =>
-    !isCollected(item.id) && item.cityKeys.some(k => tripLocs.some(t => t.includes(k)));
+    !isCollected(item.id) && (isDev || item.cityKeys.some(k => tripLocs.some(t => t.includes(k))));
 
   async function unlock(item: CollectibleBase) {
     setLoading(true); setMsg('');
@@ -682,7 +688,7 @@ export default function MonumentShop({ open, onClose }: Props) {
           {selected ? (
             <DetailView
               item={selected} collected={collected} missions={missions} tripLocs={tripLocs}
-              loading={loading}
+              loading={loading} isDev={isDev}
               onUnlock={async (it) => { await unlock(it); }}
               onMission={async (it, ms) => { await completeMission(it, ms); }}
               onBack={() => { setSelected(null); setMsg(''); }}

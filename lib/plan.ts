@@ -4,7 +4,7 @@ const DEVELOPER_EMAILS = new Set(
   (process.env.DEVELOPER_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 );
 
-async function isDevAccount(userId: string): Promise<boolean> {
+export async function isDevAccount(userId: string): Promise<boolean> {
   if (DEVELOPER_EMAILS.size === 0) return false;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
   return !!user?.email && DEVELOPER_EMAILS.has(user.email.toLowerCase());

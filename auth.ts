@@ -13,19 +13,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   cookies: {
     state: {
       name: 'authjs.state',
-      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: true },
+      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: process.env.NODE_ENV === 'production' },
     },
     pkceCodeVerifier: {
       name: 'authjs.pkce.code_verifier',
-      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: true },
+      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: process.env.NODE_ENV === 'production' },
     },
     callbackUrl: {
       name: 'authjs.callback-url',
-      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: true },
+      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: process.env.NODE_ENV === 'production' },
     },
     sessionToken: {
       name: 'authjs.session-token',
-      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: true },
+      options: { httpOnly: true, sameSite: 'lax' as const, path: '/', secure: process.env.NODE_ENV === 'production' },
     },
   },
 
