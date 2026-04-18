@@ -6565,7 +6565,7 @@ function GlobeScene() {
     }
     // Update zoom level only when crossing thresholds (avoids per-frame setState)
     const dist = camera.position.length();
-    const newZoom = dist < 21 ? 2 : dist < 28 ? 1 : 0;
+    const newZoom = dist < 17 ? 2 : dist < 28 ? 1 : 0;
     if (newZoom !== zoomLevelRef.current) {
       zoomLevelRef.current = newZoom;
       setZoomLevel(newZoom);
