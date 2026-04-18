@@ -4987,7 +4987,11 @@ function GeoLabels({ countries, states, zoomLevel }: {
     return result;
   }, [countries, states]);
 
-  const visible = items.filter(it => it.kind === "country" || (zoomLevel >= 1 && zoomLevel < 2));
+  const visible = items.filter(it => {
+    if (zoomLevel >= 2) return false;
+    if (it.kind === "country") return true;
+    return zoomLevel >= 1;
+  });
 
   // Scale font size down for densely-packed labels: find each label's nearest
   // angular neighbour and shrink proportionally when below the threshold.
@@ -5623,6 +5627,71 @@ const CITIES: { n: string; lat: number; lon: number }[] = [
   { n: "Hiroshima",        lat:  34.39, lon:  132.45 },
   { n: "Kyoto",            lat:  35.01, lon:  135.77 },
   { n: "Kobe",             lat:  34.69, lon:  135.20 },
+  // ── World cities expansion ──────────────────────────────────────────────────
+  { n: "Freetown",            lat:    8.48, lon:   -13.23 },
+  { n: "Monrovia",            lat:    6.30, lon:   -10.80 },
+  { n: "Lomé",                lat:    6.14, lon:     1.21 },
+  { n: "Yaoundé",             lat:    3.87, lon:    11.52 },
+  { n: "Port Harcourt",       lat:    4.78, lon:     7.01 },
+  { n: "Zanzibar City",       lat:   -6.16, lon:    39.19 },
+  { n: "Pretoria",            lat:  -25.75, lon:    28.19 },
+  { n: "Lubumbashi",          lat:  -11.66, lon:    27.48 },
+  { n: "Fez",                 lat:   34.03, lon:    -5.00 },
+  { n: "Marrakech",           lat:   31.63, lon:    -8.01 },
+  { n: "Tangier",             lat:   35.76, lon:    -5.80 },
+  { n: "Oran",                lat:   35.70, lon:    -0.63 },
+  { n: "San Salvador",        lat:   13.69, lon:   -89.22 },
+  { n: "San José",            lat:    9.93, lon:   -84.08 },
+  { n: "Belize City",         lat:   17.50, lon:   -88.20 },
+  { n: "Medellín",            lat:    6.25, lon:   -75.56 },
+  { n: "Barranquilla",        lat:   10.96, lon:   -74.78 },
+  { n: "Santa Cruz",          lat:  -17.78, lon:   -63.18 },
+  { n: "Asunción",            lat:  -25.26, lon:   -57.58 },
+  { n: "Georgetown",          lat:    6.80, lon:   -58.16 },
+  { n: "Paramaribo",          lat:    5.85, lon:   -55.20 },
+  { n: "Porto Alegre",        lat:  -30.03, lon:   -51.23 },
+  { n: "Córdoba",             lat:  -31.42, lon:   -64.18 },
+  { n: "Rosario",             lat:  -32.95, lon:   -60.65 },
+  { n: "Mendoza",             lat:  -32.89, lon:   -68.83 },
+  { n: "Valparaíso",          lat:  -33.05, lon:   -71.62 },
+  { n: "Concepción",          lat:  -36.83, lon:   -73.05 },
+  { n: "Manama",              lat:   26.23, lon:    50.59 },
+  { n: "Mecca",               lat:   21.43, lon:    39.83 },
+  { n: "Medina",              lat:   24.47, lon:    39.61 },
+  { n: "Sharjah",             lat:   25.34, lon:    55.41 },
+  { n: "Erbil",               lat:   36.19, lon:    44.01 },
+  { n: "Basra",               lat:   30.51, lon:    47.81 },
+  { n: "Sana'a",              lat:   15.35, lon:    44.21 },
+  { n: "Faisalabad",          lat:   31.42, lon:    73.08 },
+  { n: "Rawalpindi",          lat:   33.60, lon:    73.05 },
+  { n: "Peshawar",            lat:   34.01, lon:    71.58 },
+  { n: "Chittagong",          lat:   22.34, lon:    91.83 },
+  { n: "Kanpur",              lat:   26.45, lon:    80.35 },
+  { n: "Cebu City",           lat:   10.31, lon:   123.89 },
+  { n: "Davao City",          lat:    7.07, lon:   125.61 },
+  { n: "Yokohama",            lat:   35.44, lon:   139.64 },
+  { n: "Kaohsiung",           lat:   22.63, lon:   120.30 },
+  { n: "Taichung",            lat:   24.15, lon:   120.67 },
+  { n: "Suzhou",              lat:   31.30, lon:   120.62 },
+  { n: "Changchun",           lat:   43.88, lon:   125.32 },
+  { n: "Lhasa",               lat:   29.65, lon:    91.17 },
+  { n: "Malmö",               lat:   55.60, lon:    13.00 },
+  { n: "Düsseldorf",          lat:   51.23, lon:     6.78 },
+  { n: "Kraków",              lat:   50.06, lon:    19.94 },
+  { n: "Gdańsk",              lat:   54.35, lon:    18.65 },
+  { n: "Wrocław",             lat:   51.11, lon:    17.04 },
+  { n: "Belfast",             lat:   54.60, lon:    -5.93 },
+  { n: "Cork",                lat:   51.90, lon:    -8.47 },
+  { n: "Galway",              lat:   53.27, lon:    -9.06 },
+  { n: "Krasnoyarsk",         lat:   56.01, lon:    92.87 },
+  { n: "Sochi",               lat:   43.59, lon:    39.73 },
+  { n: "Irkutsk",             lat:   52.29, lon:   104.28 },
+  { n: "Kaliningrad",         lat:   54.71, lon:    20.51 },
+  { n: "Hobart",              lat:  -42.88, lon:   147.33 },
+  { n: "Darwin",              lat:  -12.46, lon:   130.84 },
+  { n: "Nouméa",              lat:  -22.28, lon:   166.46 },
+  { n: "Mesa",                lat:   33.42, lon:  -111.83 },
+  { n: "St. John's",          lat:   47.56, lon:   -52.71 },
 ];
 
 // Tier-1: major world cities always shown first when zooming in.
