@@ -985,13 +985,35 @@ type GeoFeature = {
 };
 type GeoCollection = { features: GeoFeature[] };
 
+// ─── Canvas sharpening (unsharp mask) ─────────────────────────────────────────
+function sharpenCanvas(ctx: CanvasRenderingContext2D, w: number, h: number, amount = 0.4) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const src = new Uint8ClampedArray(img.data);
+  const d = img.data;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const center = src[i + c];
+        const blur = (
+          src[((y-1)*w + x)*4 + c] + src[((y+1)*w + x)*4 + c] +
+          src[(y*w + x-1)*4 + c] + src[(y*w + x+1)*4 + c]
+        ) * 0.25;
+        d[i + c] = Math.min(255, Math.max(0, center + (center - blur) * amount));
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 // ─── Canvas Earth texture ─────────────────────────────────────────────────────
 function createEarthTexture(
   countriesGeo: GeoCollection | null,
   statesGeo: GeoCollection | null,
   terrainBitmap?: ImageBitmap | null,
+  maxTexSize = 8192,
 ): THREE.CanvasTexture {
-  const W = 8192, H = 4096;
+  const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -1007,6 +1029,7 @@ function createEarthTexture(
   if (terrainBitmap) {
     // ── NASA/USGS terrain: draw satellite imagery as the base layer ──────────
     ctx.drawImage(terrainBitmap, 0, 0, W, H);
+    sharpenCanvas(ctx, W, H, 0.5);
     // Subtle polar darkening to match real Earth photography
     const polar = ctx.createLinearGradient(0, 0, 0, H);
     polar.addColorStop(0,    "rgba(0,10,40,0.28)");
@@ -6290,7 +6313,7 @@ function GlobeScene() {
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change
   useEffect(() => {
-    const tex = createEarthTexture(countries, states, terrainBitmap);
+    const tex = createEarthTexture(countries, states, terrainBitmap, gl.capabilities.maxTextureSize);
     tex.minFilter  = THREE.LinearMipmapLinearFilter;
     tex.magFilter  = THREE.LinearFilter;
     tex.anisotropy = gl.capabilities.getMaxAnisotropy();
@@ -6334,7 +6357,9 @@ function GlobeScene() {
           const res = await fetch(`/earth_terrain_${pad(m)}.jpg`);
           if (!res.ok) continue;
           const blob = await res.blob();
-          const bmp  = await createImageBitmap(blob, { resizeWidth: 8192, resizeHeight: 4096, resizeQuality: "high" });
+          const maxTex = gl.capabilities.maxTextureSize;
+          const texW = Math.min(maxTex, 8192), texH = texW / 2;
+          const bmp  = await createImageBitmap(blob, { resizeWidth: texW, resizeHeight: texH, resizeQuality: "high" });
           if (!cancelled) setTerrainBitmap(bmp);
           break; // found one — stop
         } catch { continue; }
