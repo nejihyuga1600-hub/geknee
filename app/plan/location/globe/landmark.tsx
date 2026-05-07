@@ -421,7 +421,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const { isCollected, activeSkin } = useMonumentBridge(mk);
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
-  const effectiveSkin = (isCollected && (!activeSkin || activeSkin === 'default')) ? 'stone' : activeSkin;
+  // Preview skin for anonymous visitors: if we have ANY skin GLB for this
+  // monument, render the lowest-tier as a preview ("see what you could earn").
+  // Collected users still get their active skin.
+  const previewSkin = mk && AVAILABLE_SKINS[mk]
+    ? (AVAILABLE_SKINS[mk].has('bronze') ? 'bronze'
+        : AVAILABLE_SKINS[mk].has('stone') ? 'stone'
+        : [...AVAILABLE_SKINS[mk]][0])
+    : undefined;
+  const effectiveSkin = isCollected
+    ? ((!activeSkin || activeSkin === 'default') ? 'stone' : activeSkin)
+    : previewSkin;
   const hasSkinGlb = !!(mk && effectiveSkin && AVAILABLE_SKINS[mk]?.has(effectiveSkin));
   const skinPath = hasSkinGlb ?
     `${BLOB_BASE}/${MONUMENT_FILE_PREFIX[mk!] ?? mk}_${effectiveSkin}.glb` : undefined;
@@ -689,12 +699,13 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
         {/* Flash point light for skin switch transition */}
         <pointLight ref={flashLightRef} position={[0, 0.5, 0]} color="#fffbe6" intensity={0} distance={3} />
 
-        {/* Spotlights to illuminate the skin GLB — Meshy materials are very dark
-            under the scene's ambient light. Distance-capped so they don't leak
-            into neighbouring landmarks. Intensities pulled WAY down — earlier
-            6+3 was making each monument blast a bright glow visible from orbit. */}
-        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={2.0} distance={3} decay={2} />
-        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={1.0} distance={3} decay={2} />
+        {/* Per-monument spotlights — these now do the heavy lifting since the
+            scene-level lighting was pulled down. 4.0 + 2.0 hits the Meshy PBR
+            materials cleanly without bleeding past distance=3 into neighbours.
+            (Earlier 6+3 over-baked combined with bright scene; 2+1 was invisible
+            after the scene cut. 4+2 is the sweet spot.) */}
+        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={4.0} distance={3} decay={2} />
+        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={2.0} distance={3} decay={2} />
 
         {/* Unlock sparkle burst */}
         <group ref={sparkleGroupRef} visible={false}>
