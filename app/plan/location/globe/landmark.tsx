@@ -690,10 +690,11 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
         <pointLight ref={flashLightRef} position={[0, 0.5, 0]} color="#fffbe6" intensity={0} distance={3} />
 
         {/* Spotlights to illuminate the skin GLB — Meshy materials are very dark
-            under the scene's ambient light. These stay local (distance-capped)
-            so they don't leak into neighbouring landmarks. */}
-        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={6} distance={3} decay={2} />
-        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={3} distance={3} decay={2} />
+            under the scene's ambient light. Distance-capped so they don't leak
+            into neighbouring landmarks. Intensities pulled WAY down — earlier
+            6+3 was making each monument blast a bright glow visible from orbit. */}
+        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={2.0} distance={3} decay={2} />
+        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={1.0} distance={3} decay={2} />
 
         {/* Unlock sparkle burst */}
         <group ref={sparkleGroupRef} visible={false}>
