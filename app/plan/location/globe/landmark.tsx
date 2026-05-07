@@ -92,6 +92,22 @@ export const BLOB_BASE = 'https://mrfgpxw07gmgmriv.public.blob.vercel-storage.co
 // collected users hit skinPath and load a skin GLB (stone/gold/etc, full PBR).
 export const MODELS: Record<string, { path: string; scale: number }> = {};
 
+// Eager-warm the lowest-tier skin GLB for every wired monument so when Lm
+// resolves a previewSkin/effectiveSkin, useGLTF returns from cache instead of
+// flashing the children primitive (the "default Liberty" the user sees while
+// the 10MB Meshy GLB streams). Runs once at module load — drei's preload
+// short-circuits if the GLB is already cached.
+if (typeof window !== 'undefined') {
+  for (const [mk, prefix] of Object.entries(MONUMENT_FILE_PREFIX)) {
+    const skins = AVAILABLE_SKINS[mk];
+    if (!skins || skins.size === 0) continue;
+    const tier = skins.has('bronze') ? 'bronze'
+      : skins.has('stone') ? 'stone'
+      : [...skins][0];
+    if (tier) useGLTF.preload(`${BLOB_BASE}/${prefix}_${tier}.glb`);
+  }
+}
+
 // ─── GLB error boundary — falls back to primitive geometry if .glb missing ────
 class ModelErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -673,9 +689,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
 
   const showLabel = mobileActive;
 
-  // Only show landmark once collected. Uncollected / mk-less decorative Lms stay hidden.
-  // Placed AFTER all hooks to satisfy Rules of Hooks across isCollected transitions.
-  if (!mk || !isCollected) return null;
+  // Render rules:
+  //   - Collected user with active skin → full landmark with their skin GLB
+  //   - Anonymous (or uncollected) user with previewSkin available → render
+  //     the preview-tier GLB so the globe shows real monuments to everyone
+  //   - mk-less decorative Lm or no preview available → hide
+  // Placed AFTER all hooks to satisfy Rules of Hooks across state transitions.
+  const shouldRender = !!mk && (isCollected || !!previewSkin);
+  if (!shouldRender) return null;
 
   return (
     <group position={p.pos} quaternion={p.q}>
