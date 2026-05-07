@@ -33,7 +33,17 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
 // it at runtime — so we gate skinPath on this whitelist to avoid the fetch.
 // Updated by bin/meshy-promote.mjs as new skins go live.
 export const AVAILABLE_SKINS: Record<string, Set<string>> = {
-  eiffelTower: new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  // Generated from blob inventory by bin/blob-sync-available-skins.mjs.
+  // Re-run that script after uploading new GLBs.
+  bigBen:         new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
+  christRedeem:   new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
+  colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  eiffelTower:    new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
+  greatWall:      new Set(['bronze', 'gold', 'diamond', 'aurora', 'celestial']),
+  sagradaFamilia: new Set(['bronze', 'celestial']),
+  statueLiberty:  new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  sydneyOpera:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  tajMahal:       new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
 };
 
 // Raw lat/lon for each collectable monument. Consumed by:
