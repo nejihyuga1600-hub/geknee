@@ -10,7 +10,10 @@
     "meshy": "python meshy_batch.py",
     "meshy:register": "python meshy_register.py",
     "meshy:skins": "python meshy_skins.py",
-    "meshy:skins-list": "python meshy_skins.py --list-skins"
+    "meshy:skins-list": "python meshy_skins.py --list-skins",
+    "meshy:ship": "node bin/meshy-ship.mjs",
+    "meshy:ship:apply": "node bin/meshy-ship.mjs --apply",
+    "blob:prune": "node bin/blob-prune.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
