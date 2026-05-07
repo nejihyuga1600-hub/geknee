@@ -358,12 +358,7 @@ export default function Home() {
                     // have rich dark backgrounds and would over-darken under
                     // multiply, so they render normally.
                     mixBlendMode: s.bg === 'white' ? 'multiply' : 'normal',
-                    // Mute everything to a vintage editorial tonal range that
-                    // matches the passport-hero photo above. Dropping brightness
-                    // hard + cutting saturation kills the neon Aurora/Celestial
-                    // glow and the over-saturated gold Taj. contrast bump keeps
-                    // the silhouette readable through the mute.
-                    filter: 'brightness(0.62) saturate(0.55) contrast(1.08)',
+                    filter: 'none',
                   }}
                 />
               </div>
