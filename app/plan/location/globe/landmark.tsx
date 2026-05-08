@@ -386,6 +386,18 @@ export function _setActiveSkins(skins: Map<string, string>) {
   _activeSkins = skins;
   _monumentVersion++;
   _monumentListeners.forEach(fn => fn());
+  // Eager-warm the actual active-skin GLB for each collected monument so when
+  // Lm re-renders with activeSkin set, useGLTF returns from cache instead of
+  // suspending and flashing the children primitive.
+  if (typeof window !== 'undefined') {
+    skins.forEach((skin, mk) => {
+      if (!skin || skin === 'default') return;
+      const prefix = MONUMENT_FILE_PREFIX[mk] ?? mk;
+      const tiers = AVAILABLE_SKINS[mk];
+      if (!tiers || !tiers.has(skin)) return;
+      useGLTF.preload(`${BLOB_BASE}/${prefix}_${skin}.glb`);
+    });
+  }
 }
 export function useMonumentBridge(mk?: string) {
   const [, setTick] = useState(0);
@@ -437,16 +449,25 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const { isCollected, activeSkin } = useMonumentBridge(mk);
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
-  // Preview skin for anonymous visitors: if we have ANY skin GLB for this
-  // monument, render the lowest-tier as a preview ("see what you could earn").
-  // Collected users still get their active skin.
+  // Lightweight preview tier (bronze when available — typically ~17MB vs
+  // 47MB for stone — falling back through stone, then any). Used as the
+  // GLB-resolution fallback for both:
+  //   - Anonymous visitors (no isCollected, no activeSkin)
+  //   - Collected users with no live activeSkin: e.g. dev-account unlocks
+  //     create a row with skin='default' which the API strips from
+  //     activeSkins. Previously this hardcoded to 'stone' which (a) doesn't
+  //     exist for half the wired monuments (christRedeem, greatWall,
+  //     sagradaFamilia, sydneyOpera) so the GLB never loaded at all, and
+  //     (b) is the heaviest tier for monuments that do have it (47MB Eiffel
+  //     stone vs 17MB Eiffel bronze) so the Suspense flashed the primitive
+  //     for several seconds even on a fast connection.
   const previewSkin = mk && AVAILABLE_SKINS[mk]
     ? (AVAILABLE_SKINS[mk].has('bronze') ? 'bronze'
         : AVAILABLE_SKINS[mk].has('stone') ? 'stone'
         : [...AVAILABLE_SKINS[mk]][0])
     : undefined;
-  const effectiveSkin = isCollected
-    ? ((!activeSkin || activeSkin === 'default') ? 'stone' : activeSkin)
+  const effectiveSkin = (isCollected && activeSkin && activeSkin !== 'default')
+    ? activeSkin
     : previewSkin;
   const hasSkinGlb = !!(mk && effectiveSkin && AVAILABLE_SKINS[mk]?.has(effectiveSkin));
   const skinPath = hasSkinGlb ?
