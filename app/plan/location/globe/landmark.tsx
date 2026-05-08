@@ -466,8 +466,16 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
         : AVAILABLE_SKINS[mk].has('stone') ? 'stone'
         : [...AVAILABLE_SKINS[mk]][0])
     : undefined;
-  const effectiveSkin = (isCollected && activeSkin && activeSkin !== 'default')
+  const requestedSkin = (isCollected && activeSkin && activeSkin !== 'default')
     ? activeSkin
+    : previewSkin;
+  // Defensive: if the requestedSkin (often the user's persisted activeSkin) is
+  // NOT in AVAILABLE_SKINS for this monument, fall back to previewSkin. This
+  // covers data drift like a user with a damascus row for a monument that has
+  // no damascus GLB — without this, hasSkinGlb=false → primitive forever and
+  // the ring uses the default-yellow fallback. Now: graceful degrade to bronze.
+  const effectiveSkin = (mk && requestedSkin && AVAILABLE_SKINS[mk]?.has(requestedSkin))
+    ? requestedSkin
     : previewSkin;
   const hasSkinGlb = !!(mk && effectiveSkin && AVAILABLE_SKINS[mk]?.has(effectiveSkin));
   const skinPath = hasSkinGlb ?

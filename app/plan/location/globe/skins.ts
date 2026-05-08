@@ -82,6 +82,7 @@ export const SKIN_RING_COLOR: Record<string, string> = {
   diamond: '#b9f2ff',
   aurora: '#00ff88',
   celestial: '#9370db',
+  damascus: '#7c5e3c',
 };
 
 // Rarity rank — higher = rarer. Used by /u/[handle] to count "rare" collections
