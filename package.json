@@ -20,6 +20,7 @@
     "@auth/prisma-adapter": "^2.11.1",
     "@capacitor/android": "^8.3.2",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "^8.3.2",
     "@capacitor/core": "^8.3.2",
@@ -53,6 +54,7 @@
     "stripe": "^22.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/google.maps": "^3.58.1",
