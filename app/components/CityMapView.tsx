@@ -139,11 +139,25 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         background: 'rgba(6,8,22,0.85)', border: '1px solid rgba(100,210,255,0.4)',
         backdropFilter: 'blur(12px)', borderRadius: 10,
         color: '#fff', fontSize: 13, fontWeight: 700,
-        padding: '10px 16px', display: 'flex', gap: 10, alignItems: 'center',
-        pointerEvents: 'none',
+        padding: '8px 8px 8px 16px', display: 'flex', gap: 10, alignItems: 'center',
       }}>
-        <span>{name}</span>
-        <span style={{ opacity: 0.5, fontSize: 11, fontWeight: 500 }}>zoom out to return to globe</span>
+        <span style={{ pointerEvents: 'none' }}>{name}</span>
+        <button
+          type="button"
+          onClick={onCloseRef.current}
+          aria-label="Return to globe"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(100,210,255,0.12)',
+            border: '1px solid rgba(100,210,255,0.4)',
+            color: '#fff', fontSize: 11, fontWeight: 600,
+            padding: '6px 12px', borderRadius: 8,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>{String.fromCodePoint(0x2190)}</span>
+          Return to globe
+        </button>
       </div>
     </div>
   );
