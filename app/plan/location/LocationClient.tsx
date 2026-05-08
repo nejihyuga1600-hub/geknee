@@ -1812,16 +1812,40 @@ function CityLabels({ camDist }: { camDist: number }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraVersion, popMin]);
 
+  // Pre-compute unit vectors for every wired monument so we can mask out any
+  // city label that would sit on top of a landmark's ring. Angular threshold
+  // tightens as user zooms in (the ring takes up more of the on-screen space
+  // at close zoom, so labels need to clear a wider arc around it).
+  const monumentUnits = useMemo(() => {
+    return Object.values(MONUMENT_LATLON).map(({ lat, lon }) =>
+      new THREE.Vector3(...geoPos(lat, lon, R * 1.019)).normalize()
+    );
+  }, []);
+  const monumentClearDeg = camDist > 18 ? 1.2
+                         : camDist > 14 ? 2.0
+                         : camDist > 10 ? 3.5
+                         :                5.0;
+
   // Greedy spatial dedup: sort tier-1 first, then pick cities that are
-  // at least sepThresh° away from any already-selected city.
+  // at least sepThresh° away from any already-selected city. Also drop any
+  // city whose label would overlap a wired monument's ring.
   const visible = useMemo(() => {
     if (camDist >= 25) return [];
     const sorted = [...items].sort((a, b) => a.tier - b.tier);
     const selected: typeof sorted = [];
     const selUnits: THREE.Vector3[] = [];
     for (const city of sorted) {
-      // all tiers appear at the same zoom level — spacing handles density
       const u = new THREE.Vector3(...city.pos).normalize();
+      // Mask against monument positions first — labels never compete with the
+      // monument ring/GLB for the user's eye.
+      let onMonument = false;
+      for (const mu of monumentUnits) {
+        const dot = Math.max(-1, Math.min(1, u.dot(mu)));
+        const deg = Math.acos(dot) * (180 / Math.PI);
+        if (deg < monumentClearDeg) { onMonument = true; break; }
+      }
+      if (onMonument) continue;
+      // all tiers appear at the same zoom level — spacing handles density
       let tooClose = false;
       for (const su of selUnits) {
         const dot = Math.max(-1, Math.min(1, u.dot(su)));
@@ -1850,7 +1874,7 @@ function CityLabels({ camDist }: { camDist: number }) {
       const fontSize = baseFs * camScale;
       return { ...city, fontSize };
     });
-  }, [items, camDist, sepThresh]);
+  }, [items, camDist, sepThresh, monumentUnits, monumentClearDeg]);
 
   if (camDist >= 21) return null;
 
