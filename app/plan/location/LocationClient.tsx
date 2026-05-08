@@ -1841,7 +1841,13 @@ function CityLabels({ camDist }: { camDist: number }) {
         if (deg < minDeg) minDeg = deg;
       }
       // City labels — halved per user request. Was 0.14 base / 0.09 floor.
-      const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
+      const baseFs = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
+      // Zoom-aware shrink: as camDist drops (user zooms in), shrink labels
+      // so they stop dominating and the Meshy monuments can breathe. At
+      // camDist >= 21 (far view) keep full size; at camDist 5 (very close)
+      // labels are ~30% size. Min floor at 0.35x so labels remain readable.
+      const camScale = Math.max(0.35, Math.min(1.0, camDist / 21));
+      const fontSize = baseFs * camScale;
       return { ...city, fontSize };
     });
   }, [items, camDist, sepThresh]);
