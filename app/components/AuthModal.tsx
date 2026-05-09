@@ -81,21 +81,18 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       // deep-link back via geknee:// with a short-lived handoff token.
       // See lib/native-auth-bridge.ts and app/auth/native-handoff/page.tsx.
       //
-      // NextAuth v5 doesn't auto-redirect on a plain GET to /api/auth/signin/[p]
-      // — it requires a POST with CSRF token. signIn(redirect:false) does that
-      // dance for us and returns { url } pointing at the OAuth provider.
+      // The OAuth dance MUST happen entirely in SFSafariViewController, not
+      // split between WKWebView and SFSafari. WKWebView and SFSafari have
+      // separate cookie jars, so any state/PKCE cookies set during signIn()
+      // in the WKWebView are invisible to the callback running in SFSafari
+      // → NextAuth Configuration error. Routing through /auth/native-start
+      // makes Browser.open hit a server endpoint that does signIn() server-
+      // side; cookies land in SFSafari's jar where the callback can read them.
       const cap = await import('@capacitor/core').catch(() => null);
       if (cap?.Capacitor.isNativePlatform()) {
         const { Browser } = await import('@capacitor/browser');
-        const callbackUrl = `${window.location.origin}/auth/native-handoff`;
-        const result = await signIn(provider, { callbackUrl, redirect: false });
-        const oauthUrl = result?.url;
-        if (!oauthUrl) {
-          setError('Could not start sign-in. Please try again.');
-          setLoading(false);
-          return;
-        }
-        await Browser.open({ url: oauthUrl, presentationStyle: 'popover' });
+        const url = `${window.location.origin}/auth/native-start/${provider}`;
+        await Browser.open({ url, presentationStyle: 'popover' });
         setLoading(false);
         return;
       }
