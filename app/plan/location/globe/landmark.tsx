@@ -412,6 +412,17 @@ export function useMonumentBridge(mk?: string) {
   };
 }
 
+// Subscribers re-render whenever the collected set changes; returns the live Set.
+export function useCollectedMonumentSet(): Set<string> {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setTick(t => t + 1);
+    _monumentListeners.add(cb);
+    return () => { _monumentListeners.delete(cb); };
+  }, []);
+  return _collectedMonuments;
+}
+
 // ─── Pending unlock bridge (Lm + MonumentShop → page chrome share-toast) ─────
 // Fires when a monument transitions from uncollected → collected so the page
 // can surface a share prompt. Keeps the toast UI out of the 3D scene.

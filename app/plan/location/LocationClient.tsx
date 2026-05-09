@@ -26,6 +26,7 @@ import {
   LandmarkLabel,
   wikiSummary,
   useMonumentBridge,
+  useCollectedMonumentSet,
   Mat,
   MatStone,
   MatMarble,
@@ -1581,13 +1582,17 @@ function pickBestFact(extract: string): string {
   return best.length > 220 ? best.slice(0, 217) + "…" : best;
 }
 
-function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
+function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
   n: string;
   lat: number;
   lon: number;
   pos: [number, number, number];
   orientation: THREE.Quaternion;
   fontSize: number;
+  // When the label was nudged to clear a collected monument, this is the
+  // monument's surface position — used to draw a leader line from label to
+  // monument so the user can still associate the two.
+  leaderTo?: [number, number, number];
 }) {
   const [hovered,      setHovered]      = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
@@ -1662,6 +1667,18 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
   });
 
   return (
+    <>
+    {leaderTo && (
+      <line>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[new Float32Array([pos[0], pos[1], pos[2], leaderTo[0], leaderTo[1], leaderTo[2]]), 3]}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial color="#ffffff" transparent opacity={0.55} depthTest={false} depthWrite={false} />
+      </line>
+    )}
     <group position={pos} quaternion={orientation}>
       <group ref={textGroupRef}>
       <Text
@@ -1787,6 +1804,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
         <spriteMaterial transparent opacity={0} depthTest={false} />
       </sprite>
     </group>
+    </>
   );
 }
 
@@ -1829,6 +1847,20 @@ function CityLabels({ camDist }: { camDist: number }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraVersion, popMin]);
 
+  // Collected monuments — used to nudge city labels off the monument GLB and
+  // draw a leader line so the user can still associate label and landmark.
+  const collectedSet = useCollectedMonumentSet();
+  const collectedMonumentPositions = useMemo(() => {
+    const out: { pos: [number, number, number]; unit: THREE.Vector3 }[] = [];
+    collectedSet.forEach((mk) => {
+      const ll = MONUMENT_LATLON[mk];
+      if (!ll) return;
+      const p = geoPos(ll.lat, ll.lon, R * 1.019);
+      out.push({ pos: p, unit: new THREE.Vector3(...p).normalize() });
+    });
+    return out;
+  }, [collectedSet]);
+
   // Greedy spatial dedup: sort tier-1 first, then pick cities that are
   // at least sepThresh° away from any already-selected city.
   const visible = useMemo(() => {
@@ -1849,6 +1881,9 @@ function CityLabels({ camDist }: { camDist: number }) {
     }
     // Density-based base size only. Per-frame zoom scaling lives in CityLabel's
     // useFrame so it's smooth at 60fps and doesn't rebuild SDF text meshes.
+    const NUDGE_TRIGGER_DEG = 1.5;   // monument within this arc → nudge label
+    const NUDGE_OFFSET_DEG  = 1.8;   // nudge magnitude along the away-tangent
+    const sphereR = R * 1.019;
     return selected.map((city, i) => {
       const u = selUnits[i];
       let minDeg = 180;
@@ -1859,16 +1894,49 @@ function CityLabels({ camDist }: { camDist: number }) {
         if (deg < minDeg) minDeg = deg;
       }
       const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
-      return { ...city, fontSize };
+
+      // Find the closest collected monument within the nudge trigger arc.
+      let nearest: { pos: [number, number, number]; unit: THREE.Vector3; deg: number } | null = null;
+      for (const mon of collectedMonumentPositions) {
+        const dot = Math.max(-1, Math.min(1, u.dot(mon.unit)));
+        const deg = Math.acos(dot) * (180 / Math.PI);
+        if (deg < NUDGE_TRIGGER_DEG && (!nearest || deg < nearest.deg)) {
+          nearest = { ...mon, deg };
+        }
+      }
+
+      let pos = city.pos;
+      let leaderTo: [number, number, number] | undefined;
+      if (nearest) {
+        // Rotate the city unit vector AWAY from the monument along the great
+        // circle they share. Axis = monument × city; rotating city around it
+        // by +NUDGE_OFFSET_DEG moves the label away from the monument.
+        const axis = new THREE.Vector3().crossVectors(nearest.unit, u);
+        if (axis.lengthSq() < 1e-8) {
+          // city ≈ monument: pick an arbitrary tangent (use world up if not parallel)
+          const fallback = Math.abs(u.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+          axis.crossVectors(u, fallback).normalize();
+        } else {
+          axis.normalize();
+        }
+        const offsetVec = u.clone().applyAxisAngle(axis, NUDGE_OFFSET_DEG * Math.PI / 180).multiplyScalar(sphereR);
+        pos = [offsetVec.x, offsetVec.y, offsetVec.z];
+        leaderTo = nearest.pos;
+      }
+
+      // Recompute orientation for the offset position so text still hugs the surface
+      const orientation = pos === city.pos ? city.orientation : computeOrientation(pos);
+
+      return { ...city, pos, orientation, fontSize, leaderTo };
     });
-  }, [items, camDist, sepThresh]);
+  }, [items, camDist, sepThresh, collectedMonumentPositions]);
 
   if (camDist >= 21) return null;
 
   return (
     <>
-      {visible.map(({ n, lat, lon, pos, orientation, fontSize }) => (
-        <CityLabel key={n} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} />
+      {visible.map(({ n, lat, lon, pos, orientation, fontSize, leaderTo }) => (
+        <CityLabel key={n} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} leaderTo={leaderTo} />
       ))}
     </>
   );
