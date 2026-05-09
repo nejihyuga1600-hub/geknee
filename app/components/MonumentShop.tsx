@@ -5,12 +5,13 @@ import { useSession } from 'next-auth/react';
 import { track } from '@/lib/analytics';
 import { _setPendingUnlock } from '@/app/plan/location/globe/landmark';
 import { INFO } from '@/app/plan/location/globe/info';
+import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
 
 const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
-export type Rarity = 'common' | 'rare' | 'legendary';
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 type Skin = { id: string; name: string; color: string; rarity?: string };
 type Mission = { id: string; label: string; skin: Skin; verify?: 'photo' };
 
@@ -31,10 +32,10 @@ const S = {
   // Common
   stone:        { id: 'stone',        name: 'Stone',        color: '#9ca3af', rarity: 'common' },
   bronze:       { id: 'bronze',       name: 'Bronze',       color: '#cd7f32', rarity: 'common' },
-  // Uncommon
-  silver:       { id: 'silver',       name: 'Silver',       color: '#c0c0c0', rarity: 'uncommon' },
-  sapphire:     { id: 'sapphire',     name: 'Sapphire',     color: '#2563eb', rarity: 'uncommon' },
-  jade:         { id: 'jade',         name: 'Jade',         color: '#059669', rarity: 'uncommon' },
+  // Rare
+  silver:       { id: 'silver',       name: 'Silver',       color: '#c0c0c0', rarity: 'rare' },
+  sapphire:     { id: 'sapphire',     name: 'Sapphire',     color: '#2563eb', rarity: 'rare' },
+  jade:         { id: 'jade',         name: 'Jade',         color: '#059669', rarity: 'rare' },
   // Rare
   gold:         { id: 'gold',         name: 'Gold',         color: '#f59e0b', rarity: 'rare' },
   rose_gold:    { id: 'rose_gold',    name: 'Rose Gold',    color: '#f472b6', rarity: 'rare' },
@@ -49,8 +50,8 @@ const S = {
   radiant:      { id: 'radiant',      name: 'Radiant',      color: '#fbbf24', rarity: 'legendary' },
   aurora:       { id: 'aurora',       name: 'Aurora',       color: '#34d399', rarity: 'legendary' },
   lava:         { id: 'lava',         name: 'Lava',         color: '#ef4444', rarity: 'legendary' },
-  // Mythic
-  celestial:    { id: 'celestial',    name: 'Celestial',    color: '#818cf8', rarity: 'mythic' },
+  // Legendary (aurora + celestial)
+  celestial:    { id: 'celestial',    name: 'Celestial',    color: '#818cf8', rarity: 'legendary' },
   rainbow:      { id: 'rainbow',      name: 'Rainbow',      color: '#f97316', rarity: 'mythic' },
   void:         { id: 'void',         name: 'Void',         color: '#6b21a8', rarity: 'mythic' },
   sakura:       { id: 'sakura',       name: 'Sakura',       color: '#fda4af', rarity: 'mythic' },
@@ -95,7 +96,7 @@ const MONUMENTS: CollectibleBase[] = [
     fact: 'At 13,170 miles long it could circle the Earth more than half a time.',
     missions: [
       { id: 'wall_tower',  label: 'Reach a watchtower and sign your name in the visitor book', skin: S.stone },
-      { id: 'wall_photo',  label: 'Capture the wall disappearing into misty mountains',      skin: S.damascus, verify: 'photo' },
+      { id: 'wall_photo',  label: 'Capture the wall disappearing into misty mountains',      skin: S.obsidian, verify: 'photo' },
       { id: 'wall_hike',   label: 'Hike an unrestored section of the wall at Jiankou',      skin: S.aurora },
     ],
   },
@@ -155,7 +156,7 @@ const MONUMENTS: CollectibleBase[] = [
     fact: "Built from 2.3 million stone blocks, it was the world's tallest structure for 3,800 years.",
     missions: [
       { id: 'pyramid_camel',  label: 'Ride a camel around the Giza plateau',                skin: S.gold, verify: 'photo' },
-      { id: 'pyramid_sphinx', label: 'Photograph the Sphinx with a pyramid aligned behind it', skin: S.damascus, verify: 'photo' },
+      { id: 'pyramid_sphinx', label: 'Photograph the Sphinx with a pyramid aligned behind it', skin: S.obsidian, verify: 'photo' },
       { id: 'pyramid_inside', label: 'Descend into the Grand Gallery inside the pyramid',    skin: S.rainbow },
     ],
   },
@@ -215,7 +216,7 @@ const MONUMENTS: CollectibleBase[] = [
     fact: 'The 25-tonne bluestones were dragged 200 miles from Wales around 2500 BC.',
     missions: [
       { id: 'stone_inner',    label: 'Book a special access inner-circle tour',                   skin: S.stone },
-      { id: 'stone_land',     label: 'Explore the surrounding prehistoric burial mounds on foot', skin: S.damascus },
+      { id: 'stone_land',     label: 'Explore the surrounding prehistoric burial mounds on foot', skin: S.obsidian },
       { id: 'stone_solstice', label: 'Attend a summer or winter solstice sunrise ceremony',      skin: S.lava },
     ],
   },
@@ -326,7 +327,7 @@ const ANIMALS: CollectibleBase[] = [
     fact: 'Elephants are one of the few animals that recognize themselves in a mirror — and mourn their dead.',
     missions: [
       { id: 'eleph_mud',   label: 'Observe a family group bathing and mud-wallowing',        skin: S.bronze },
-      { id: 'eleph_herd',  label: 'Watch a herd of 20+ elephants crossing a river',         skin: S.damascus },
+      { id: 'eleph_herd',  label: 'Watch a herd of 20+ elephants crossing a river',         skin: S.obsidian },
       { id: 'eleph_walk',  label: 'Walk alongside an elephant in an ethical sanctuary',      skin: S.holographic, verify: 'photo' },
     ],
   },
@@ -380,7 +381,7 @@ const ANIMALS: CollectibleBase[] = [
     fact: 'Giant pandas eat 12–38 kg of bamboo a day — they spend 14 hours a day just eating.',
     missions: [
       { id: 'panda_center', label: 'Visit the Chengdu Research Base of Giant Panda Breeding',    skin: S.jade },
-      { id: 'panda_bamboo', label: 'Watch a panda sit and methodically eat bamboo for 10+ mins', skin: S.damascus },
+      { id: 'panda_bamboo', label: 'Watch a panda sit and methodically eat bamboo for 10+ mins', skin: S.obsidian },
       { id: 'panda_cub',    label: 'See a panda cub — one of the rarest sights in the wild',    skin: S.sakura },
     ],
   },
@@ -398,13 +399,18 @@ const ANIMALS: CollectibleBase[] = [
 ];
 
 // ─── Auto-generated catalog from globe/info.ts ────────────────────────────────
-// Curated MONUMENTS above are 49 hand-crafted entries with rich missions.
-// info.ts has 369 landmarks total — every entry the globe can render. This
-// fills the gap so a user collecting an uncurated landmark (e.g. petra,
-// chichenItza) still sees it in their Collection. Default rarity = 'common',
-// default missions = single visit-and-photo for a Stone skin. Curate by
-// adding richer entries to MONUMENTS above; auto entries with the same id
-// get filtered out.
+// Curated MONUMENTS above are hand-crafted entries with rich, location-specific
+// missions. info.ts has 369 landmarks total. This fills the gap so users
+// collecting any landmark see it in their Collection. Both rarity AND missions
+// are now derived from globe/quests.ts (algorithmic, ~5 quests/monument capped),
+// not hardcoded common+single-visit. Curate by adding richer entries to
+// MONUMENTS above; auto entries with the same id get filtered out.
+
+// Map quest tier ids → the existing rich Skin map. Stone tier was retired.
+const TIER_TO_SKIN: Record<SkinTier, Skin> = {
+  bronze: S.bronze, silver: S.silver, gold: S.gold,
+  diamond: S.diamond, aurora: S.aurora, celestial: S.celestial,
+};
 
 const AUTO_MONUMENTS: CollectibleBase[] = (() => {
   const curatedIds = new Set([...MONUMENTS, ...ANIMALS].map(m => m.id));
@@ -412,17 +418,19 @@ const AUTO_MONUMENTS: CollectibleBase[] = (() => {
   for (const [id, info] of Object.entries(INFO)) {
     if (curatedIds.has(id)) continue;
     const cityFromLoc = info.location.split(',')[0]?.trim().toLowerCase() ?? id.toLowerCase();
+    const rarity = getRarity(id) ?? 'common';
+    const quests = getQuests(id);
+    const missions: Mission[] = quests.map(q => ({
+      id: q.id,
+      label: q.label,
+      skin: TIER_TO_SKIN[q.tier],
+      // photo + photo+time + plaque-quiz + receipt + altitude + hidden all
+      // need a captured image; geofence + duration are passive checks.
+      ...(q.verify === 'geofence' || q.verify === 'duration' ? {} : { verify: 'photo' as const }),
+    }));
     out.push({
-      id,
-      name: info.name,
-      location: info.location,
-      cityKeys: [cityFromLoc],
-      emoji: '🏛️',
-      rarity: 'common',
-      fact: info.fact,
-      missions: [
-        { id: `${id}_visit`, label: `Visit ${info.name} in person`, skin: S.stone, verify: 'photo' },
-      ],
+      id, name: info.name, location: info.location,
+      cityKeys: [cityFromLoc], emoji: '🏛️', rarity, fact: info.fact, missions,
     });
   }
   return out;
@@ -433,7 +441,7 @@ const ALL_MONUMENTS: CollectibleBase[] = [...MONUMENTS, ...AUTO_MONUMENTS];
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const RARITY_COLOR: Record<Rarity, string> = {
-  common: '#34d399', rare: '#818cf8', legendary: '#f59e0b',
+  common: '#34d399', rare: '#818cf8', epic: '#f472b6', legendary: '#f59e0b',
 };
 
 type CollectedItem = { monumentId: string; skin: string };
@@ -595,6 +603,7 @@ export default function MonumentShop({ open, onClose }: Props) {
   // tab switch / error / close.
   const [lastUnlock, setLastUnlock] = useState<{ mk: string; name: string; skin: string } | null>(null);
   const [filter,    setFilter]    = useState<'all' | 'unlocked' | 'locked'>('all');
+  const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('all');
   const [isDevServer, setIsDevServer] = useState(false);
   const isDev = isDevClient || isDevServer;
 
@@ -727,10 +736,17 @@ export default function MonumentShop({ open, onClose }: Props) {
   const allTotal = ALL_MONUMENTS.length + ANIMALS.length;
 
   const displayed = list.filter(m => {
-    if (filter === 'unlocked') return isCollected(m.id);
-    if (filter === 'locked')   return !isCollected(m.id);
+    if (filter === 'unlocked' && !isCollected(m.id)) return false;
+    if (filter === 'locked'   &&  isCollected(m.id)) return false;
+    if (rarityFilter !== 'all' && m.rarity !== rarityFilter) return false;
     return true;
   });
+
+  // Which rarities actually exist in the current tab so we don't render
+  // dead pills (e.g. no 'epic' monuments yet).
+  const availableRarities = Array.from(new Set(list.map(m => m.rarity))) as Rarity[];
+  const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
+  const sortedRarities = availableRarities.sort((a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b));
 
   if (!open) return null;
 
@@ -980,7 +996,7 @@ export default function MonumentShop({ open, onClose }: Props) {
           ) : (
             <>
               {/* Filter pills */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {(['all', 'unlocked', 'locked'] as const).map(f => (
                   <button key={f} onClick={() => setFilter(f)} style={{
                     padding: '5px 14px', borderRadius: 999, border: '1px solid',
@@ -993,6 +1009,36 @@ export default function MonumentShop({ open, onClose }: Props) {
                     {f}
                   </button>
                 ))}
+              </div>
+
+              {/* Rarity filter pills — color-coded to match the card rarity tags */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                <button onClick={() => setRarityFilter('all')} style={{
+                  padding: '4px 12px', borderRadius: 999, border: '1px solid',
+                  borderColor: rarityFilter === 'all' ? 'rgba(148,163,208,0.5)' : 'rgba(148,163,208,0.15)',
+                  background: rarityFilter === 'all' ? 'rgba(148,163,208,0.14)' : 'rgba(255,255,255,0.02)',
+                  color: rarityFilter === 'all' ? '#cbd5e1' : '#6b6b85',
+                  fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                  letterSpacing: '0.08em', fontFamily: 'inherit',
+                }}>
+                  All
+                </button>
+                {sortedRarities.map(r => {
+                  const rColor = RARITY_COLOR[r];
+                  const active = rarityFilter === r;
+                  return (
+                    <button key={r} onClick={() => setRarityFilter(r)} style={{
+                      padding: '4px 12px', borderRadius: 999, border: '1px solid',
+                      borderColor: active ? `${rColor}99` : `${rColor}33`,
+                      background: active ? `${rColor}24` : 'rgba(255,255,255,0.02)',
+                      color: active ? rColor : `${rColor}aa`,
+                      fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                      letterSpacing: '0.08em', fontFamily: 'inherit',
+                    }}>
+                      {r}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Grid */}
