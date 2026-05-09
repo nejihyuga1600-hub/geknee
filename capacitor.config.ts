@@ -18,7 +18,10 @@ const config: CapacitorConfig = {
 
   server: {
     // Live remote URL — the WebView loads geknee.com directly.
-    url: 'https://geknee.com',
+    // www. is canonical: bare geknee.com 307s to www, and a redirect mid-OAuth
+    // breaks NextAuth's same-origin callbackUrl check (Server error). Loading
+    // the canonical host directly skips that detour.
+    url: 'https://www.geknee.com',
     // Allow https + the app:// scheme. cleartext stays false (no http://).
     cleartext: false,
     androidScheme: 'https',

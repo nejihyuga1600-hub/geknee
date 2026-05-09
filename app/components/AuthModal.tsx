@@ -80,15 +80,22 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       // so we route through the system browser, complete the OAuth there, then
       // deep-link back via geknee:// with a short-lived handoff token.
       // See lib/native-auth-bridge.ts and app/auth/native-handoff/page.tsx.
+      //
+      // NextAuth v5 doesn't auto-redirect on a plain GET to /api/auth/signin/[p]
+      // — it requires a POST with CSRF token. signIn(redirect:false) does that
+      // dance for us and returns { url } pointing at the OAuth provider.
       const cap = await import('@capacitor/core').catch(() => null);
       if (cap?.Capacitor.isNativePlatform()) {
         const { Browser } = await import('@capacitor/browser');
-        const origin = window.location.origin;
-        const callbackUrl = `${origin}/auth/native-handoff`;
-        const url = `${origin}/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-        await Browser.open({ url, presentationStyle: 'popover' });
-        // Browser stays open until OAuth completes; the deep-link handler in
-        // lib/native-auth-bridge.ts closes it and finishes sign-in.
+        const callbackUrl = `${window.location.origin}/auth/native-handoff`;
+        const result = await signIn(provider, { callbackUrl, redirect: false });
+        const oauthUrl = result?.url;
+        if (!oauthUrl) {
+          setError('Could not start sign-in. Please try again.');
+          setLoading(false);
+          return;
+        }
+        await Browser.open({ url: oauthUrl, presentationStyle: 'popover' });
         setLoading(false);
         return;
       }
