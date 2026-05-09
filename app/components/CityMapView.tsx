@@ -1,7 +1,15 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+
+type GeocodeFeature = {
+  id: string;
+  place_name: string;
+  center: [number, number];
+  text: string;
+  place_type: string[];
+};
 
 type MonumentMarker = {
   mk: string;
@@ -30,6 +38,68 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const droppedMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GeocodeFeature[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  // Debounced geocoding lookup against the Mapbox places API. Proximity-biased
+  // to the current map center so "park" returns the nearby park, not Park City.
+  useEffect(() => {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token || query.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(async () => {
+      try {
+        const map = mapRef.current;
+        const c = map?.getCenter();
+        const proximity = c ? `&proximity=${c.lng},${c.lat}` : '';
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&limit=6&types=place,locality,neighborhood,address,poi${proximity}`;
+        const res = await fetch(url);
+        if (!res.ok) { setResults([]); return; }
+        const data = await res.json() as { features: GeocodeFeature[] };
+        setResults(data.features ?? []);
+      } catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 220);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  function dropPin(lng: number, latitude: number, label?: string) {
+    const map = mapRef.current;
+    if (!map) return;
+    const el = document.createElement('div');
+    el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#a78bfa;border:2px solid #fff;box-shadow:0 0 8px rgba(167,139,250,0.8);cursor:pointer;';
+    const popup = label
+      ? new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'geknee-popup' }).setHTML(
+          `<div style="font-family:var(--font-ui),Inter,system-ui,sans-serif;color:#fff;font-size:12px;font-weight:600;padding:6px 10px;background:rgba(13,13,36,0.95);border:1px solid rgba(167,139,250,0.4);border-radius:8px;">${label.replace(/</g, '&lt;')}</div>`
+        )
+      : undefined;
+    const marker = new mapboxgl.Marker({ element: el }).setLngLat([lng, latitude]);
+    if (popup) marker.setPopup(popup);
+    marker.addTo(map);
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      marker.remove();
+      droppedMarkersRef.current = droppedMarkersRef.current.filter(m => m !== marker);
+    });
+    droppedMarkersRef.current.push(marker);
+  }
+
+  function handleResultClick(f: GeocodeFeature) {
+    const map = mapRef.current;
+    if (!map) return;
+    const [lng, latitude] = f.center;
+    map.flyTo({ center: [lng, latitude], zoom: 14, speed: 1.2 });
+    dropPin(lng, latitude, f.text);
+    setQuery('');
+    setResults([]);
+    setSearchOpen(false);
+  }
 
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -53,6 +123,13 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       if (map.getZoom() < RETURN_TO_GLOBE_ZOOM) onCloseRef.current();
     };
     map.on('zoomend', onZoom);
+
+    // Click on empty map area drops a pin. Right-click on a pin removes it
+    // (handler set in dropPin).
+    const onMapClick = (e: mapboxgl.MapMouseEvent) => {
+      dropPin(e.lngLat.lng, e.lngLat.lat);
+    };
+    map.on('click', onMapClick);
 
     map.on('style.load', () => {
       map.setFog({
@@ -103,6 +180,9 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
     return () => {
       map.off('zoomend', onZoom);
+      map.off('click', onMapClick);
+      droppedMarkersRef.current.forEach(m => m.remove());
+      droppedMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -158,6 +238,88 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
           <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>{String.fromCodePoint(0x2190)}</span>
           Return to globe
         </button>
+      </div>
+
+      <div style={{
+        position: 'absolute', top: 18, left: 18,
+        width: 'min(360px, calc(100vw - 36px))',
+        fontFamily: 'var(--font-ui), Inter, system-ui, sans-serif',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'rgba(6,8,22,0.85)',
+          border: `1px solid ${searchOpen ? 'rgba(167,139,250,0.6)' : 'rgba(100,210,255,0.4)'}`,
+          backdropFilter: 'blur(12px)',
+          borderRadius: results.length > 0 && searchOpen ? '10px 10px 0 0' : 10,
+          padding: '8px 12px',
+          transition: 'border-color 0.15s ease',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(199,210,254,0.8)', flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setSearchOpen(true); }}
+            onFocus={() => setSearchOpen(true)}
+            placeholder="Search places · click map to drop pin"
+            style={{
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: '#fff', fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
+              minWidth: 0,
+            }}
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setResults([]); }}
+              aria-label="Clear search"
+              style={{
+                background: 'transparent', border: 'none', color: 'rgba(199,210,254,0.7)',
+                cursor: 'pointer', padding: 0, fontSize: 16, lineHeight: 1, fontFamily: 'inherit',
+              }}
+            >×</button>
+          )}
+        </div>
+        {searchOpen && results.length > 0 && (
+          <div style={{
+            background: 'rgba(6,8,22,0.95)',
+            border: '1px solid rgba(167,139,250,0.45)',
+            borderTop: 'none',
+            backdropFilter: 'blur(12px)',
+            borderRadius: '0 0 10px 10px',
+            overflow: 'hidden',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          }}>
+            {results.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => handleResultClick(f)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  background: 'transparent', border: 'none',
+                  borderTop: '1px solid rgba(167,139,250,0.15)',
+                  color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+                  padding: '10px 12px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(167,139,250,0.12)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#f2f2f8', marginBottom: 2 }}>{f.text}</div>
+                <div style={{ fontSize: 11, color: '#a8a8c0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.place_name}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        {searching && query.length >= 2 && results.length === 0 && (
+          <div style={{
+            background: 'rgba(6,8,22,0.95)', border: '1px solid rgba(167,139,250,0.45)', borderTop: 'none',
+            borderRadius: '0 0 10px 10px', padding: '10px 12px',
+            color: 'rgba(199,210,254,0.7)', fontSize: 12,
+          }}>Searching…</div>
+        )}
       </div>
     </div>
   );
