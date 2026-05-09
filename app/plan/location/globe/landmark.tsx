@@ -493,11 +493,12 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     `${BLOB_BASE}/${MONUMENT_FILE_PREFIX[mk!] ?? mk}_${effectiveSkin}.glb` : undefined;
   const model   = mk ? MODELS[mk] : undefined;
   const density = LM_DENSITY.get(p) ?? 1;
-  // Global landmark size multiplier — every monument rendered at 1.5x its
-  // declared `s` so the Meshy GLBs read clearly inside the city ring instead
-  // of looking like a dot. Keeps per-monument proportions intact (Eiffel
-  // s=0.9 stays taller than Liberty s=0.4) — just scales all up together.
-  const LANDMARK_BOOST = 1.5;
+  // Global landmark size multiplier — every monument rendered at 1.875x its
+  // declared `s` (was 1.5; bumped 25% per user request) so the Meshy GLBs
+  // read clearly inside the city ring instead of looking like a dot.
+  // Keeps per-monument proportions intact (Eiffel s=0.9 stays taller than
+  // Liberty s=0.4) — just scales all up together.
+  const LANDMARK_BOOST = 1.875;
   const effS    = s * density * LANDMARK_BOOST;
 
   // ─── Animation state refs ───────────────────────────────────────────────────
