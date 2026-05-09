@@ -82,3 +82,7 @@ android/app/debug/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Apple Sign In private key (used by bin/mint-apple-secret.mjs)
+apple/
+*.p8
