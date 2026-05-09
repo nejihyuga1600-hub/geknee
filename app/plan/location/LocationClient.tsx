@@ -503,6 +503,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setMobileActive(false);
                         window.dispatchEvent(new CustomEvent("geknee:opencitymap", {
                           detail: { name, lat: latProp, lon: lonProp },
                         }));
@@ -1736,6 +1737,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setMobileActive(false);
                         window.dispatchEvent(new CustomEvent("geknee:opencitymap", {
                           detail: { name: n, lat, lon },
                         }));
