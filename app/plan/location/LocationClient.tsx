@@ -427,10 +427,11 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
     <group position={pos} quaternion={orientation}>
       <Text
         fontSize={fontSize}
-        color={mobileActive ? "#ffe066" : kind === "country" ? "#ffffff" : "#dde6ff"}
-        outlineWidth={kind === "country" ? 0.020 : 0.013}
-        outlineColor="#0a0a1f"
-        outlineOpacity={0.95}
+        color={mobileActive ? "#ffe066" : "#ffffff"}
+        outlineWidth={fontSize * 0.55}
+        outlineColor="#000000"
+        outlineOpacity={0.55}
+        outlineBlur={fontSize * 0.85}
         anchorX="center"
         anchorY="middle"
         letterSpacing={kind === "country" ? 0.10 : 0.04}
@@ -661,10 +662,11 @@ function GeoLabels({ countries, states, zoomLevel }: {
               position={pos}
               quaternion={orientation}
               fontSize={fontSize}
-              color={kind === "country" ? "#ffffff" : "#dde6ff"}
-              outlineWidth={kind === "country" ? 0.020 : 0.013}
-              outlineColor="#0a0a1f"
-              outlineOpacity={0.95}
+              color="#ffffff"
+              outlineWidth={fontSize * 0.55}
+              outlineColor="#000000"
+              outlineOpacity={0.55}
+              outlineBlur={fontSize * 0.85}
               anchorX="center"
               anchorY="middle"
               letterSpacing={kind === "country" ? 0.10 : 0.04}
@@ -1653,9 +1655,10 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
       <Text
         fontSize={fontSize}
         color={mobileActive ? "#ffe066" : "#ffffff"}
-        outlineWidth={0.018}
-        outlineColor="#0a0a1f"
-        outlineOpacity={0.95}
+        outlineWidth={fontSize * 0.55}
+        outlineColor="#000000"
+        outlineOpacity={0.55}
+        outlineBlur={fontSize * 0.85}
         anchorX="center"
         anchorY="middle"
         letterSpacing={0.01}
@@ -1830,7 +1833,14 @@ function CityLabels({ camDist }: { camDist: number }) {
       }
       if (!tooClose) { selected.push(city); selUnits.push(u); }
     }
-    // Compute font size based on nearest selected neighbour distance
+    // Google-Maps-style zoom-aware sizing: scale world-space fontSize so
+    // on-screen size shrinks slightly when zoomed in and grows when zoomed out.
+    // screen_size ∝ fontSize/camDist, so fontSize ∝ camDist^k with k>1 inverts
+    // the natural perspective scaling. k=1.4 gives a clear but subtle effect
+    // across the camDist 11.5–21 range.
+    const zoomFactor = Math.pow(camDist / 15, 1.4);
+    const baseSize = 0.07 * zoomFactor;
+    const floorSize = 0.045 * zoomFactor;
     return selected.map((city, i) => {
       const u = selUnits[i];
       let minDeg = 180;
@@ -1840,8 +1850,7 @@ function CityLabels({ camDist }: { camDist: number }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      // City labels — halved per user request. Was 0.14 base / 0.09 floor.
-      const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
+      const fontSize = minDeg >= 6 ? baseSize : Math.max(floorSize, baseSize * (minDeg / 6));
       return { ...city, fontSize };
     });
   }, [items, camDist, sepThresh]);
@@ -2194,12 +2203,19 @@ function GlobeScene() {
     return () => {
       cancelled = true;
       loadedBump?.dispose();
-      // ImageBitmaps hold ~32MB at 4096×2048 RGBA outside the JS heap and
-      // are NOT released by GC — close() explicitly. Plugs a leak that
-      // accumulated ~20-100MB per refresh on mobile per dev-findings audit.
-      loadedBitmap?.close?.();
+      // Bitmap close is owned by the state-watching effect below, NOT here.
+      // Closing in this cleanup races with HMR/strict-mode re-runs:
+      // cleanup closes the bitmap, but `terrainBitmap` state still references
+      // it, then createEarthTexture re-runs and drawImage throws InvalidStateError.
     };
   }, [gl]);
+
+  // Close the previous bitmap when a new one replaces it, or on unmount.
+  // Plugs the off-heap ImageBitmap leak (~32MB at 4096×2048) without
+  // racing the React render cycle.
+  useEffect(() => {
+    return () => { terrainBitmap?.close?.(); };
+  }, [terrainBitmap]);
 
   // Real-world rotation speed: one revolution per sidereal day
   const EARTH_ROT = (2 * Math.PI) / 86164;
