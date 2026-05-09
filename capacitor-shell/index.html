@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>geknee</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0; padding: 0;
+        background: #0a0a1f; color: #f5f1e8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        height: 100%;
+      }
+      .center {
+        position: fixed; inset: 0;
+        display: grid; place-items: center; text-align: center;
+        padding: 32px;
+      }
+      .pulse {
+        width: 64px; height: 64px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #5b8def 0%, #2546a7 60%, #0d2466 100%);
+        box-shadow: 0 0 60px rgba(80,130,255,0.45);
+        margin: 0 auto 24px;
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,100% { transform: scale(1);   opacity: 0.85; }
+        50%     { transform: scale(1.08); opacity: 1; }
+      }
+      a { color: #a78bfa; }
+      h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+      p { font-size: 14px; opacity: 0.7; margin: 4px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="center">
+      <div>
+        <div class="pulse"></div>
+        <h1>geknee</h1>
+        <p>Connecting to the world.</p>
+        <p style="margin-top:24px"><a href="https://geknee.com">Open geknee.com</a></p>
+      </div>
+    </div>
+  </body>
+</html>

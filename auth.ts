@@ -131,6 +131,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
+
+    // Native handoff: SFSafariViewController completes OAuth on the
+    // server, deep-links back to the WKWebView with a short-lived signed
+    // token, and we mint a session here. Token is verified for signature,
+    // expiry (60s), and replay (in-memory jti LRU). See lib/handoff-token.ts.
+    Credentials({
+      id: 'native-handoff',
+      name: 'Native Handoff',
+      credentials: {
+        token: { label: 'Token', type: 'text' },
+      },
+      async authorize(credentials) {
+        const token = credentials?.token;
+        if (typeof token !== 'string' || !token) return null;
+        const { verifyHandoff } = await import('@/lib/handoff-token');
+        try {
+          const { userId } = await verifyHandoff(token);
+          const user = await prisma.user.findUnique({ where: { id: userId } });
+          if (!user) return null;
+          return { id: user.id, email: user.email, name: user.name, image: user.image };
+        } catch (e) {
+          console.warn('[auth][native-handoff] verify failed:', (e as Error).message);
+          return null;
+        }
+      },
+    }),
   ],
 
   callbacks: {

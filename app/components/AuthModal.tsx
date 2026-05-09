@@ -24,6 +24,17 @@ const APPLE_LOGO = (
   </svg>
 );
 
+const MICROSOFT_LOGO = (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="1" width="7.5" height="7.5" fill="#F25022"/>
+    <rect x="9.5" y="1" width="7.5" height="7.5" fill="#7FBA00"/>
+    <rect x="1" y="9.5" width="7.5" height="7.5" fill="#00A4EF"/>
+    <rect x="9.5" y="9.5" width="7.5" height="7.5" fill="#FFB900"/>
+  </svg>
+);
+
+type OAuthProvider = 'google' | 'apple' | 'microsoft-entra-id';
+
 type AuthMode = 'signin' | 'signup';
 
 export default function AuthModal({ open, onClose }: AuthModalProps) {
@@ -60,10 +71,27 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
 
   if (!open) return null;
 
-  async function handleOAuth(provider: 'google' | 'apple') {
+  async function handleOAuth(provider: OAuthProvider) {
     setError('');
     setLoading(true);
     try {
+      // Capacitor native: open OAuth in SFSafariViewController / Custom Tabs.
+      // Google/Apple/Microsoft all reject embedded WebViews (disallowed_useragent),
+      // so we route through the system browser, complete the OAuth there, then
+      // deep-link back via geknee:// with a short-lived handoff token.
+      // See lib/native-auth-bridge.ts and app/auth/native-handoff/page.tsx.
+      const cap = await import('@capacitor/core').catch(() => null);
+      if (cap?.Capacitor.isNativePlatform()) {
+        const { Browser } = await import('@capacitor/browser');
+        const origin = window.location.origin;
+        const callbackUrl = `${origin}/auth/native-handoff`;
+        const url = `${origin}/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        await Browser.open({ url, presentationStyle: 'popover' });
+        // Browser stays open until OAuth completes; the deep-link handler in
+        // lib/native-auth-bridge.ts closes it and finishes sign-in.
+        setLoading(false);
+        return;
+      }
       await signIn(provider, { callbackUrl: '/' });
     } catch {
       setError('OAuth sign-in failed. Please try again.');
@@ -185,6 +213,14 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
             <button style={{ ...oauthBtnStyle, background: 'rgba(255,255,255,0.08)' }} disabled={loading} onClick={() => handleOAuth('apple')}>
               {APPLE_LOGO}
               Continue with Apple
+            </button>
+          )}
+
+          {/* Microsoft — only shown when Microsoft Entra is configured */}
+          {process.env.NEXT_PUBLIC_MICROSOFT_AUTH_ENABLED === 'true' && (
+            <button style={oauthBtnStyle} disabled={loading} onClick={() => handleOAuth('microsoft-entra-id')}>
+              {MICROSOFT_LOGO}
+              Continue with Microsoft
             </button>
           )}
 

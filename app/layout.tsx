@@ -38,6 +38,7 @@ import InstallPrompt from "./components/InstallPrompt";
 import RegisterSW from "./components/RegisterSW";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
+import { NativeAuthBridge } from "@/lib/native-auth-bridge";
 
 export const metadata: Metadata = {
   title: "geknee — go there. prove it.",
@@ -92,6 +93,7 @@ export default function RootLayout({
         <GlobalChat />
         <InstallPrompt />
         <RegisterSW />
+        <NativeAuthBridge />
         <SpeedInsights />
         <Analytics />
       </body>
