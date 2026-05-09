@@ -32,9 +32,17 @@ const config: CapacitorConfig = {
     allowNavigation: [
       'geknee.com',
       '*.geknee.com',
+      // Explicit www even though *.geknee.com should glob-match it. Capacitor's
+      // host glob has historically been finicky on first navigations from a
+      // cold WKWebView, and www.geknee.com is the canonical host (server.url),
+      // so an exact entry is belt-and-suspenders.
+      'www.geknee.com',
       'js.stripe.com',
       '*.stripe.com',
       'checkout.stripe.com',
+      // pay.stripe.com is hit when Stripe Checkout invokes Apple Pay flows.
+      // Without this, Apple Pay redirects bounce out of the WKWebView mid-checkout.
+      'pay.stripe.com',
       'accounts.google.com',
       '*.googleusercontent.com',
       'login.microsoftonline.com',
