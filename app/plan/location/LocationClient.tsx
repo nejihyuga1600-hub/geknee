@@ -1650,8 +1650,19 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
     setMobileActive(prev => !prev);
   };
 
+  // Per-frame zoom-aware scale on the text group only — keeps SDF mesh
+  // intact (no rebuild on size change) and the click sprite at full size.
+  // Smooth at 60fps regardless of how coarsely camDist updates in React state.
+  const textGroupRef = useRef<THREE.Group>(null);
+  useFrame(({ camera }) => {
+    if (!textGroupRef.current) return;
+    const camDist = camera.position.length();
+    textGroupRef.current.scale.setScalar(Math.pow(camDist / 15, 1.4));
+  });
+
   return (
     <group position={pos} quaternion={orientation}>
+      <group ref={textGroupRef}>
       <Text
         fontSize={fontSize}
         color={mobileActive ? "#ffe066" : "#ffffff"}
@@ -1671,6 +1682,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize }: {
       >
         {n}
       </Text>
+      </group>
 
       {showCard && (
         <Html as="div" zIndexRange={[0, 0]} style={{ pointerEvents: "none", width: 0, height: 0 }}>
@@ -1857,14 +1869,8 @@ function CityLabels({ camDist }: { camDist: number }) {
       }
       if (!tooClose) { selected.push(city); selUnits.push(u); }
     }
-    // Google-Maps-style zoom-aware sizing: scale world-space fontSize so
-    // on-screen size shrinks slightly when zoomed in and grows when zoomed out.
-    // screen_size ∝ fontSize/camDist, so fontSize ∝ camDist^k with k>1 inverts
-    // the natural perspective scaling. k=1.4 gives a clear but subtle effect
-    // across the camDist 11.5–21 range.
-    const zoomFactor = Math.pow(camDist / 15, 1.4);
-    const baseSize = 0.07 * zoomFactor;
-    const floorSize = 0.045 * zoomFactor;
+    // Density-based base size only. Per-frame zoom scaling lives in CityLabel's
+    // useFrame so it's smooth at 60fps and doesn't rebuild SDF text meshes.
     return selected.map((city, i) => {
       const u = selUnits[i];
       let minDeg = 180;
@@ -1874,7 +1880,7 @@ function CityLabels({ camDist }: { camDist: number }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const fontSize = minDeg >= 6 ? baseSize : Math.max(floorSize, baseSize * (minDeg / 6));
+      const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
       return { ...city, fontSize };
     });
   }, [items, camDist, sepThresh, monumentUnits, monumentClearDeg]);
