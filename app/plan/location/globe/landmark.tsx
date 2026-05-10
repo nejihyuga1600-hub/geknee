@@ -547,6 +547,11 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   // Ring animation ref (continuous for collected monuments)
   const ringRef = useRef<THREE.Mesh>(null);
   const zoomWrapperRef = useRef<THREE.Group>(null);
+  // Per-monument scratch buffers — reused across frames so the camera-facing
+  // yaw computation in useFrame doesn't allocate every frame.
+  const _v = useRef(new THREE.Vector3()).current;
+  const _monPos = useRef(new THREE.Vector3()).current;
+  const _qInv = useRef(new THREE.Quaternion()).current;
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const modelGroupRef = useRef<THREE.Group>(null);
   const sparkleGroupRef = useRef<THREE.Group>(null);
@@ -747,9 +752,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     // facade of each landmark. Skipped while the unlock spin animation owns
     // rotation.y so the spin still reads.
     if (modelGroupRef.current && !unlockAnimRef.current.active) {
-      const inv = modelGroupRef.current.matrixWorld.clone().invert();
-      const camLocal = camera.position.clone().applyMatrix4(inv);
-      const baseYaw = Math.atan2(camLocal.x, camLocal.z);
+      // Camera direction in the monument's OUTER frame (position+quaternion
+      // from p, before any model-level rotation we apply ourselves).
+      // Reading modelGroupRef.matrixWorld here would include our own yaw and
+      // the result oscillates between the right yaw and 0 every frame —
+      // which looks like the monument flickering / glitching.
+      const camDirLocal = _v.copy(camera.position).sub(_monPos.set(...p.pos));
+      camDirLocal.applyQuaternion(_qInv.copy(p.q).invert());
+      const baseYaw = Math.atan2(camDirLocal.x, camDirLocal.z);
       const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
       modelGroupRef.current.rotation.y = baseYaw + frontOffset;
       modelGroupRef.current.rotation.x = -0.30;
