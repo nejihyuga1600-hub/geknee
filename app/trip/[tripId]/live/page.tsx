@@ -475,17 +475,26 @@ function LiveMap({ city, geo, weather, activities }: { city: string | null; geo:
         .filter((p): p is { name: string; coords: [number, number] } => !!p);
       if (cancelled || resolved.length === 0) return;
 
-      // Pin every resolved activity. First one (next-up) gets a brighter
-      // ring so the user can spot it at a glance.
+      // Pin every resolved activity. Smaller + semi-transparent so
+      // overlapping pins stay readable. First one (next-up) gets a
+      // subtle bump so it's still spottable; quest-like stops swap to
+      // gold while everything else stays in the purple theme.
       resolved.forEach((p, i) => {
+        const isMonument = /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(p.name);
+        const isFirst = i === 0;
+        const baseRGB = isMonument ? '251, 191, 36' : '167, 139, 250';
+        const fillAlpha = isFirst ? 0.92 : 0.72;
+        const borderAlpha = isFirst ? 0.95 : 0.55;
+        const size = isFirst ? 22 : 18;
+
         const el = document.createElement('div');
         el.style.cssText = `
-          width: 22px; height: 22px; border-radius: 50%;
-          background: ${i === 0 ? '#fbbf24' : '#a78bfa'};
-          color: #0a0a1f; font-weight: 700; font-size: 11px;
+          width: ${size}px; height: ${size}px; border-radius: 50%;
+          background: rgba(${baseRGB}, ${fillAlpha});
+          color: #0a0a1f; font-weight: 700; font-size: ${isFirst ? 11 : 10}px;
           display: flex; align-items: center; justify-content: center;
-          border: 2px solid rgba(13,13,36,0.85);
-          box-shadow: 0 0 0 ${i === 0 ? 4 : 2}px rgba(167,139,250,${i === 0 ? 0.45 : 0.25});
+          border: 1.5px solid rgba(13,13,36,${borderAlpha});
+          box-shadow: 0 1px 6px rgba(0,0,0,0.35);
           font-family: var(--font-ui, system-ui), sans-serif;
         `;
         el.textContent = String(i + 1);

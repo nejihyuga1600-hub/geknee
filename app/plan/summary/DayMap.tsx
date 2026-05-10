@@ -341,16 +341,23 @@ export default function DayMap({
       resolved.forEach((p, i) => {
         const isMonument = /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(p.name);
         const isFirst = i === 0;
-        const color = isMonument ? '#fbbf24' : '#a78bfa';
-        const size = isFirst ? 32 : 26;
+        // Smaller + semi-transparent so overlapping pins stay readable
+        // through each other. First pin (next-up) gets a subtle size +
+        // opacity bump so it's still spottable. Quest stops keep the
+        // gold tint; everything else stays in the purple theme.
+        const baseRGB = isMonument ? '251, 191, 36' : '167, 139, 250';
+        const fillAlpha = isFirst ? 0.92 : 0.72;
+        const borderAlpha = isFirst ? 0.95 : 0.55;
+        const size = isFirst ? 22 : 18;
 
         const el = document.createElement('div');
         el.style.cssText = `
           width: ${size}px; height: ${size}px; border-radius: 50%;
-          background: ${color}; color: #0a0a1f;
-          border: 2px solid #0a0a1f;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-          font-size: ${isFirst ? 13 : 11}px; font-weight: 700;
+          background: rgba(${baseRGB}, ${fillAlpha});
+          color: #0a0a1f;
+          border: 1.5px solid rgba(10, 10, 31, ${borderAlpha});
+          box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+          font-size: ${isFirst ? 11 : 10}px; font-weight: 700;
           display: flex; align-items: center; justify-content: center;
           font-family: ui-monospace, monospace;
         `;
