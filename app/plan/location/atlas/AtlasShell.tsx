@@ -315,31 +315,30 @@ export default function AtlasShell() {
         <Link
           href="/"
           title="Back to landing page"
+          aria-label="Home"
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "5px 10px",
-            borderRadius: 999,
+            justifyContent: "center",
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
             background: "var(--brand-surface)",
             backdropFilter: "blur(12px)",
             border: "1px solid var(--brand-border)",
-            color: "var(--brand-ink)",
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: "0.08em",
             cursor: "pointer",
-            textTransform: "uppercase",
-            fontFamily: "inherit",
             textDecoration: "none",
+            overflow: "hidden",
+            flexShrink: 0,
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <circle cx="12" cy="12" r="10" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          Home
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/geknee-app-icon-v1.png"
+            alt=""
+            aria-hidden
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
         </Link>
         {!isMobile && (
           <span
