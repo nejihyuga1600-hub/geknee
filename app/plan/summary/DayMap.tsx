@@ -84,6 +84,12 @@ export default function DayMap({
     return () => clearTimeout(t);
   }, [ready]);
   const [tokenMissing, setTokenMissing] = useState(false);
+  // Diagnostic counters surfaced as a small overlay badge so the user can
+  // see at a glance how many pins resolved and how many legs successfully
+  // upgraded from straight line to a routed walking/driving path.
+  const [pinCount, setPinCount] = useState(0);
+  const [legCount, setLegCount] = useState(0);
+  const [legRoutedCount, setLegRoutedCount] = useState(0);
 
   // Lazy-mount: only init the map when the card scrolls into view.
   useEffect(() => {
@@ -342,6 +348,11 @@ export default function DayMap({
       if (stackedCount > 0) {
         console.log(`[DayMap "${heading}"] ${stackedCount} location bucket(s) had multiple pins — spread on a 250m ring`);
       }
+      if (!cancelled) {
+        setPinCount(resolved.length);
+        setLegCount(Math.max(0, resolved.length - 1));
+        setLegRoutedCount(0);
+      }
       onPlacesResolved?.(resolved.map(p => p.name));
 
       if (resolved.length === 0) {
@@ -445,6 +456,7 @@ export default function DayMap({
                 geometry: { type: 'LineString', coordinates: routed },
               };
               stillSrc.setData({ type: 'FeatureCollection', features: [...features] });
+              setLegRoutedCount(c => c + 1);
             })
             .catch(err => { console.warn(`[DayMap] leg ${i} ${profile} → fetch error`, err); });
         }
@@ -500,6 +512,20 @@ export default function DayMap({
             background: '#a78bfa', animation: 'pulse 1.4s ease-in-out infinite',
           }} />
           Loading
+        </div>
+      )}
+
+      {ready && pinCount > 0 && (
+        <div style={{
+          position: 'absolute', bottom: 10, right: 10,
+          background: 'rgba(10,10,31,0.85)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 8, padding: '5px 10px',
+          color: 'rgba(255,255,255,0.7)', fontSize: 10,
+          fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+          pointerEvents: 'none',
+        }}>
+          {pinCount} stop{pinCount === 1 ? '' : 's'} · {legRoutedCount}/{legCount} routed
         </div>
       )}
     </div>
