@@ -469,6 +469,26 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
               // applies a transform, this wrapper isolates from it.
               transform: "translateZ(0)",
             }}>
+              {/* Close button — works for touch and cursor. 32×32 hit target
+                  meets touch-friendly minimum and gives cursor users obvious
+                  affordance. */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMobileActive(false); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label="Close"
+                style={{
+                  position: "absolute", top: 8, right: 8,
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "rgba(15,15,35,0.85)",
+                  border: "1px solid rgba(167,139,250,0.35)",
+                  color: "rgba(199,210,254,0.9)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18, lineHeight: 1, cursor: "pointer",
+                  zIndex: 1, fontFamily: "inherit",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >×</button>
               {imgUrl && (
                 <img src={imgUrl} alt="" style={{
                   display: "block", width: "100%", height: 168,
@@ -1721,6 +1741,26 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
               fontFamily: "var(--font-ui), Inter, system-ui, sans-serif",
               transform: "translateZ(0)",
             }}>
+              {/* Close button — works for touch and cursor. 32×32 hit target
+                  meets touch-friendly minimum and gives cursor users obvious
+                  affordance. */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMobileActive(false); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label="Close"
+                style={{
+                  position: "absolute", top: 8, right: 8,
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "rgba(15,15,35,0.85)",
+                  border: "1px solid rgba(167,139,250,0.35)",
+                  color: "rgba(199,210,254,0.9)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18, lineHeight: 1, cursor: "pointer",
+                  zIndex: 1, fontFamily: "inherit",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >×</button>
               {imgUrl && (
                 <img src={imgUrl} alt="" style={{
                   display: "block", width: "100%", height: 168,
