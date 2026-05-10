@@ -330,18 +330,47 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // own pin set. Hydrate on mount / when location changes; save on every
   // bookmarks change (after hydration has run for the current key).
   const bookmarksKey = `geknee:bookmarks:${location || 'default'}`;
+  // Pin-draft handoff: the globe → city Mapbox view writes to
+  // geknee:pin-draft:<cityname-lowercase>. Pull those in as bookmarks the
+  // first time the user lands on the planner for that city. Each draft
+  // pin becomes a single 'other'-category bookmark, prefixed in the id so
+  // we don't re-import the same pin if the user later removes it from the
+  // planner.
+  const draftKey = `geknee:pin-draft:${(location || '').toLowerCase()}`;
   const hydratedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const raw = window.localStorage.getItem(bookmarksKey);
       const parsed = raw ? (JSON.parse(raw) as Bookmark[]) : [];
-      setBookmarks(Array.isArray(parsed) ? parsed : []);
+      let next: Bookmark[] = Array.isArray(parsed) ? parsed : [];
+
+      // Auto-import any pin-draft entries the user hasn't already declined.
+      try {
+        const draftRaw = window.localStorage.getItem(draftKey);
+        if (draftRaw) {
+          type Draft = { lat: number; lon: number; label?: string; addedAt: number };
+          const drafts = JSON.parse(draftRaw) as Draft[];
+          const seen = new Set(next.map(b => b.id));
+          for (const d of drafts) {
+            const id = `pin-draft:${d.lat.toFixed(5)}:${d.lon.toFixed(5)}`;
+            if (seen.has(id)) continue;
+            next = next.concat([{
+              id,
+              name: d.label || 'Pinned location',
+              coords: [d.lon, d.lat],
+              category: 'other',
+            }]);
+          }
+        }
+      } catch { /* ignore handoff failures — bookmarks still load */ }
+
+      setBookmarks(next);
     } catch {
       setBookmarks([]);
     }
     hydratedKeyRef.current = bookmarksKey;
-  }, [bookmarksKey]);
+  }, [bookmarksKey, draftKey]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (hydratedKeyRef.current !== bookmarksKey) return;
