@@ -1,11 +1,14 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { track } from '@/lib/analytics';
 import { _setPendingUnlock } from '@/app/plan/location/globe/landmark';
 import { INFO } from '@/app/plan/location/globe/info';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
+import { ShimmerButton } from './animations/ShimmerButton';
+import { MagicCard } from './animations/MagicCard';
+import { UnlockCeremony } from './animations/UnlockCeremony';
 
 const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
 
@@ -459,7 +462,7 @@ function DetailView({
   tripLocs: string[];
   loading: boolean;
   isDev: boolean;
-  onUnlock: (item: CollectibleBase) => void;
+  onUnlock: (item: CollectibleBase, e: React.MouseEvent<HTMLElement>) => void;
   onMission: (item: CollectibleBase, mission: Mission) => void;
   onBack: () => void;
 }) {
@@ -510,14 +513,9 @@ function DetailView({
         </div>
         <div style={{ flexShrink: 0 }}>
           {!unlocked && canUnlock && (
-            <button onClick={() => onUnlock(item)} disabled={loading} style={{
-              padding: '8px 14px', borderRadius: 10, border: 'none',
-              background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
-              color: '#fff', fontSize: 12, fontWeight: 700,
-              cursor: loading ? 'wait' : 'pointer',
-            }}>
+            <ShimmerButton onClick={(e) => onUnlock(item, e)} disabled={loading}>
               {loading ? '...' : `${String.fromCodePoint(0x1F513)} Collect`}
-            </button>
+            </ShimmerButton>
           )}
           {!unlocked && !canUnlock && (
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textAlign: 'center', lineHeight: 1.3 }}>
@@ -600,6 +598,9 @@ export default function MonumentShop({ open, onClose }: Props) {
   // Remembers the most recent unlock so we can offer a share CTA. Cleared on
   // tab switch / error / close.
   const [lastUnlock, setLastUnlock] = useState<{ mk: string; name: string; skin: string } | null>(null);
+  // Captures the DOM element of whichever button fired the last unlock, so
+  // UnlockCeremony's bloom phase can radiate from the actual tap point.
+  const unlockOriginRef = useRef<HTMLElement | null>(null);
   const [filter,    setFilter]    = useState<'all' | 'unlocked' | 'locked'>('all');
   const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('all');
   const [isDevServer, setIsDevServer] = useState(false);
@@ -746,9 +747,15 @@ export default function MonumentShop({ open, onClose }: Props) {
   const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
   const sortedRarities = availableRarities.sort((a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b));
 
-  if (!open) return null;
+  // Keep the component mounted while UnlockCeremony plays out, even if the
+  // shop modal is closed. That way the ceremony orb can finish traveling to
+  // the globe corner after the user dismisses the shop.
+  if (!open && !lastUnlock) return null;
 
   return (
+    <>
+      <UnlockCeremony trigger={lastUnlock} originRef={unlockOriginRef} />
+      {open && (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -987,7 +994,10 @@ export default function MonumentShop({ open, onClose }: Props) {
             <DetailView
               item={selected} collected={collected} missions={missions} tripLocs={tripLocs}
               loading={loading} isDev={isDev}
-              onUnlock={async (it) => { await unlock(it); }}
+              onUnlock={async (it, e) => {
+                unlockOriginRef.current = e.currentTarget as HTMLElement;
+                await unlock(it);
+              }}
               onMission={async (it, ms) => { await completeMission(it, ms); }}
               onBack={() => { setSelected(null); setMsg(''); }}
             />
@@ -1047,17 +1057,23 @@ export default function MonumentShop({ open, onClose }: Props) {
                   const skinsEarned = item.missions.filter(ms => collected.some(c => c.monumentId === item.id && c.skin === ms.skin.id)).length;
                   const rColor = RARITY_COLOR[item.rarity];
                   return (
-                    <div key={item.id}
-                      onClick={() => setSelected(item)}
+                    <MagicCard
+                      key={item.id}
+                      gradientColor={unlocked ? rColor : '#a78bfa'}
+                      gradientSize={180}
+                      gradientOpacity={unlocked ? 0.5 : 0.35}
                       style={{
-                        position: 'relative',
                         background: unlocked
                           ? `linear-gradient(165deg, ${rColor}1f, rgba(255,255,255,0.03))`
                           : 'rgba(255,255,255,0.02)',
                         border: `1px solid ${unlocked ? `${rColor}66` : eligible ? 'rgba(167, 139, 250, 0.25)' : 'rgba(148,163,208,0.18)'}`,
-                        borderRadius: 14, padding: 14, cursor: 'pointer',
-                        opacity: unlocked ? 1 : 0.65,
-                        transition: 'transform 150ms ease, opacity 150ms ease',
+                        borderRadius: 14,
+                        opacity: unlocked ? 1 : 0.7,
+                        transition: 'opacity 150ms ease',
+                      }}>
+                    <div onClick={() => setSelected(item)}
+                      style={{
+                        padding: 14, cursor: 'pointer',
                       }}>
 
                       {/* Glyph circle (replaces raw emoji) */}
@@ -1126,6 +1142,7 @@ export default function MonumentShop({ open, onClose }: Props) {
                         </div>
                       )}
                     </div>
+                    </MagicCard>
                   );
                 })}
               </div>
@@ -1140,5 +1157,7 @@ export default function MonumentShop({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+      )}
+    </>
   );
 }
