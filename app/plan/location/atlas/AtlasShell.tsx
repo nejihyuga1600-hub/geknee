@@ -355,19 +355,19 @@ export default function AtlasShell() {
         )}
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {!isMobile && (
-            <>
-              <NavPill onClick={() => setShopOpen(true)} title="Monument Collection">
-                <ColIcon /> <span>Collection</span>
-              </NavPill>
-              <NavPill onClick={() => setUpgradeOpen(true)} accent>
-                <SparkleIcon /> <span>Go Pro</span>
-              </NavPill>
-              <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends">
-                <TripsIcon /> <span>Trips</span>
-              </NavPill>
-            </>
-          )}
+          {/* On mobile, render the same NavPills as icon-only so the user
+             can still reach MonumentShop / Pricing / Trips from the iOS
+             app. Hiding them entirely (the previous behavior) made the
+             Capacitor build effectively unusable for collecting. */}
+          <NavPill onClick={() => setShopOpen(true)} title="Monument Collection" iconOnly={isMobile}>
+            <ColIcon /> {!isMobile && <span>Collection</span>}
+          </NavPill>
+          <NavPill onClick={() => setUpgradeOpen(true)} accent iconOnly={isMobile}>
+            <SparkleIcon /> {!isMobile && <span>Go Pro</span>}
+          </NavPill>
+          <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends" iconOnly={isMobile}>
+            <TripsIcon /> {!isMobile && <span>Trips</span>}
+          </NavPill>
           {session?.user ? (
             <button
               onClick={() => setTripsOpen(true)}
