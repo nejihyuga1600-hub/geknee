@@ -529,7 +529,8 @@ function LiveMap({ city, geo, weather, activities }: { city: string | null; geo:
           fetch(u)
             .then(r => r.ok ? r.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
             .then(d => {
-              if (cancelled) return;
+              // No cancelled-guard — same React re-render trap as DayMap;
+              // bailing on cancelled was throwing away every routed leg.
               const routed = d?.routes?.[0]?.geometry?.coordinates;
               if (!routed || routed.length === 0) return;
               const stillSrc = mapRef.current?.getSource('live-route') as mapboxgl.GeoJSONSource | undefined;

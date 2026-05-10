@@ -437,7 +437,13 @@ export default function DayMap({
               return res.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }>;
             })
             .then(data => {
-              if (cancelled) return;
+              // NOTE: deliberately NOT checking `cancelled` here. React
+              // re-renders the parent between fetch-fire and fetch-resolve,
+              // and even when the loadKey hasn't changed (i.e. the work
+              // is still relevant) the previous closure's cancelled flag
+              // gets flipped by cleanup. Skipping the apply was throwing
+              // away every routed leg → '0/6 routed' badge. Source-gone
+              // and source-mismatch are still guarded.
               const routed = data?.routes?.[0]?.geometry?.coordinates;
               if (!routed || routed.length === 0) {
                 console.warn(`[DayMap] leg ${i} ${profile} → no route geometry returned`);
@@ -449,7 +455,6 @@ export default function DayMap({
                 return;
               }
               console.log(`[DayMap] leg ${i} ${profile} → routed (${routed.length} points)`);
-              // Update only THIS leg's geometry, keep other legs intact.
               features[i] = {
                 type: 'Feature',
                 properties: { mode: profile, legIdx: i },
