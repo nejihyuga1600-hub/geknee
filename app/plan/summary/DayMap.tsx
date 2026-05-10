@@ -308,28 +308,30 @@ export default function DayMap({
       // numbered marker is visible. Without this, three activities at
       // 'Chowk Kagziyan' stack into one pin and the user sees '5' but
       // not '3' or '4'.
-      // Bucket at 3-decimal precision (~110 m). Pins closer than that visually
-      // overlap at typical zoom even though their coords differ — bucket them
-      // and spread on a small ring so each numbered marker is distinct.
+      // Bucket at 2-decimal precision (~1.1 km). At city-overview zoom levels
+      // (10-12), pins within ~1 km visually overlap, so we group them and
+      // spread on a ring whose radius scales with group size so even 5-7
+      // stacked pins read as unambiguously separate numbered markers.
       const groups = new Map<string, Place[]>();
       for (const p of resolvedRaw) {
-        const key = `${Math.round(p.coords[0] * 1e3)}/${Math.round(p.coords[1] * 1e3)}`;
+        const key = `${Math.round(p.coords[0] * 1e2)}/${Math.round(p.coords[1] * 1e2)}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(p);
       }
       const resolved: Place[] = [];
       for (const p of resolvedRaw) {
-        const key = `${Math.round(p.coords[0] * 1e3)}/${Math.round(p.coords[1] * 1e3)}`;
+        const key = `${Math.round(p.coords[0] * 1e2)}/${Math.round(p.coords[1] * 1e2)}`;
         const grp = groups.get(key)!;
         if (grp.length === 1) {
           resolved.push(p);
         } else {
           const idx = grp.indexOf(p);
           const angle = (idx / grp.length) * Math.PI * 2;
-          // ~250 m ring radius — large enough that markers are unambiguously
-          // separate at city-overview zoom, small enough that they still
-          // read as 'in the same neighborhood'.
-          const r = 0.0025;
+          // Ring radius scales with stack size: 2 pins → ~110 m apart,
+          // 5 pins → ~280 m radius, 7 pins → ~390 m radius. Keeps the
+          // pins inside the same neighborhood while making each marker
+          // visually distinct from its neighbors.
+          const r = 0.001 + grp.length * 0.0004;
           resolved.push({
             name: p.name,
             coords: [p.coords[0] + Math.cos(angle) * r, p.coords[1] + Math.sin(angle) * r],
