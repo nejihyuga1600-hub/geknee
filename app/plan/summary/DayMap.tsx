@@ -235,16 +235,46 @@ export default function DayMap({
         ? namedPlaces.map(n => ({ name: n }))
         : extractPlaces(lines);
 
-      const results = await Promise.all(rawPlaces.map(async p => {
-        const coords = await geocode(`${p.name}, ${city}`);
-        // Tight bias: reject anything more than ~0.6° lat / 0.9° lng off
-        // the city anchor (~65 km radius). A single day's stops should
-        // fit within that — anything outside is almost certainly a
-        // wrong-city geocode hit and would visually destroy the day map.
-        if (coords && Math.abs(coords[1] - center[1]) < 0.6 && Math.abs(coords[0] - center[0]) < 0.9) {
-          return { name: p.name, coords } as Place;
+      // Multi-strategy geocoding. The LLM frequently invents specific
+      // restaurant names ("Shankara Vegis Restaurant") that don't exist
+      // in any POI database; without fallbacks, those activities never
+      // get a pin. Try a chain of progressively broader queries until
+      // one resolves inside the city bbox.
+      function inBbox(coords: [number, number]): boolean {
+        return Math.abs(coords[1] - center[1]) < 0.6 && Math.abs(coords[0] - center[0]) < 0.9;
+      }
+      async function resolvePlace(name: string): Promise<[number, number] | null> {
+        const tries: string[] = [];
+        const cleaned = name.replace(/\([^)]+\)/g, '').replace(/\s+/g, ' ').trim();
+        // 1. Exact name + city.
+        tries.push(`${name}, ${city}`);
+        if (cleaned !== name) tries.push(`${cleaned}, ${city}`);
+        // 2. Strip leading qualifiers ("the X", "a X").
+        const noArticle = cleaned.replace(/^(?:the|a|an)\s+/i, '');
+        if (noArticle !== cleaned) tries.push(`${noArticle}, ${city}`);
+        // 3. If the name has commas or "in/at/near", split and try the
+        //    later (broader) chunks too — often a neighborhood/area.
+        const chunks = cleaned.split(/[,]| (?:in|at|near|by) /i).map(s => s.trim()).filter(Boolean);
+        for (let i = 1; i < chunks.length; i++) {
+          tries.push(`${chunks[i]}, ${city}`);
+        }
+        // 4. Drop generic suffixes that often kill the match
+        //    ("Restaurant", "Hotel", "Cafe").
+        const stripped = cleaned.replace(/\s+(restaurant|hotel|cafe|café|bar|lounge|bistro|eatery|inn|motel)\s*$/i, '').trim();
+        if (stripped && stripped !== cleaned) tries.push(`${stripped}, ${city}`);
+        // De-dupe.
+        const seen = new Set<string>();
+        for (const q of tries) {
+          if (seen.has(q.toLowerCase())) continue;
+          seen.add(q.toLowerCase());
+          const c = await geocode(q);
+          if (c && inBbox(c)) return c;
         }
         return null;
+      }
+      const results = await Promise.all(rawPlaces.map(async p => {
+        const coords = await resolvePlace(p.name);
+        return coords ? ({ name: p.name, coords } as Place) : null;
       }));
       if (cancelled || !mapRef.current) return;
 
