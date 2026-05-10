@@ -86,22 +86,21 @@ export function Ball({ p, r, c, M = Mat }: { p:[number,number,number]; r:number;
 export const BLOB_BASE = 'https://mrfgpxw07gmgmriv.public.blob.vercel-storage.com/models';
 
 // Per-monument yaw offset (radians) so each GLB's iconic FRONT faces the
-// camera. Defaults to 0 (assumes the GLB's local +Z is the front). Different
-// Meshy renders have different default-facing axes — adjust here so e.g.
-// Christ the Redeemer's outstretched arms always face the viewer instead of
-// pointing east. Increment by π/2 to spin a monument 90° CCW; π to flip
-// front-to-back; -π/2 for 90° CW. Tune by eyeballing the live globe.
+// camera. Most Meshy GLBs are authored with the model's "front" along -Z
+// (glTF convention) so the default is π to flip front-to-back from our
+// face-camera math (which aligns +Z to camera). Tune any monument that
+// still looks wrong on the live globe — increments are π/2 for 90° CCW,
+// -π/2 for 90° CW. Stored at module scope so it's edit-friendly.
 export const MONUMENT_FRONT_YAW: Record<string, number> = {
-  christRedeem: Math.PI,        // statue was facing away from camera
-  // Add overrides here as needed:
-  // eiffelTower: 0,
-  // colosseum: 0,
-  // tajMahal: 0,
-  // greatWall: 0,
-  // statueLiberty: 0,
-  // sagradaFamilia: 0,
-  // bigBen: 0,
-  // sydneyOpera: 0,
+  eiffelTower:    Math.PI,
+  colosseum:      Math.PI,
+  tajMahal:       Math.PI,
+  greatWall:      Math.PI,
+  statueLiberty:  Math.PI,
+  sagradaFamilia: Math.PI,
+  christRedeem:   Math.PI,
+  bigBen:         Math.PI,
+  sydneyOpera:    Math.PI,
 };
 
 // GLB models served from Vercel Blob. Entries here render as the default (pre-skin)
@@ -776,9 +775,12 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       const elevation = Math.atan2(Math.max(0, camDirLocal.y), Math.max(1e-4, horizDist));
       const baseYaw = Math.atan2(camDirLocal.x, camDirLocal.z);
       const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
-      // Pitch: 0 at horizon, up to ~45° (π/4) at zenith. Negative tips the
-      // top of the monument forward toward the camera.
-      const pitch = -Math.min(elevation * 0.6, Math.PI / 4);
+      // Pitch: 0 at horizon, up to ~20° at zenith. Earlier 45° cap made
+      // tall monuments (Eiffel, Christ the Redeemer, Big Ben) lay almost
+      // flat from above — they read as a small smear instead of the
+      // recognisable silhouette. 20° is enough to show some of the facade
+      // while keeping the monument standing.
+      const pitch = -Math.min(elevation * 0.30, 0.35);
       _yawQ.setFromAxisAngle(_yAxis, baseYaw + frontOffset);
       _pitchQ.setFromAxisAngle(_xAxis, pitch);
       modelGroupRef.current.quaternion.copy(_yawQ).multiply(_pitchQ);

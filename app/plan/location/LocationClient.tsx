@@ -469,27 +469,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
               // applies a transform, this wrapper isolates from it.
               transform: "translateZ(0)",
             }}>
-              {/* Close button — works for touch and cursor. 32×32 hit target
-                  meets touch-friendly minimum and gives cursor users obvious
-                  affordance. */}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setMobileActive(false); }}
-                onPointerDown={(e) => e.stopPropagation()}
-                aria-label="Close"
-                style={{
-                  position: "absolute", top: 8, right: 8,
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: "rgba(15,15,35,0.85)",
-                  border: "1px solid rgba(167,139,250,0.35)",
-                  color: "rgba(199,210,254,0.9)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, lineHeight: 1, cursor: "pointer",
-                  zIndex: 1, fontFamily: "inherit",
-                  WebkitTapHighlightColor: "transparent",
-                }}
-              >×</button>
-              {imgUrl && (
+{imgUrl && (
                 <img src={imgUrl} alt="" style={{
                   display: "block", width: "100%", height: 168,
                   objectFit: "cover",
@@ -1741,27 +1721,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
               fontFamily: "var(--font-ui), Inter, system-ui, sans-serif",
               transform: "translateZ(0)",
             }}>
-              {/* Close button — works for touch and cursor. 32×32 hit target
-                  meets touch-friendly minimum and gives cursor users obvious
-                  affordance. */}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setMobileActive(false); }}
-                onPointerDown={(e) => e.stopPropagation()}
-                aria-label="Close"
-                style={{
-                  position: "absolute", top: 8, right: 8,
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: "rgba(15,15,35,0.85)",
-                  border: "1px solid rgba(167,139,250,0.35)",
-                  color: "rgba(199,210,254,0.9)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, lineHeight: 1, cursor: "pointer",
-                  zIndex: 1, fontFamily: "inherit",
-                  WebkitTapHighlightColor: "transparent",
-                }}
-              >×</button>
-              {imgUrl && (
+{imgUrl && (
                 <img src={imgUrl} alt="" style={{
                   display: "block", width: "100%", height: 168,
                   objectFit: "cover",
@@ -2672,6 +2632,13 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100svh", zIndex: 1, touchAction: "none" }}
         camera={{ position: [0, 0, 26], fov: 50 }}
         dpr={[1, isMobile ? 1.5 : 2]}
+        // R3F fires onPointerMissed when a click hits the canvas but no
+        // interactive 3D object intercepted it. We use that as "user clicked
+        // empty space" → broadcast a dismiss signal so any open city/geo
+        // info card closes. Cleaner than per-card click-outside listeners.
+        onPointerMissed={() => {
+          window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key: '__dismiss__' } }));
+        }}
         gl={{
           antialias: !isMobile,
           powerPreference: isMobile ? "default" : "high-performance",
