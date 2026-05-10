@@ -10,7 +10,7 @@
 //   locations.ts — pre-computed landmark positions + density map
 
 import { useFrame } from "@react-three/fiber";
-import { useGLTF, Html, Sparkles } from "@react-three/drei";
+import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
 import React, {
   useEffect,
   useRef,
@@ -527,6 +527,7 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
 
   // Ring animation ref (continuous for collected monuments)
   const ringRef = useRef<THREE.Mesh>(null);
+  const zoomWrapperRef = useRef<THREE.Group>(null);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const modelGroupRef = useRef<THREE.Group>(null);
   const sparkleGroupRef = useRef<THREE.Group>(null);
@@ -573,8 +574,18 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const ringColor = effectiveSkin ? (SKIN_RING_COLOR[effectiveSkin] ?? '#ffd700') : '#ffd700';
 
   // ─── Per-frame animation loop ───────────────────────────────────────────────
-  useFrame((_, delta) => {
+  useFrame(({ camera }, delta) => {
     const dt = Math.min(delta, 0.05); // clamp to avoid jumps
+
+    // Zoom-aware scale: monuments grow when the camera pulls back so they
+    // remain easy to spot at world view, then shrink back to natural size
+    // as the user zooms in to inspect them. camDist 11.5 (closest) → 1×;
+    // camDist 30+ (far) → ~2×. Power 0.6 keeps the curve gentle.
+    if (zoomWrapperRef.current) {
+      const camDist = camera.position.length();
+      const zoomMul = Math.max(1, Math.pow(camDist / 11.5, 0.6));
+      zoomWrapperRef.current.scale.setScalar(zoomMul);
+    }
 
     // === Unlock celebration animation ===
     const ua = unlockAnimRef.current;
@@ -746,6 +757,7 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
 
   return (
     <group position={p.pos} quaternion={p.q}>
+      <group ref={zoomWrapperRef}>
       <group scale={effS}>
         <group ref={modelGroupRef}>
           {(skinPath || model) ? (
@@ -786,12 +798,19 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
           />
         </group>
 
-        {isCollected && (
-          <mesh ref={ringRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.6, 0.8, 32]} />
-            <meshBasicMaterial ref={ringMatRef} color={ringColor} transparent opacity={0.7} />
-          </mesh>
-        )}
+        {/* Ring is now always visible — uncollected monuments get a faint
+            white outline so they read as "spots to find" instead of being
+            invisible until unlocked. Collected monuments keep their rarity
+            colour at full opacity. */}
+        <mesh ref={ringRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.6, 0.8, 32]} />
+          <meshBasicMaterial
+            ref={ringMatRef}
+            color={isCollected ? ringColor : "#ffffff"}
+            transparent
+            opacity={isCollected ? 0.7 : 0.28}
+          />
+        </mesh>
 
         <mesh
           position={[0, 0.5, 0]}
@@ -802,6 +821,33 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
           <sphereGeometry args={[0.7, 6, 4]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
+      </group>
+
+      {/* Always-visible floating monument name. Billboard keeps it readable
+          at any camera angle. Sits just above the GLB at world scale so its
+          height stays proportional to the monument size. Soft dark halo for
+          contrast over bright satellite terrain — same style as city labels. */}
+      {info && (
+        <Billboard position={[0, effS * 1.15 + 0.08, 0]} follow lockX={false} lockY={false} lockZ={false}>
+          <Text
+            fontSize={0.10}
+            color={isCollected ? ringColor : "#ffffff"}
+            outlineWidth={0.012}
+            outlineColor="#000000"
+            outlineOpacity={0.55}
+            outlineBlur={0.045}
+            anchorX="center"
+            anchorY="bottom"
+            sdfGlyphSize={128}
+            renderOrder={4}
+            material-depthWrite={false}
+            material-depthTest={false}
+            material-toneMapped={false}
+          >
+            {info.name}
+          </Text>
+        </Billboard>
+      )}
       </group>
 
       {showLabel && info && (
