@@ -548,10 +548,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const ringRef = useRef<THREE.Mesh>(null);
   const zoomWrapperRef = useRef<THREE.Group>(null);
   // Per-monument scratch buffers — reused across frames so the camera-facing
-  // yaw computation in useFrame doesn't allocate every frame.
+  // yaw + pitch composition in useFrame doesn't allocate every frame.
   const _v = useRef(new THREE.Vector3()).current;
   const _monPos = useRef(new THREE.Vector3()).current;
   const _qInv = useRef(new THREE.Quaternion()).current;
+  const _yawQ = useRef(new THREE.Quaternion()).current;
+  const _pitchQ = useRef(new THREE.Quaternion()).current;
+  const _yAxis = useRef(new THREE.Vector3(0, 1, 0)).current;
+  const _xAxis = useRef(new THREE.Vector3(1, 0, 0)).current;
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const modelGroupRef = useRef<THREE.Group>(null);
   const sparkleGroupRef = useRef<THREE.Group>(null);
@@ -752,17 +756,32 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     // facade of each landmark. Skipped while the unlock spin animation owns
     // rotation.y so the spin still reads.
     if (modelGroupRef.current && !unlockAnimRef.current.active) {
-      // Camera direction in the monument's OUTER frame (position+quaternion
-      // from p, before any model-level rotation we apply ourselves).
-      // Reading modelGroupRef.matrixWorld here would include our own yaw and
-      // the result oscillates between the right yaw and 0 every frame —
-      // which looks like the monument flickering / glitching.
+      // Compose the model orientation as YAW (around local Y, the radial
+      // up axis) then PITCH (around the now-rotated local X). Quaternion
+      // composition keeps the order unambiguous — a plain Euler with default
+      // XYZ order multiplies in the wrong sequence for our intent and the
+      // model ends up tipping sideways at certain yaw angles.
+      //
+      // YAW = atan2 of the camera position projected to the tangent plane,
+      // so the monument's iconic front turns toward the viewer.
+      //
+      // PITCH = scaled by the camera's elevation above the tangent plane.
+      // Looking straight down (eagle-eye) tips the model ~45° toward the
+      // camera so the user sees the facade, not just the rooftop. Looking
+      // from the horizon keeps the monument upright. Linear blend between
+      // the two with a generous cap so even close-zoom views still tilt.
       const camDirLocal = _v.copy(camera.position).sub(_monPos.set(...p.pos));
       camDirLocal.applyQuaternion(_qInv.copy(p.q).invert());
+      const horizDist = Math.hypot(camDirLocal.x, camDirLocal.z);
+      const elevation = Math.atan2(Math.max(0, camDirLocal.y), Math.max(1e-4, horizDist));
       const baseYaw = Math.atan2(camDirLocal.x, camDirLocal.z);
       const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
-      modelGroupRef.current.rotation.y = baseYaw + frontOffset;
-      modelGroupRef.current.rotation.x = -0.30;
+      // Pitch: 0 at horizon, up to ~45° (π/4) at zenith. Negative tips the
+      // top of the monument forward toward the camera.
+      const pitch = -Math.min(elevation * 0.6, Math.PI / 4);
+      _yawQ.setFromAxisAngle(_yAxis, baseYaw + frontOffset);
+      _pitchQ.setFromAxisAngle(_xAxis, pitch);
+      modelGroupRef.current.quaternion.copy(_yawQ).multiply(_pitchQ);
     }
   });
 
