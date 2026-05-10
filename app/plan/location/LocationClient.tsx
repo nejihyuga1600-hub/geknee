@@ -2918,7 +2918,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
 
       </>)}
 
-      {cityMap && (
+      {cityMap && typeof document !== "undefined" && createPortal(
         <CityMapView
           name={cityMap.name}
           lat={cityMap.lat}
@@ -2942,7 +2942,12 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
             zoomCamera(20);
             setCityMap(null);
           }}
-        />
+        />,
+        // Portal to document.body so the city map view escapes the parent's
+        // transform stacking context — without this, AtlasShell's transformed
+        // wrapper traps `position: fixed` and the AtlasShell <nav> ends up
+        // intercepting clicks on Search input and Return-to-globe button.
+        document.body,
       )}
     </Wrapper>
   );

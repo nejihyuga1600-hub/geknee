@@ -224,7 +224,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         <span style={{ pointerEvents: 'none' }}>{name}</span>
         <button
           type="button"
-          onClick={onCloseRef.current}
+          onClick={() => onCloseRef.current()}
           aria-label="Return to globe"
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
