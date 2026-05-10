@@ -288,11 +288,45 @@ export default function DayMap({
           const coords = await resolvePlace(c);
           if (coords) return { name: p.name, coords } as Place;
         }
-        return null;
+        // Last resort: anchor at the city center. Better an approximate
+        // pin (which the dedup-with-offset code below spreads visibly
+        // around the center) than no pin at all. Misleading by ~city
+        // radius but the user always sees N pins for N activities.
+        return { name: p.name, coords: center } as Place;
       }));
       if (cancelled || !mapRef.current) return;
 
-      const resolved = results.filter((p): p is Place => !!p);
+      const resolvedRaw = results.filter((p): p is Place => !!p);
+      // Dedupe-with-offset: when multiple activities geocode to the same
+      // point (e.g. several restaurants all fall back to the same
+      // neighborhood), spread the pins around a small ring so each
+      // numbered marker is visible. Without this, three activities at
+      // 'Chowk Kagziyan' stack into one pin and the user sees '5' but
+      // not '3' or '4'.
+      const groups = new Map<string, Place[]>();
+      for (const p of resolvedRaw) {
+        const key = `${Math.round(p.coords[0] * 1e4)}/${Math.round(p.coords[1] * 1e4)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(p);
+      }
+      const resolved: Place[] = [];
+      for (const p of resolvedRaw) {
+        const key = `${Math.round(p.coords[0] * 1e4)}/${Math.round(p.coords[1] * 1e4)}`;
+        const grp = groups.get(key)!;
+        if (grp.length === 1) {
+          resolved.push(p);
+        } else {
+          const idx = grp.indexOf(p);
+          const angle = (idx / grp.length) * Math.PI * 2;
+          // ~80m radius so stacked pins read as separate without losing
+          // their geographic accuracy.
+          const r = 0.0008;
+          resolved.push({
+            name: p.name,
+            coords: [p.coords[0] + Math.cos(angle) * r, p.coords[1] + Math.sin(angle) * r],
+          });
+        }
+      }
       onPlacesResolved?.(resolved.map(p => p.name));
 
       if (resolved.length === 0) {
