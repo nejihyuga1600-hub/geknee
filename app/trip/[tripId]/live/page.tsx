@@ -292,7 +292,7 @@ export default function LiveTripPage() {
       </div>
 
       {/* ── Map area ───────────────────────────────────────────────────── */}
-      <LiveMap city={trip?.location ?? null} geo={geo} weather={weather?.[0] ?? null} />
+      <LiveMap city={trip?.location ?? null} geo={geo} weather={weather?.[0] ?? null} activities={activities} />
 
       {/* ── Hero LEAVE-BY card ─────────────────────────────────────────── */}
       <div style={{ padding: '24px 22px 0' }}>
@@ -341,10 +341,11 @@ export default function LiveTripPage() {
 
 // ─── Live Map ───────────────────────────────────────────────────────────────
 
-function LiveMap({ city, geo, weather }: { city: string | null; geo: Geo | null; weather: DayWeather | null }) {
+function LiveMap({ city, geo, weather, activities }: { city: string | null; geo: Geo | null; weather: DayWeather | null; activities: Activity[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const youAreHereRef = useRef<mapboxgl.Marker | null>(null);
+  const stopMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -363,9 +364,36 @@ function LiveMap({ city, geo, weather }: { city: string | null; geo: Geo | null;
       attributionControl: false,
     });
     mapRef.current = map;
+    map.on('load', () => {
+      // Per-leg route source — same shape as DayMap so the per-leg color
+      // logic and per-mode Directions fetching ports straight over.
+      map.addSource('live-route', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'live-route-line',
+        type: 'line',
+        source: 'live-route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': [
+            'match', ['coalesce', ['get', 'mode'], 'unknown'],
+            'walking',  '#a78bfa',
+            'cycling',  '#34d399',
+            'driving',  '#fbbf24',
+            /* default */ '#a78bfa',
+          ],
+          'line-width': 4,
+          'line-opacity': 0.85,
+        },
+      });
+    });
     return () => {
       youAreHereRef.current?.remove();
       youAreHereRef.current = null;
+      stopMarkersRef.current.forEach(m => m.remove());
+      stopMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -394,7 +422,130 @@ function LiveMap({ city, geo, weather }: { city: string | null; geo: Geo | null;
     }
   }, [geo]);
 
-  void city;
+  // Drop a numbered pin at every activity stop AND draw a Mapbox-routed
+  // line from "you are here" → next stop → following stops. Uses the same
+  // multi-strategy geocoder + per-leg directions pipeline as the planning
+  // DayMap so routes follow streets, not arbitrary diagonals.
+  useEffect(() => {
+    if (!mapRef.current || !city) return;
+    let cancelled = false;
+    const map = mapRef.current;
+
+    async function geocode(addr: string): Promise<[number, number] | null> {
+      try {
+        const r = await fetch(`/api/geocode?address=${encodeURIComponent(addr)}`);
+        if (r.ok) {
+          const c = await r.json() as { lat: number; lng: number } | null;
+          if (c) return [c.lng, c.lat];
+        }
+      } catch { /* fall through */ }
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (!token) return null;
+      try {
+        const u = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${token}&limit=1`;
+        const r = await fetch(u);
+        if (!r.ok) return null;
+        const d = await r.json() as { features?: Array<{ center: [number, number] }> };
+        return d.features?.[0]?.center ?? null;
+      } catch { return null; }
+    }
+
+    async function resolve(name: string, anchor: [number, number]): Promise<[number, number] | null> {
+      const tries = [`${name}, ${city}`, `${name}`];
+      for (const q of tries) {
+        const c = await geocode(q);
+        if (c && Math.abs(c[1] - anchor[1]) < 0.6 && Math.abs(c[0] - anchor[0]) < 0.9) return c;
+      }
+      return null;
+    }
+
+    (async () => {
+      stopMarkersRef.current.forEach(m => m.remove());
+      stopMarkersRef.current = [];
+      const src = map.getSource('live-route') as mapboxgl.GeoJSONSource | undefined;
+      src?.setData({ type: 'FeatureCollection', features: [] });
+
+      const cityCoords = await geocode(city);
+      if (cancelled || !cityCoords) return;
+      const anchor: [number, number] = geo ? [geo.lon, geo.lat] : cityCoords;
+
+      const placeNames = activities.map(a => a.place).filter((p): p is string => !!p);
+      const resolved = (await Promise.all(placeNames.map(n => resolve(n, anchor))))
+        .map((c, i) => c ? { name: placeNames[i], coords: c } : null)
+        .filter((p): p is { name: string; coords: [number, number] } => !!p);
+      if (cancelled || resolved.length === 0) return;
+
+      // Pin every resolved activity. First one (next-up) gets a brighter
+      // ring so the user can spot it at a glance.
+      resolved.forEach((p, i) => {
+        const el = document.createElement('div');
+        el.style.cssText = `
+          width: 22px; height: 22px; border-radius: 50%;
+          background: ${i === 0 ? '#fbbf24' : '#a78bfa'};
+          color: #0a0a1f; font-weight: 700; font-size: 11px;
+          display: flex; align-items: center; justify-content: center;
+          border: 2px solid rgba(13,13,36,0.85);
+          box-shadow: 0 0 0 ${i === 0 ? 4 : 2}px rgba(167,139,250,${i === 0 ? 0.45 : 0.25});
+          font-family: var(--font-ui, system-ui), sans-serif;
+        `;
+        el.textContent = String(i + 1);
+        const m = new mapboxgl.Marker({ element: el }).setLngLat(p.coords).addTo(map);
+        stopMarkersRef.current.push(m);
+      });
+
+      // Build the legged route: "you are here" (if available) → first stop
+      // → second → ... Walking profile because live-trip context is almost
+      // always a pedestrian-radius decision.
+      const legPath: [number, number][] = [];
+      if (geo) legPath.push([geo.lon, geo.lat]);
+      legPath.push(...resolved.map(p => p.coords));
+
+      type LegFeature = GeoJSON.Feature<GeoJSON.LineString, { mode: string; legIdx: number }>;
+      const features: LegFeature[] = [];
+      for (let i = 0; i < legPath.length - 1; i++) {
+        features.push({
+          type: 'Feature',
+          properties: { mode: 'walking', legIdx: i },
+          geometry: { type: 'LineString', coordinates: [legPath[i], legPath[i + 1]] },
+        });
+      }
+      src?.setData({ type: 'FeatureCollection', features });
+
+      // Upgrade each leg to a routed walking path, fire-and-forget.
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (token) {
+        for (let i = 0; i < features.length; i++) {
+          const a = legPath[i], b = legPath[i + 1];
+          const u = `https://api.mapbox.com/directions/v5/mapbox/walking/${a[0]},${a[1]};${b[0]},${b[1]}?access_token=${token}&geometries=geojson&overview=full`;
+          fetch(u)
+            .then(r => r.ok ? r.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
+            .then(d => {
+              if (cancelled) return;
+              const routed = d?.routes?.[0]?.geometry?.coordinates;
+              if (!routed || routed.length === 0) return;
+              const stillSrc = mapRef.current?.getSource('live-route') as mapboxgl.GeoJSONSource | undefined;
+              if (!stillSrc) return;
+              features[i] = {
+                type: 'Feature',
+                properties: { mode: 'walking', legIdx: i },
+                geometry: { type: 'LineString', coordinates: routed },
+              };
+              stillSrc.setData({ type: 'FeatureCollection', features: [...features] });
+            })
+            .catch(() => { /* keep straight */ });
+        }
+      }
+
+      // Fit bounds to all pins + you-are-here.
+      const bounds = new mapboxgl.LngLatBounds();
+      legPath.forEach(c => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 700 });
+    })();
+
+    return () => { cancelled = true; };
+  }, [activities, city, geo]);
+
+  void weather;
 
   const tokenMissing = !process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
