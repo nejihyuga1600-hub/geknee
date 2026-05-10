@@ -297,35 +297,48 @@ export default function DayMap({
       if (cancelled || !mapRef.current) return;
 
       const resolvedRaw = results.filter((p): p is Place => !!p);
+      // Diagnostic — visible in DevTools console. Helps the user pinpoint
+      // which activities are pinning at city-center fallback vs hitting
+      // a real coord, and whether dedup is actually spreading them.
+      console.log(`[DayMap "${heading}"] ${rawPlaces.length} candidates → ${resolvedRaw.length} resolved`,
+        resolvedRaw.map(r => ({ name: r.name, lng: r.coords[0].toFixed(5), lat: r.coords[1].toFixed(5) })));
       // Dedupe-with-offset: when multiple activities geocode to the same
       // point (e.g. several restaurants all fall back to the same
       // neighborhood), spread the pins around a small ring so each
       // numbered marker is visible. Without this, three activities at
       // 'Chowk Kagziyan' stack into one pin and the user sees '5' but
       // not '3' or '4'.
+      // Bucket at 3-decimal precision (~110 m). Pins closer than that visually
+      // overlap at typical zoom even though their coords differ — bucket them
+      // and spread on a small ring so each numbered marker is distinct.
       const groups = new Map<string, Place[]>();
       for (const p of resolvedRaw) {
-        const key = `${Math.round(p.coords[0] * 1e4)}/${Math.round(p.coords[1] * 1e4)}`;
+        const key = `${Math.round(p.coords[0] * 1e3)}/${Math.round(p.coords[1] * 1e3)}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(p);
       }
       const resolved: Place[] = [];
       for (const p of resolvedRaw) {
-        const key = `${Math.round(p.coords[0] * 1e4)}/${Math.round(p.coords[1] * 1e4)}`;
+        const key = `${Math.round(p.coords[0] * 1e3)}/${Math.round(p.coords[1] * 1e3)}`;
         const grp = groups.get(key)!;
         if (grp.length === 1) {
           resolved.push(p);
         } else {
           const idx = grp.indexOf(p);
           const angle = (idx / grp.length) * Math.PI * 2;
-          // ~80m radius so stacked pins read as separate without losing
-          // their geographic accuracy.
-          const r = 0.0008;
+          // ~250 m ring radius — large enough that markers are unambiguously
+          // separate at city-overview zoom, small enough that they still
+          // read as 'in the same neighborhood'.
+          const r = 0.0025;
           resolved.push({
             name: p.name,
             coords: [p.coords[0] + Math.cos(angle) * r, p.coords[1] + Math.sin(angle) * r],
           });
         }
+      }
+      const stackedCount = Array.from(groups.values()).filter(g => g.length > 1).length;
+      if (stackedCount > 0) {
+        console.log(`[DayMap "${heading}"] ${stackedCount} location bucket(s) had multiple pins — spread on a 250m ring`);
       }
       onPlacesResolved?.(resolved.map(p => p.name));
 
@@ -403,13 +416,26 @@ export default function DayMap({
           const a = resolved[i].coords, b = resolved[i + 1].coords;
           const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${a[0]},${a[1]};${b[0]},${b[1]}?access_token=${token}&geometries=geojson&overview=full`;
           fetch(url)
-            .then(res => res.ok ? res.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
+            .then(res => {
+              if (!res.ok) {
+                console.warn(`[DayMap] leg ${i} ${profile} → HTTP ${res.status}`);
+                return null;
+              }
+              return res.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }>;
+            })
             .then(data => {
               if (cancelled) return;
               const routed = data?.routes?.[0]?.geometry?.coordinates;
-              if (!routed || routed.length === 0) return;
+              if (!routed || routed.length === 0) {
+                console.warn(`[DayMap] leg ${i} ${profile} → no route geometry returned`);
+                return;
+              }
               const stillSrc = mapRef.current?.getSource('route') as mapboxgl.GeoJSONSource | undefined;
-              if (!stillSrc) return;
+              if (!stillSrc) {
+                console.warn(`[DayMap] leg ${i} ${profile} → map source gone before geometry could land`);
+                return;
+              }
+              console.log(`[DayMap] leg ${i} ${profile} → routed (${routed.length} points)`);
               // Update only THIS leg's geometry, keep other legs intact.
               features[i] = {
                 type: 'Feature',
@@ -418,7 +444,7 @@ export default function DayMap({
               };
               stillSrc.setData({ type: 'FeatureCollection', features: [...features] });
             })
-            .catch(() => { /* keep straight leg */ });
+            .catch(err => { console.warn(`[DayMap] leg ${i} ${profile} → fetch error`, err); });
         }
       }
 
