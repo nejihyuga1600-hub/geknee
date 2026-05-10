@@ -755,33 +755,29 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     // facade of each landmark. Skipped while the unlock spin animation owns
     // rotation.y so the spin still reads.
     if (modelGroupRef.current && !unlockAnimRef.current.active) {
-      // Compose the model orientation as YAW (around local Y, the radial
-      // up axis) then PITCH (around the now-rotated local X). Quaternion
-      // composition keeps the order unambiguous — a plain Euler with default
-      // XYZ order multiplies in the wrong sequence for our intent and the
-      // model ends up tipping sideways at certain yaw angles.
+      // YAW is now FIXED to south (geographic, on the sphere) instead of
+      // tracking the camera. The monument's iconic facade points south
+      // regardless of where the user is viewing from — they orbit the
+      // globe to see it. Compute local-south once per frame from p.q
+      // (cheap; no allocation thanks to scratch refs).
       //
-      // YAW = atan2 of the camera position projected to the tangent plane,
-      // so the monument's iconic front turns toward the viewer.
-      //
-      // PITCH = scaled by the camera's elevation above the tangent plane.
-      // Looking straight down (eagle-eye) tips the model ~45° toward the
-      // camera so the user sees the facade, not just the rooftop. Looking
-      // from the horizon keeps the monument upright. Linear blend between
-      // the two with a generous cap so even close-zoom views still tilt.
-      const camDirLocal = _v.copy(camera.position).sub(_monPos.set(...p.pos));
+      // PITCH stays elevation-aware: the model leans up to ~20° toward the
+      // camera at zenith so the facade is still readable from above.
+      const worldNorth = _v.set(0, 1, 0).applyQuaternion(_qInv.copy(p.q).invert());
+      worldNorth.y = 0;
+      const southYaw = worldNorth.lengthSq() < 1e-8
+        ? 0
+        : Math.atan2(-worldNorth.x, -worldNorth.z);
+
+      // Pitch: based on how directly the camera looks down at the monument.
+      const camDirLocal = _monPos.copy(camera.position).sub(_v.set(...p.pos));
       camDirLocal.applyQuaternion(_qInv.copy(p.q).invert());
       const horizDist = Math.hypot(camDirLocal.x, camDirLocal.z);
       const elevation = Math.atan2(Math.max(0, camDirLocal.y), Math.max(1e-4, horizDist));
-      const baseYaw = Math.atan2(camDirLocal.x, camDirLocal.z);
-      const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
-      // Pitch: 0 at horizon, up to ~20° at zenith. Earlier 45° cap made
-      // tall monuments (Eiffel, Christ the Redeemer, Big Ben) lay almost
-      // flat from above — they read as a small smear instead of the
-      // recognisable silhouette. 20° is enough to show some of the facade
-      // while keeping the monument standing.
       const pitch = -Math.min(elevation * 0.30, 0.35);
-      _yawQ.setFromAxisAngle(_yAxis, baseYaw + frontOffset);
+
+      const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
+      _yawQ.setFromAxisAngle(_yAxis, southYaw + frontOffset);
       _pitchQ.setFromAxisAngle(_xAxis, pitch);
       modelGroupRef.current.quaternion.copy(_yawQ).multiply(_pitchQ);
     }
