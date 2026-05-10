@@ -278,40 +278,40 @@ export default function Home() {
             // visual area on the card. Liberty needs the most zoom — small
             // statue, tall pedestal in the source render.
             {
-              src: '/generated-images/colosseum_bronze.jpg',
+              src: '/monument-snaps/colosseum.png',
               name: 'Colosseum', loc: 'Rome', tier: 'Bronze', color: '#b08d57', rot: -1.4,
               quest: 'Walk the gladiator entrance under the arena',
               verify: 'photo' as const,
               zoom: 1.40, pos: 'center 38%', bg: 'white' as const,
             },
             {
-              src: '/generated-images/great_wall_silver.jpg',
+              src: '/monument-snaps/greatWall.png',
               name: 'Great Wall', loc: 'Beijing', tier: 'Silver', color: '#9ca3af', rot: 0.8,
               quest: 'Reach a watchtower and sign the visitor book',
               zoom: 1.45, pos: 'center 35%', bg: 'white' as const,
             },
             {
-              src: '/generated-images/taj_mahal_gold.jpg',
+              src: '/monument-snaps/tajMahal.png',
               name: 'Taj Mahal', loc: 'Agra', tier: 'Gold', color: '#f59e0b', rot: -0.5,
               quest: 'Photograph the Taj at sunrise from the reflecting pool',
               verify: 'photo' as const,
               zoom: 1.40, pos: 'center 40%', bg: 'white' as const,
             },
             {
-              src: '/generated-images/big_ben_diamond.jpg',
+              src: '/monument-snaps/bigBen.png',
               name: 'Big Ben', loc: 'London', tier: 'Diamond', color: '#67e8f9', rot: 1.2,
               quest: 'Hear the chimes from the foot of the tower at midnight',
               zoom: 1.25, pos: 'center 42%', bg: 'white' as const,
             },
             {
-              src: '/generated-images/statue_of_liberty_aurora.jpg',
+              src: '/monument-snaps/statueLiberty.png',
               name: 'Statue of Liberty', loc: 'New York', tier: 'Aurora', color: '#34d399', rot: -0.9,
               quest: 'Catch the torch lit at golden hour on the first ferry',
               verify: 'photo' as const,
               zoom: 1.85, pos: 'center 22%', bg: 'cosmic' as const,
             },
             {
-              src: '/generated-images/christ_redeemer_celestial.jpg',
+              src: '/monument-snaps/christRedeem.png',
               name: 'Christ the Redeemer', loc: 'Rio', tier: 'Celestial', color: '#818cf8', rot: 0.6,
               quest: 'Reach the summit at dawn through the cloud line',
               zoom: 1.35, pos: 'center 38%', bg: 'cosmic' as const,
