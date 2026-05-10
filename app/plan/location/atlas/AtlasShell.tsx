@@ -1403,6 +1403,131 @@ function StepNav({
   );
 }
 
+// Mock flight price by date + destination. Deterministic so the same date
+// always returns the same number across renders. Replace with a real
+// pricing source (Skyscanner, Kiwi, Google Flights API, etc.) when wired.
+function _mockFlightPrice(dateStr: string, destination: string): number {
+  const hash = (s: string) => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return Math.abs(h);
+  };
+  const base = 280 + (hash(destination || 'world') % 1100);
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = d.getDay();
+  const dowMul = (dow === 5 || dow === 0) ? 1.18 : (dow === 2 || dow === 3) ? 0.92 : 1.0;
+  const variance = 0.85 + ((hash(dateStr + '|' + destination) % 100) / 100) * 0.30;
+  const m = d.getMonth() + 1, day = d.getDate();
+  const holidayMul = (m === 12 && day >= 18) ? 1.45
+                   : (m === 7 && day <= 7)   ? 1.30
+                   : (m === 11 && day >= 22 && day <= 28) ? 1.30
+                   : 1.0;
+  return Math.round(base * dowMul * variance * holidayMul);
+}
+
+function PriceTrend({ trip, setTrip }: { trip: Trip; setTrip: (t: Trip) => void }) {
+  const dates: string[] = [];
+  if (trip.flexibleMonth) {
+    // Whole-month view when the user picked a flexible month — same logic
+    // as nextMonthStart so the dates align with what the buttons set.
+    const monthIdx = MONTHS.indexOf(trip.flexibleMonth);
+    if (monthIdx < 0) return null;
+    const today = new Date();
+    let year = today.getFullYear();
+    if (monthIdx <= today.getMonth()) year++;
+    const last = new Date(year, monthIdx + 1, 0).getDate();
+    for (let d = 1; d <= last; d++) {
+      const ds = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      dates.push(ds);
+    }
+  } else if (trip.startDate) {
+    // ±10 day window centred on the chosen depart date.
+    for (let off = -10; off <= 10; off++) dates.push(addDays(trip.startDate, off));
+  } else {
+    return null;
+  }
+
+  const prices = dates.map(d => _mockFlightPrice(d, trip.destination));
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = Math.max(1, max - min);
+  const cheapest = prices.indexOf(min);
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        fontSize: 10, color: 'var(--brand-ink-mute)',
+        letterSpacing: '0.12em', textTransform: 'uppercase',
+        fontWeight: 600, marginBottom: 8,
+      }}>
+        <span>Flight price trend</span>
+        <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--brand-ink-dim)', fontSize: 10 }}>
+          ${min} – ${max} · cheapest{' '}
+          <span style={{ color: 'var(--brand-accent)' }}>
+            {new Date(dates[cheapest] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        </span>
+      </div>
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid var(--brand-border)',
+        borderRadius: 10, padding: '14px 12px 8px',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', gap: 3,
+          height: 70,
+        }}>
+          {dates.map((ds, i) => {
+            const p = prices[i];
+            const h = 18 + ((p - min) / range) * 48;
+            const isCheap = i === cheapest;
+            const isSelected = ds === trip.startDate;
+            const color = isSelected
+              ? 'var(--brand-accent)'
+              : isCheap
+                ? '#34d399'
+                : 'rgba(167,139,250,0.4)';
+            return (
+              <button
+                key={ds}
+                type="button"
+                title={`${new Date(ds + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · $${p}`}
+                onClick={() => setTrip({
+                  ...trip,
+                  startDate: ds,
+                  endDate: addDays(ds, trip.nights),
+                  flexibleMonth: null,
+                })}
+                style={{
+                  flex: 1, minWidth: 0,
+                  height: `${h}px`,
+                  background: color,
+                  borderRadius: 3,
+                  border: 'none', padding: 0,
+                  cursor: 'pointer',
+                  transition: 'opacity 0.12s ease',
+                  opacity: isSelected || isCheap ? 1 : 0.85,
+                }}
+              />
+            );
+          })}
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 9, color: 'var(--brand-ink-mute)',
+          marginTop: 6, fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+        }}>
+          <span>{new Date(dates[0] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+          <span style={{ color: 'var(--brand-ink-dim)', fontStyle: 'italic' }}>
+            {trip.flexibleMonth ? 'tap a bar to lock that day' : 'tap to shift dates'}
+          </span>
+          <span>{new Date(dates[dates.length - 1] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepDates({
   trip, setTrip, onBack, onNext,
 }: {
@@ -1525,6 +1650,8 @@ function StepDates({
           })}
         </div>
       </div>
+
+      <PriceTrend trip={trip} setTrip={setTrip} />
 
       <div style={{ marginTop: 22 }}>
         <div style={labelText}>Trip length · {trip.nights} nights</div>
