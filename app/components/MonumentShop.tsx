@@ -488,11 +488,9 @@ function DetailView({
             fontSize: 20, fontWeight: 700, color: '#f2f2f8',
             fontFamily: 'var(--font-display, Georgia, serif)',
             letterSpacing: '-0.01em', lineHeight: 1.15,
-            filter: unlocked ? 'none' : 'blur(5px)',
-            userSelect: unlocked ? 'auto' : 'none',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
-            {unlocked ? item.name : '??? Unknown ???'}
+            {item.name}
           </div>
           <div style={{
             marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -1088,13 +1086,13 @@ export default function MonumentShop({ open, onClose }: Props) {
                         marginBottom: 2,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>
-                        {unlocked ? item.name : String.fromCodePoint(0x003F).repeat(3)}
+                        {item.name}
                       </div>
                       <div style={{
                         fontSize: 10, color: '#6b6b85',
                         letterSpacing: '0.08em', textTransform: 'uppercase',
                       }}>
-                        {unlocked ? item.location : 'Visit to reveal'}
+                        {unlocked ? item.location : `${item.location} · Visit to unlock`}
                       </div>
 
                       {/* Bottom strip: rarity tag + skins counter */}

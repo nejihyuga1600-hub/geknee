@@ -85,6 +85,25 @@ export function Ball({ p, r, c, M = Mat }: { p:[number,number,number]; r:number;
 // ─── GLB model registry ────────────────────────────────────────────────────────
 export const BLOB_BASE = 'https://mrfgpxw07gmgmriv.public.blob.vercel-storage.com/models';
 
+// Per-monument yaw offset (radians) so each GLB's iconic FRONT faces the
+// camera. Defaults to 0 (assumes the GLB's local +Z is the front). Different
+// Meshy renders have different default-facing axes — adjust here so e.g.
+// Christ the Redeemer's outstretched arms always face the viewer instead of
+// pointing east. Increment by π/2 to spin a monument 90° CCW; π to flip
+// front-to-back; -π/2 for 90° CW. Tune by eyeballing the live globe.
+export const MONUMENT_FRONT_YAW: Record<string, number> = {
+  christRedeem: Math.PI,        // statue was facing away from camera
+  // Add overrides here as needed:
+  // eiffelTower: 0,
+  // colosseum: 0,
+  // tajMahal: 0,
+  // greatWall: 0,
+  // statueLiberty: 0,
+  // sagradaFamilia: 0,
+  // bigBen: 0,
+  // sydneyOpera: 0,
+};
+
 // GLB models served from Vercel Blob. Entries here render as the default (pre-skin)
 // model for ANY viewer — even non-collected users. The base eiffel_tower.glb ships
 // without materials/normals and renders invisibly, so it is intentionally NOT listed:
@@ -493,12 +512,12 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     `${BLOB_BASE}/${MONUMENT_FILE_PREFIX[mk!] ?? mk}_${effectiveSkin}.glb` : undefined;
   const model   = mk ? MODELS[mk] : undefined;
   const density = LM_DENSITY.get(p) ?? 1;
-  // Global landmark size multiplier — every monument rendered at 1.875x its
-  // declared `s` (was 1.5; bumped 25% per user request) so the Meshy GLBs
-  // read clearly inside the city ring instead of looking like a dot.
-  // Keeps per-monument proportions intact (Eiffel s=0.9 stays taller than
-  // Liberty s=0.4) — just scales all up together.
-  const LANDMARK_BOOST = 1.875;
+  // Global landmark size multiplier — every monument rendered at 2.34x its
+  // declared `s` (was 1.875; bumped another 25% per user request) so the
+  // Meshy GLBs read clearly inside the city ring instead of looking like
+  // a dot. Keeps per-monument proportions intact (Eiffel s=0.9 stays taller
+  // than Liberty s=0.4) — just scales all up together.
+  const LANDMARK_BOOST = 2.34;
   const effS    = s * density * LANDMARK_BOOST;
 
   // ─── Animation state refs ───────────────────────────────────────────────────
@@ -720,6 +739,20 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       if (flashLightRef.current) {
         flashLightRef.current.intensity = sa.flashIntensity;
       }
+    }
+
+    // Camera-aware tilt + yaw — every monument leans its top ~17° toward the
+    // viewer and yaws to face the camera. Without this the eagle-eye angle
+    // shows nothing but rooftops; with it, the user sees the recognizable
+    // facade of each landmark. Skipped while the unlock spin animation owns
+    // rotation.y so the spin still reads.
+    if (modelGroupRef.current && !unlockAnimRef.current.active) {
+      const inv = modelGroupRef.current.matrixWorld.clone().invert();
+      const camLocal = camera.position.clone().applyMatrix4(inv);
+      const baseYaw = Math.atan2(camLocal.x, camLocal.z);
+      const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
+      modelGroupRef.current.rotation.y = baseYaw + frontOffset;
+      modelGroupRef.current.rotation.x = -0.30;
     }
   });
 
