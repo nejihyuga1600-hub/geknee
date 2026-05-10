@@ -55,6 +55,55 @@ export function extractPlace(text: string): string | null {
   return best && best.score >= 15 ? best.name : null;
 }
 
+// Looser place extraction — falls back to capitalized phrases that are NOT
+// inside markdown bold runs. Used when the per-activity bold-only extractor
+// returns null but the line text mentions a real place ("Visit the National
+// Museum after lunch" → "National Museum"). Conservative: requires at least
+// two capitalized words OR one word containing a known place indicator
+// (Temple, Park, Garden, etc.) so we don't pick up random proper nouns
+// like "April" or "Shah Jahan".
+export function extractCapitalizedPlace(text: string): string | null {
+  // Strip bold/italic markers so we treat the body uniformly.
+  const cleaned = text.replace(/[*_`]/g, ' ');
+  // Match runs of 1-4 capitalized words, optionally hyphenated/comma'd.
+  const matches = [...cleaned.matchAll(/\b([A-Z][a-z]{2,}(?:[\s\-'][A-Z][a-z]+){0,3})\b/g)]
+    .map(m => m[1].trim());
+  let best: { name: string; score: number } | null = null;
+  for (const name of matches) {
+    const lower = name.toLowerCase();
+    const words = lower.split(/\s+/);
+    if (words.every(w => _GENERIC_TERMS.has(w))) continue;
+    if (words.some(w => _FOOD_COMMERCIAL.has(w))) continue;
+    const hasIndicator = words.some(w => _PLACE_INDICATORS.has(w));
+    let s = name.length + words.length * 4;
+    if (hasIndicator) s += 50;
+    if (words.length === 1 && !hasIndicator) continue;
+    if (s > 0 && (!best || s > best.score)) best = { name, score: s };
+  }
+  return best ? best.name : null;
+}
+
+// Combined extractor for an activity group — tries the strict bold-only
+// extractor on headline first, then on each detail line, then the looser
+// capitalized-phrase extractor across both. Designed for day-map pin
+// extraction where we want SOME meaningful coordinate per activity rather
+// than dropping the activity entirely.
+export function extractActivityPlace(headline: string, details: string[] = []): string | null {
+  const strictHeadline = extractPlace(headline);
+  if (strictHeadline) return strictHeadline;
+  for (const d of details) {
+    const s = extractPlace(d);
+    if (s) return s;
+  }
+  const looseHeadline = extractCapitalizedPlace(headline);
+  if (looseHeadline) return looseHeadline;
+  for (const d of details) {
+    const l = extractCapitalizedPlace(d);
+    if (l) return l;
+  }
+  return null;
+}
+
 // ── Place image — Google Places → Wikidata P18 → Wikipedia → Commons ──────
 // '' means "no image found", undefined means "not yet fetched".
 export const imgCache = new Map<string, string>();

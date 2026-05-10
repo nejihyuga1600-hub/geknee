@@ -7,7 +7,7 @@ import { ActivityBlock } from './ActivityBlock';
 import { WeatherBar, type DayWeather } from './WeatherBar';
 import { DayImages } from './DayImages';
 import { extractDayNumber, stripDayPrefix, groupLines, type Section } from '../lib/itinerary-parse';
-import { extractPlace } from '../lib/places';
+import { extractActivityPlace } from '../lib/places';
 import type { EditTarget, RouteStop } from '../lib/types';
 
 // DayMap mounts a Google Maps view; dynamic-import keeps the maps SDK out
@@ -81,7 +81,7 @@ export function SectionCard({
     activityGroups.flatMap((g, i) => i < activityGroups.length - 1 ? [[g.headlineIdx, i + 2]] : [])
   );
   const orderedActivityPlaces = activityGroups
-    .map(g => extractPlace(g.headline))
+    .map(g => extractActivityPlace(g.headline, g.details.map(d => d.line)))
     .filter((p): p is string => p !== null);
 
   function renderLines(linesToRender: typeof section.lines, baseIdx = 0) {

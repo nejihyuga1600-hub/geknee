@@ -274,33 +274,42 @@ export default function DayMap({
         markersRef.current.push(marker);
       });
 
-      // Route line — try Mapbox Directions API for an actual walking path
-      // following streets. Falls back to a straight line between waypoints
-      // if the API call fails or there are fewer than 2 stops. Walking
-      // profile because itineraries are almost always intra-city.
+      // Route line — paint a straight-line polygon SYNCHRONOUSLY so the user
+      // always sees the connections immediately, then asynchronously upgrade
+      // to a Mapbox Directions walking route that follows actual streets.
+      // Earlier version awaited the directions call inline, so a slow or
+      // failed fetch (or a re-render that flipped `cancelled` mid-await) left
+      // the line empty.
       const lineSrc = mapRef.current.getSource('route') as mapboxgl.GeoJSONSource | undefined;
-      let routeCoords: [number, number][] = resolved.map(p => p.coords);
+      const straightCoords: [number, number][] = resolved.map(p => p.coords);
+      lineSrc?.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: straightCoords },
+        properties: {},
+      });
       if (resolved.length >= 2 && resolved.length <= 25) {
-        try {
-          const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-          if (token) {
-            const coordStr = resolved.map(p => `${p.coords[0]},${p.coords[1]}`).join(';');
-            const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordStr}?access_token=${token}&geometries=geojson&overview=full`;
-            const res = await fetch(url);
-            if (res.ok) {
-              const data = await res.json() as { routes?: { geometry: { coordinates: [number, number][] } }[] };
-              const routed = data.routes?.[0]?.geometry?.coordinates;
-              if (routed && routed.length > 0 && !cancelled) routeCoords = routed;
-            }
-          }
-        } catch { /* fall through to straight line */ }
-      }
-      if (!cancelled) {
-        lineSrc?.setData({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: routeCoords },
-          properties: {},
-        });
+        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+        if (token) {
+          const coordStr = resolved.map(p => `${p.coords[0]},${p.coords[1]}`).join(';');
+          const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordStr}?access_token=${token}&geometries=geojson&overview=full`;
+          // Fire-and-forget: when the route comes back, swap the line in.
+          // Guarded by `cancelled` so a re-render won't paint stale data.
+          fetch(url)
+            .then(res => res.ok ? res.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
+            .then(data => {
+              if (cancelled) return;
+              const routed = data?.routes?.[0]?.geometry?.coordinates;
+              if (routed && routed.length > 0) {
+                const stillSrc = mapRef.current?.getSource('route') as mapboxgl.GeoJSONSource | undefined;
+                stillSrc?.setData({
+                  type: 'Feature',
+                  geometry: { type: 'LineString', coordinates: routed },
+                  properties: {},
+                });
+              }
+            })
+            .catch(() => { /* keep straight line */ });
+        }
       }
 
       // Fit bounds to all markers + city anchor with generous padding.
