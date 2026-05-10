@@ -173,6 +173,7 @@ HEADING FORMAT (critical): Use "## " (double hash + space) for every section hea
 5. A rough daily budget breakdown in USD matching the ${p.budget} budget level
 ${p.mustVisit && p.mustVisit.length > 0 ? "\nCRITICAL: Every place listed in MUST-INCLUDE PLACES above must appear in the itinerary on an appropriate day. Do not omit any of them.\n" : ""}
 CRITICAL: Do not skip transit segments. Every activity must flow into the next with real travel info.
+CRITICAL TRANSIT FORMAT: Every transit segment MUST start with one of these emoji as the very first character of the line, with no markdown around it: 🚶 (walk), 🚴 (bike), 🚇 (subway/metro), 🚌 (bus), 🚂 or 🚆 (train), 🚕 or 🚖 (taxi/rideshare), ✈️ (flight), ⛵ (ferry). The day-map UI parses this emoji to choose between walking, cycling, and driving routing — without it, the route renders as a straight line.
 Write in an engaging, friendly tone. Be specific — use real place names, dish names, and neighborhood names.`;
 }
 

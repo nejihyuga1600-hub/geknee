@@ -104,6 +104,40 @@ export function extractActivityPlace(headline: string, details: string[] = []): 
   return null;
 }
 
+// Mapbox Directions profile that matches the transit emoji the LLM emits
+// in its activity transitions. The prompt instructs the model to lead each
+// transit line with one of: 🚶 walk · 🚴 bike · 🚇 subway · 🚌 bus · 🚂🚆 train ·
+// 🚕🚖 taxi · ✈️🛩🛬 flight · ⛵ ferry. Mapbox doesn't have transit/flight/
+// ferry routing, so those collapse to the closest road-based equivalent
+// (driving) or null (no route possible at all).
+export type TransitMode = 'walking' | 'cycling' | 'driving' | null;
+
+const _MODE_FROM_EMOJI: Record<string, TransitMode> = {
+  '🚶': 'walking',
+  '🚴': 'cycling',
+  '🚇': 'driving', '🚊': 'driving', '🚋': 'driving',
+  '🚌': 'driving', '🚍': 'driving',
+  '🚂': 'driving', '🚆': 'driving', '🚄': 'driving', '🚅': 'driving',
+  '🚕': 'driving', '🚖': 'driving', '🚗': 'driving', '🚙': 'driving', '🛺': 'driving',
+  '✈️': null, '🛩': null, '🛬': null, '🚁': null,
+  '⛵': null, '🛥': null, '🚤': null,
+};
+
+export function extractTransitMode(line: string): TransitMode {
+  // Iterate emoji-by-emoji because some line variants chain modes
+  // ("🚶 short walk / 🚕 5 min"); preferred picks pull "minutes" anyway, so
+  // for the routing profile we just take the first known mode.
+  for (const ch of line) {
+    if (_MODE_FROM_EMOJI[ch] !== undefined) return _MODE_FROM_EMOJI[ch];
+  }
+  // Fall back to keyword sniffing if the model omitted the emoji.
+  const lower = line.toLowerCase();
+  if (/\bwalk(ing)?\b|\bon foot\b/.test(lower)) return 'walking';
+  if (/\bbike\b|\bbicycl/.test(lower)) return 'cycling';
+  if (/\bdriv|taxi|uber|ola|car|metro|subway|bus|train\b/.test(lower)) return 'driving';
+  return null;
+}
+
 // ── Place image — Google Places → Wikidata P18 → Wikipedia → Commons ──────
 // '' means "no image found", undefined means "not yet fetched".
 export const imgCache = new Map<string, string>();

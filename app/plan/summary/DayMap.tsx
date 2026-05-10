@@ -49,11 +49,17 @@ interface DayMapProps {
   location: string;
   height?: number;
   namedPlaces?: string[];
+  // Mode of transit per leg (length = namedPlaces.length - 1). Each entry
+  // tells DayMap which Mapbox Directions profile to use for that segment
+  // ('walking' | 'cycling' | 'driving' | null). null skips routing for
+  // that leg and falls back to a straight line — appropriate for flights
+  // and ferries that Mapbox Directions can't handle.
+  legModes?: Array<'walking' | 'cycling' | 'driving' | null>;
   onPlacesResolved?: (names: string[]) => void;
 }
 
 export default function DayMap({
-  heading, lines, location, height = 220, namedPlaces, onPlacesResolved,
+  heading, lines, location, height = 220, namedPlaces, legModes, onPlacesResolved,
 }: DayMapProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -105,11 +111,9 @@ export default function DayMap({
     map.on('load', () => {
       map.addSource('route', {
         type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [] },
-          properties: {},
-        },
+        // FeatureCollection so each leg can carry its own 'mode' property
+        // and the line layer can color it via a match expression.
+        data: { type: 'FeatureCollection', features: [] },
       });
       map.addLayer({
         id: 'route-line',
@@ -117,7 +121,17 @@ export default function DayMap({
         source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#a78bfa',
+          // Color per leg by transit mode: walking=purple, cycling=green,
+          // driving=orange, unknown=neutral lavender. Reads the 'mode'
+          // property each LineString carries so multi-leg days can mix.
+          'line-color': [
+            'match',
+            ['coalesce', ['get', 'mode'], 'unknown'],
+            'walking',  '#a78bfa',
+            'cycling',  '#34d399',
+            'driving',  '#fbbf24',
+            /* default */ '#a78bfa',
+          ],
           'line-width': 4,
           'line-opacity': 0.9,
         },
@@ -147,11 +161,7 @@ export default function DayMap({
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
     const src = mapRef.current?.getSource('route') as mapboxgl.GeoJSONSource | undefined;
-    src?.setData({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: [] },
-      properties: {},
-    });
+    src?.setData({ type: 'FeatureCollection', features: [] });
 
     async function geocode(address: string): Promise<[number, number] | null> {
       const cacheKey = `geo:${address}`;
@@ -274,41 +284,56 @@ export default function DayMap({
         markersRef.current.push(marker);
       });
 
-      // Route line — paint a straight-line polygon SYNCHRONOUSLY so the user
-      // always sees the connections immediately, then asynchronously upgrade
-      // to a Mapbox Directions walking route that follows actual streets.
-      // Earlier version awaited the directions call inline, so a slow or
-      // failed fetch (or a re-render that flipped `cancelled` mid-await) left
-      // the line empty.
+      // Route line — one feature per leg, each carrying the transit mode
+      // ('walking' | 'cycling' | 'driving' | null) so the line layer can
+      // color-code by mode of transit. Synchronously paint straight legs
+      // first (always visible), then fire per-leg directions fetches and
+      // swap each leg in as it returns.
+      type LegFeature = GeoJSON.Feature<GeoJSON.LineString, { mode: string; legIdx: number }>;
       const lineSrc = mapRef.current.getSource('route') as mapboxgl.GeoJSONSource | undefined;
-      const straightCoords: [number, number][] = resolved.map(p => p.coords);
-      lineSrc?.setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: straightCoords },
-        properties: {},
-      });
-      if (resolved.length >= 2 && resolved.length <= 25) {
-        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-        if (token) {
-          const coordStr = resolved.map(p => `${p.coords[0]},${p.coords[1]}`).join(';');
-          const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordStr}?access_token=${token}&geometries=geojson&overview=full`;
-          // Fire-and-forget: when the route comes back, swap the line in.
-          // Guarded by `cancelled` so a re-render won't paint stale data.
+      const features: LegFeature[] = [];
+      for (let i = 0; i < resolved.length - 1; i++) {
+        features.push({
+          type: 'Feature',
+          properties: { mode: legModes?.[i] ?? 'walking', legIdx: i },
+          geometry: {
+            type: 'LineString',
+            coordinates: [resolved[i].coords, resolved[i + 1].coords],
+          },
+        });
+      }
+      lineSrc?.setData({ type: 'FeatureCollection', features });
+
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (token && features.length > 0) {
+        // One Directions request per leg with that leg's specific profile.
+        // Mapbox doesn't have a transit profile, so subway/bus/train modes
+        // collapse to 'driving' (which still routes along roads). Flights
+        // and ferries (mode === null) skip the request and keep the
+        // straight-line leg.
+        for (let i = 0; i < features.length; i++) {
+          const mode = legModes?.[i];
+          if (mode === null) continue; // flight / ferry — straight line is best we can do
+          const profile = mode ?? 'walking';
+          const a = resolved[i].coords, b = resolved[i + 1].coords;
+          const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${a[0]},${a[1]};${b[0]},${b[1]}?access_token=${token}&geometries=geojson&overview=full`;
           fetch(url)
             .then(res => res.ok ? res.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
             .then(data => {
               if (cancelled) return;
               const routed = data?.routes?.[0]?.geometry?.coordinates;
-              if (routed && routed.length > 0) {
-                const stillSrc = mapRef.current?.getSource('route') as mapboxgl.GeoJSONSource | undefined;
-                stillSrc?.setData({
-                  type: 'Feature',
-                  geometry: { type: 'LineString', coordinates: routed },
-                  properties: {},
-                });
-              }
+              if (!routed || routed.length === 0) return;
+              const stillSrc = mapRef.current?.getSource('route') as mapboxgl.GeoJSONSource | undefined;
+              if (!stillSrc) return;
+              // Update only THIS leg's geometry, keep other legs intact.
+              features[i] = {
+                type: 'Feature',
+                properties: { mode: profile, legIdx: i },
+                geometry: { type: 'LineString', coordinates: routed },
+              };
+              stillSrc.setData({ type: 'FeatureCollection', features: [...features] });
             })
-            .catch(() => { /* keep straight line */ });
+            .catch(() => { /* keep straight leg */ });
         }
       }
 
@@ -326,7 +351,7 @@ export default function DayMap({
 
     loadData();
     return () => { cancelled = true; };
-  }, [heading, lines, location, namedPlaces, mapReady, onPlacesResolved]);
+  }, [heading, lines, location, namedPlaces, legModes, mapReady, onPlacesResolved]);
 
   if (tokenMissing) {
     return (

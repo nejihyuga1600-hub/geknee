@@ -7,7 +7,7 @@ import { ActivityBlock } from './ActivityBlock';
 import { WeatherBar, type DayWeather } from './WeatherBar';
 import { DayImages } from './DayImages';
 import { extractDayNumber, stripDayPrefix, groupLines, type Section } from '../lib/itinerary-parse';
-import { extractActivityPlace } from '../lib/places';
+import { extractActivityPlace, extractTransitMode, type TransitMode } from '../lib/places';
 import type { EditTarget, RouteStop } from '../lib/types';
 
 // DayMap mounts a Google Maps view; dynamic-import keeps the maps SDK out
@@ -80,9 +80,21 @@ export function SectionCard({
   const nextActivityNumberMap = new Map<number, number>(
     activityGroups.flatMap((g, i) => i < activityGroups.length - 1 ? [[g.headlineIdx, i + 2]] : [])
   );
-  const orderedActivityPlaces = activityGroups
-    .map(g => extractActivityPlace(g.headline, g.details.map(d => d.line)))
-    .filter((p): p is string => p !== null);
+  // For each activity, the place name (used for geocoding pins) plus the
+  // transit mode of the leg LEAVING that activity (used for routing the
+  // line to the next pin). Mode lives in the source activity's detail
+  // lines because the prompt puts the transit segment immediately after
+  // the activity it leaves from.
+  const activityPlacesAndModes = activityGroups
+    .map(g => ({
+      place: extractActivityPlace(g.headline, g.details.map(d => d.line)),
+      mode: g.details.map(d => extractTransitMode(d.line)).find(m => m !== null) ?? null,
+    }))
+    .filter((p): p is { place: string; mode: TransitMode } => p.place !== null);
+  const orderedActivityPlaces = activityPlacesAndModes.map(p => p.place);
+  // legModes[i] = the transit mode used to go from stop i → stop i+1.
+  // Length matches (N - 1) where N = number of resolved places.
+  const legModes: TransitMode[] = activityPlacesAndModes.slice(0, -1).map(p => p.mode);
 
   function renderLines(linesToRender: typeof section.lines, baseIdx = 0) {
     if (!groups) {
@@ -242,6 +254,7 @@ export function SectionCard({
               location={mapLocation}
               height={340}
               namedPlaces={orderedActivityPlaces.length > 0 ? orderedActivityPlaces : undefined}
+              legModes={legModes}
               onPlacesResolved={setResolvedPlaces}
             />
           </div>
