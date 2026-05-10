@@ -770,11 +770,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
         : Math.atan2(-worldNorth.x, -worldNorth.z);
 
       // Pitch: based on how directly the camera looks down at the monument.
+      // Plus a permanent 10° upward bias so the monument's head/top is always
+      // tipped slightly toward the sky — readable from above without dipping
+      // the face into the surface. Applies to every monument and any new
+      // ones added to MONUMENT_LATLON / AVAILABLE_SKINS later, since this
+      // logic lives in the shared Lm component.
+      const STATIC_UPWARD_TILT = -0.175;  // ~10° (negative = top tips back)
       const camDirLocal = _monPos.copy(camera.position).sub(_v.set(...p.pos));
       camDirLocal.applyQuaternion(_qInv.copy(p.q).invert());
       const horizDist = Math.hypot(camDirLocal.x, camDirLocal.z);
       const elevation = Math.atan2(Math.max(0, camDirLocal.y), Math.max(1e-4, horizDist));
-      const pitch = -Math.min(elevation * 0.30, 0.35);
+      const pitch = -Math.min(elevation * 0.30, 0.35) + STATIC_UPWARD_TILT;
 
       const frontOffset = (mk && MONUMENT_FRONT_YAW[mk]) || 0;
       _yawQ.setFromAxisAngle(_yAxis, southYaw + frontOffset);
