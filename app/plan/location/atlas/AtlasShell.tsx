@@ -647,44 +647,7 @@ export default function AtlasShell() {
         )}
       </section>
 
-      {/* Visible note — this is shell v0, wiring lands next. Hidden on
-          mobile because the callout dominates the small viewport. */}
-      {!isMobile && (
-        <div
-          style={{
-            position: "absolute",
-            top: 70,
-            right: 24,
-            zIndex: 30,
-            background: "var(--brand-surface)",
-            backdropFilter: "blur(12px)",
-            border: "1px solid var(--brand-border-hi)",
-            borderRadius: 12,
-            padding: "10px 14px",
-            fontSize: 11,
-            color: "var(--brand-ink-dim)",
-            fontFamily: "var(--font-ui), system-ui, sans-serif",
-            maxWidth: 280,
-          }}
-        >
-          <div style={{ color: "var(--brand-accent)", fontWeight: 700, fontSize: 10, letterSpacing: "0.08em" }}>
-            ATLAS · SHELL V0
-          </div>
-          <div style={{ marginTop: 4 }}>
-            Variant A from the design session. Flow wiring lands next phase.
-            Meanwhile{" "}
-            <Link
-              href="/plan/location"
-              style={{ color: "var(--brand-accent-2)", textDecoration: "underline" }}
-            >
-              use the live planner
-            </Link>
-            .
-          </div>
-        </div>
-      )}
-
-      {/* Genie corner — quiet ✦ assistant. */}
+{/* Genie corner — quiet ✦ assistant. */}
       <GenieCorner trip={trip} step={step} steps={STEPS} open={genieOpen} setOpen={setGenieOpen} />
 
       {/* Live product modals — wired to the existing components, not the
@@ -834,7 +797,7 @@ function GenieCorner({
                 fontWeight: 600, fontSize: 13,
               }}>✦</span>
               <div>
-                <div style={{ fontFamily: "var(--font-display, Georgia, serif)", fontSize: 15, fontWeight: 500 }}>Assistant</div>
+                <div style={{ fontFamily: "var(--font-display, Georgia, serif)", fontSize: 15, fontWeight: 500 }}>geknee</div>
                 <div style={{ fontSize: 10, color: "var(--brand-ink-mute)", letterSpacing: "0.1em" }}>
                   <span style={{ color: "#34d399" }}>●</span> ONLINE · {steps[step]}
                 </div>
