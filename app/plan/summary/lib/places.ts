@@ -104,6 +104,45 @@ export function extractActivityPlace(headline: string, details: string[] = []): 
   return null;
 }
 
+// Returns up to N candidate place names per activity, in priority order. The
+// first candidate is the most specific (extracted via strict bold-only on
+// the headline) and subsequent candidates are fallbacks that broaden out
+// (detail lines, looser capitalized phrases). The day-map geocoder tries
+// each in turn until one resolves inside the city bbox — fictional LLM
+// names ("Shankara Vegis Restaurant") fail but the activity still gets a
+// pin via the next candidate, which is usually a real neighborhood.
+export function extractActivityCandidates(headline: string, details: string[] = [], max = 4): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  function push(name: string | null) {
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (out.length < max) out.push(name);
+  }
+
+  // Pull every bold name from the headline + each detail line — not just
+  // the best-scored one. extractPlace returns the single winner; we want
+  // all viable alternatives.
+  function bolds(text: string): string[] {
+    return [...text.matchAll(/\*\*([^*]+)\*\*/g)]
+      .map(m => m[1].trim())
+      .filter(n => n.length >= 4 && /^[A-Z]/.test(n) && !/^[\d:]+\s*[AP]M$/i.test(n));
+  }
+
+  // Strict bold candidates from the headline (priority 1).
+  for (const b of bolds(headline)) push(b);
+  // Strict bold candidates from each detail line (priority 2).
+  for (const d of details) for (const b of bolds(d)) push(b);
+  // Loose capitalized phrases from the headline (priority 3).
+  push(extractCapitalizedPlace(headline));
+  // Loose capitalized phrases from each detail line (priority 4).
+  for (const d of details) push(extractCapitalizedPlace(d));
+
+  return out;
+}
+
 // Mapbox Directions profile that matches the transit emoji the LLM emits
 // in its activity transitions. The prompt instructs the model to lead each
 // transit line with one of: 🚶 walk · 🚴 bike · 🚇 subway · 🚌 bus · 🚂🚆 train ·

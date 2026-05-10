@@ -49,6 +49,11 @@ interface DayMapProps {
   location: string;
   height?: number;
   namedPlaces?: string[];
+  // Optional fallback candidate names per activity, in priority order. The
+  // geocoder tries each candidate until one resolves inside the city bbox.
+  // Used when the LLM invents a fictional venue ("Joe's Mythical Café") —
+  // the broader neighborhood candidate carries the pin.
+  placeCandidates?: string[][];
   // Mode of transit per leg (length = namedPlaces.length - 1). Each entry
   // tells DayMap which Mapbox Directions profile to use for that segment
   // ('walking' | 'cycling' | 'driving' | null). null skips routing for
@@ -59,7 +64,7 @@ interface DayMapProps {
 }
 
 export default function DayMap({
-  heading, lines, location, height = 220, namedPlaces, legModes, onPlacesResolved,
+  heading, lines, location, height = 220, namedPlaces, placeCandidates, legModes, onPlacesResolved,
 }: DayMapProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -151,7 +156,7 @@ export default function DayMap({
     if (!mapReady) return;
 
     const placeTokens = namedPlaces ?? lines.filter(l => /\*\*[A-Z]/.test(l)).slice(0, 20);
-    const loadKey = JSON.stringify({ heading, location, placeTokens });
+    const loadKey = JSON.stringify({ heading, location, placeTokens, placeCandidates });
     if (loadKey === loadKeyRef.current) return;
     loadKeyRef.current = loadKey;
 
@@ -272,9 +277,18 @@ export default function DayMap({
         }
         return null;
       }
-      const results = await Promise.all(rawPlaces.map(async p => {
-        const coords = await resolvePlace(p.name);
-        return coords ? ({ name: p.name, coords } as Place) : null;
+      const results = await Promise.all(rawPlaces.map(async (p, i) => {
+        // First try every candidate the SectionCard provided (priority order)
+        // before falling back to the legacy single-name resolver. This is
+        // what catches activities like "Lunch at Shankara Vegis Restaurant
+        // in Chowk Kagziyan" — the restaurant name fails, but the
+        // neighborhood does, so the activity still gets a pin.
+        const candidates = placeCandidates?.[i] ?? [p.name];
+        for (const c of candidates) {
+          const coords = await resolvePlace(c);
+          if (coords) return { name: p.name, coords } as Place;
+        }
+        return null;
       }));
       if (cancelled || !mapRef.current) return;
 
@@ -381,7 +395,7 @@ export default function DayMap({
 
     loadData();
     return () => { cancelled = true; };
-  }, [heading, lines, location, namedPlaces, legModes, mapReady, onPlacesResolved]);
+  }, [heading, lines, location, namedPlaces, placeCandidates, legModes, mapReady, onPlacesResolved]);
 
   if (tokenMissing) {
     return (

@@ -7,7 +7,7 @@ import { ActivityBlock } from './ActivityBlock';
 import { WeatherBar, type DayWeather } from './WeatherBar';
 import { DayImages } from './DayImages';
 import { extractDayNumber, stripDayPrefix, groupLines, type Section } from '../lib/itinerary-parse';
-import { extractActivityPlace, extractTransitMode, type TransitMode } from '../lib/places';
+import { extractActivityPlace, extractActivityCandidates, extractTransitMode, type TransitMode } from '../lib/places';
 import type { EditTarget, RouteStop } from '../lib/types';
 
 // DayMap mounts a Google Maps view; dynamic-import keeps the maps SDK out
@@ -80,21 +80,27 @@ export function SectionCard({
   const nextActivityNumberMap = new Map<number, number>(
     activityGroups.flatMap((g, i) => i < activityGroups.length - 1 ? [[g.headlineIdx, i + 2]] : [])
   );
-  // For each activity, the place name (used for geocoding pins) plus the
-  // transit mode of the leg LEAVING that activity (used for routing the
-  // line to the next pin). Mode lives in the source activity's detail
-  // lines because the prompt puts the transit segment immediately after
-  // the activity it leaves from.
+  // For each activity, the candidate place names (in priority order; the
+  // day-map geocoder tries each until one resolves) plus the transit mode
+  // of the leg LEAVING that activity (used for routing). Multiple
+  // candidates per activity is what makes the map robust against fictional
+  // LLM-generated venue names — when the specific name fails, the broader
+  // neighborhood candidate carries the pin.
   const activityPlacesAndModes = activityGroups
     .map(g => ({
-      place: extractActivityPlace(g.headline, g.details.map(d => d.line)),
+      candidates: extractActivityCandidates(g.headline, g.details.map(d => d.line)),
       mode: g.details.map(d => extractTransitMode(d.line)).find(m => m !== null) ?? null,
     }))
-    .filter((p): p is { place: string; mode: TransitMode } => p.place !== null);
-  const orderedActivityPlaces = activityPlacesAndModes.map(p => p.place);
+    .filter((p): p is { candidates: string[]; mode: TransitMode } => p.candidates.length > 0);
+  const orderedActivityPlaces = activityPlacesAndModes.map(p => p.candidates[0]);
+  const placeCandidates = activityPlacesAndModes.map(p => p.candidates);
   // legModes[i] = the transit mode used to go from stop i → stop i+1.
   // Length matches (N - 1) where N = number of resolved places.
   const legModes: TransitMode[] = activityPlacesAndModes.slice(0, -1).map(p => p.mode);
+  // Suppress unused-var warning when the legacy single-name extractor is
+  // not referenced after this refactor — keep the import in case other
+  // call sites need it later.
+  void extractActivityPlace;
 
   function renderLines(linesToRender: typeof section.lines, baseIdx = 0) {
     if (!groups) {
@@ -254,6 +260,7 @@ export function SectionCard({
               location={mapLocation}
               height={340}
               namedPlaces={orderedActivityPlaces.length > 0 ? orderedActivityPlaces : undefined}
+              placeCandidates={placeCandidates.length > 0 ? placeCandidates : undefined}
               legModes={legModes}
               onPlacesResolved={setResolvedPlaces}
             />
