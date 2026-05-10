@@ -14,7 +14,7 @@
 import { INFO } from "./info";
 
 export type MonumentRarity = "common" | "rare" | "epic" | "legendary";
-export type SkinTier = "bronze" | "silver" | "gold" | "diamond" | "damascus" | "aurora" | "celestial";
+export type SkinTier = "bronze" | "silver" | "gold" | "diamond" | "aurora" | "celestial";
 
 export interface QuestTemplate {
   id: string;
@@ -269,7 +269,6 @@ export const SKIN_RARITY: Record<SkinTier, MonumentRarity> = {
   silver: "rare",
   gold: "rare",
   diamond: "epic",
-  damascus: "epic",
   aurora: "legendary",
   celestial: "legendary",
 };
@@ -277,7 +276,7 @@ export const SKIN_RARITY: Record<SkinTier, MonumentRarity> = {
 // Per-monument quest pool, capped at 5. Bronze (monument_photo) always fires
 // as the entry-level visit reward; rarer tiers gate on monument metadata.
 const TIER_RANK: Record<SkinTier, number> = {
-  bronze: 1, silver: 2, gold: 3, diamond: 4, damascus: 5, aurora: 6, celestial: 7,
+  bronze: 1, silver: 2, gold: 3, diamond: 4, aurora: 5, celestial: 6,
 };
 
 const MAX_QUESTS_PER_MONUMENT = 5;
