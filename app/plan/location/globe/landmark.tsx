@@ -92,15 +92,15 @@ export const BLOB_BASE = 'https://mrfgpxw07gmgmriv.public.blob.vercel-storage.co
 // still looks wrong on the live globe — increments are π/2 for 90° CCW,
 // -π/2 for 90° CW. Stored at module scope so it's edit-friendly.
 export const MONUMENT_FRONT_YAW: Record<string, number> = {
-  eiffelTower:    Math.PI,
-  colosseum:      Math.PI,
-  tajMahal:       Math.PI,
-  greatWall:      Math.PI,
-  statueLiberty:  Math.PI,
-  sagradaFamilia: Math.PI,
-  christRedeem:   Math.PI,
-  bigBen:         Math.PI,
-  sydneyOpera:    Math.PI,
+  eiffelTower:    0,
+  colosseum:      0,
+  tajMahal:       0,
+  greatWall:      0,
+  statueLiberty:  0,
+  sagradaFamilia: 0,
+  christRedeem:   0,
+  bigBen:         0,
+  sydneyOpera:    0,
 };
 
 // GLB models served from Vercel Blob. Entries here render as the default (pre-skin)

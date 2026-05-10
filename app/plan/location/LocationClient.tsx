@@ -418,6 +418,9 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
     const key = `geo:${name}`;
     if (!mobileActive) {
       window.dispatchEvent(new CustomEvent("geknee:mobilegeo", { detail: { key } }));
+      // Also dismiss any open city card — only one info card should be
+      // visible at a time regardless of which kind it is.
+      window.dispatchEvent(new CustomEvent("geknee:mobilecity", { detail: { key: '__dismiss__' } }));
     }
     setMobileActive(prev => !prev);
   };
@@ -1652,6 +1655,9 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
     const key = `city:${n}`;
     if (!mobileActive) {
       window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key } }));
+      // Also dismiss any open state/country card — only one info card
+      // should be visible at a time regardless of which kind it is.
+      window.dispatchEvent(new CustomEvent('geknee:mobilegeo', { detail: { key: '__dismiss__' } }));
     }
     setMobileActive(prev => !prev);
   };
@@ -2637,7 +2643,11 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         // empty space" → broadcast a dismiss signal so any open city/geo
         // info card closes. Cleaner than per-card click-outside listeners.
         onPointerMissed={() => {
+          // Dismiss both card types — they listen to separate event channels
+          // (mobilecity vs mobilegeo) but both should clear when the user
+          // clicks anywhere outside an active card.
           window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key: '__dismiss__' } }));
+          window.dispatchEvent(new CustomEvent('geknee:mobilegeo', { detail: { key: '__dismiss__' } }));
         }}
         gl={{
           antialias: !isMobile,
