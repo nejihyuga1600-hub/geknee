@@ -1881,9 +1881,10 @@ function CityLabels({ camDist }: { camDist: number }) {
     }
     // Density-based base size only. Per-frame zoom scaling lives in CityLabel's
     // useFrame so it's smooth at 60fps and doesn't rebuild SDF text meshes.
-    const NUDGE_TRIGGER_DEG = 1.5;   // monument within this arc → nudge label
-    const NUDGE_OFFSET_DEG  = 1.8;   // nudge magnitude along the away-tangent
+    const NUDGE_TRIGGER_DEG = 2.0;   // monument within this arc → nudge label
+    const NUDGE_OFFSET_DEG  = 0.8;   // small upward bump — keeps label "just above" the monument
     const sphereR = R * 1.019;
+    const NORTH = new THREE.Vector3(0, 1, 0);
     return selected.map((city, i) => {
       const u = selUnits[i];
       let minDeg = 180;
@@ -1895,39 +1896,35 @@ function CityLabels({ camDist }: { camDist: number }) {
       }
       const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
 
-      // Find the closest collected monument within the nudge trigger arc.
-      let nearest: { pos: [number, number, number]; unit: THREE.Vector3; deg: number } | null = null;
+      // If a collected monument is sitting near this city label, nudge the
+      // label slightly NORTH on the sphere so it floats above the monument
+      // GLB instead of being shoved into another state. Earlier away-tangent
+      // logic could land Rio's label in the ocean or NYC's in Pennsylvania.
+      let onTopOfMonument = false;
       for (const mon of collectedMonumentPositions) {
         const dot = Math.max(-1, Math.min(1, u.dot(mon.unit)));
         const deg = Math.acos(dot) * (180 / Math.PI);
-        if (deg < NUDGE_TRIGGER_DEG && (!nearest || deg < nearest.deg)) {
-          nearest = { ...mon, deg };
-        }
+        if (deg < NUDGE_TRIGGER_DEG) { onTopOfMonument = true; break; }
       }
 
       let pos = city.pos;
-      let leaderTo: [number, number, number] | undefined;
-      if (nearest) {
-        // Rotate the city unit vector AWAY from the monument along the great
-        // circle they share. Axis = monument × city; rotating city around it
-        // by +NUDGE_OFFSET_DEG moves the label away from the monument.
-        const axis = new THREE.Vector3().crossVectors(nearest.unit, u);
-        if (axis.lengthSq() < 1e-8) {
-          // city ≈ monument: pick an arbitrary tangent (use world up if not parallel)
-          const fallback = Math.abs(u.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-          axis.crossVectors(u, fallback).normalize();
-        } else {
-          axis.normalize();
-        }
+      if (onTopOfMonument) {
+        // Tangent at city pointing toward the north pole on the sphere.
+        // Falls back to an arbitrary tangent only at the poles.
+        const tangent = NORTH.clone().sub(u.clone().multiplyScalar(NORTH.dot(u)));
+        if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0);
+        tangent.normalize();
+        const axis = new THREE.Vector3().crossVectors(u, tangent).normalize();
         const offsetVec = u.clone().applyAxisAngle(axis, NUDGE_OFFSET_DEG * Math.PI / 180).multiplyScalar(sphereR);
         pos = [offsetVec.x, offsetVec.y, offsetVec.z];
-        leaderTo = nearest.pos;
       }
 
       // Recompute orientation for the offset position so text still hugs the surface
       const orientation = pos === city.pos ? city.orientation : computeOrientation(pos);
 
-      return { ...city, pos, orientation, fontSize, leaderTo };
+      // No leader line — the label is now visually attached to the monument
+      // (sitting just above it) so a leader would be visual noise.
+      return { ...city, pos, orientation, fontSize, leaderTo: undefined };
     });
   }, [items, camDist, sepThresh, collectedMonumentPositions]);
 
