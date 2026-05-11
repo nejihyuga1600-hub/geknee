@@ -22,6 +22,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, type RefObject } from 'react';
 import { AuroraBackground } from './AuroraBackground';
 import { TextShimmerWave } from './TextShimmer';
+import { Spinning3DOrb } from './Spinning3DOrb';
 
 // Per-skin tier color. 'default' is the geknee primary purple — used when
 // the base monument is unlocked (no specific skin yet).
@@ -226,10 +227,10 @@ export function UnlockCeremony({ trigger, originRef }: UnlockCeremonyProps) {
             </motion.svg>
             <motion.div
               key="orb"
-              initial={{ x: viewport.w / 2 - 24, y: viewport.h / 2 - 24, scale: 1.4, opacity: 0 }}
+              initial={{ x: viewport.w / 2 - 28, y: viewport.h / 2 - 28, scale: 1.4, opacity: 0 }}
               animate={{
-                x: [viewport.w / 2 - 24, viewport.w * 0.82 - 24, globeCorner.x - 24],
-                y: [viewport.h / 2 - 24, viewport.h * 0.3 - 24, globeCorner.y - 24],
+                x: [viewport.w / 2 - 28, viewport.w * 0.82 - 28, globeCorner.x - 28],
+                y: [viewport.h / 2 - 28, viewport.h * 0.3 - 28, globeCorner.y - 28],
                 scale: [1.4, 1.0, 0.45],
                 opacity: [0, 1, 1, 0.6],
               }}
@@ -238,13 +239,14 @@ export function UnlockCeremony({ trigger, originRef }: UnlockCeremonyProps) {
                 position: 'absolute',
                 left: 0,
                 top: 0,
-                width: 48,
-                height: 48,
+                width: 56,
+                height: 56,
                 borderRadius: '50%',
-                background: `radial-gradient(circle at 30% 30%, #fff, ${color} 55%, ${color}88)`,
                 boxShadow: `0 0 40px ${color}cc, 0 0 80px ${color}77, 0 0 120px ${color}33`,
               }}
-            />
+            >
+              <Spinning3DOrb color={color} size={56} />
+            </motion.div>
           </>
         )}
       </AnimatePresence>

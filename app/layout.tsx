@@ -37,6 +37,7 @@ import TravelpayoutsScript from "./components/TravelpayoutsScript";
 import InstallPrompt from "./components/InstallPrompt";
 import PushPermissionPrompt from "./components/PushPermissionPrompt";
 import RegisterSW from "./components/RegisterSW";
+import { AuroraBorealis } from "./components/animations/AuroraBorealis";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { NativeAuthBridge } from "@/lib/native-auth-bridge";
@@ -96,6 +97,7 @@ export default function RootLayout({
         <InstallPrompt />
         <RegisterSW />
         <NativeAuthBridge />
+        <AuroraBorealis />
         <SpeedInsights />
         <Analytics />
       </body>

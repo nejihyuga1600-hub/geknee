@@ -8,6 +8,7 @@ import { INFO } from '@/app/plan/location/globe/info';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
 import { ShimmerButton } from './animations/ShimmerButton';
 import { MagicCard } from './animations/MagicCard';
+import { AnimatedGlowCard } from './animations/AnimatedGlowCard';
 import { UnlockCeremony } from './animations/UnlockCeremony';
 
 const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
@@ -1062,9 +1063,8 @@ export default function MonumentShop({ open, onClose }: Props) {
                   const eligible = canUnlock(item);
                   const skinsEarned = item.missions.filter(ms => collected.some(c => c.monumentId === item.id && c.skin === ms.skin.id)).length;
                   const rColor = RARITY_COLOR[item.rarity];
-                  return (
+                  const card = (
                     <MagicCard
-                      key={item.id}
                       gradientColor={unlocked ? rColor : '#a78bfa'}
                       gradientSize={180}
                       gradientOpacity={unlocked ? 0.5 : 0.35}
@@ -1149,6 +1149,19 @@ export default function MonumentShop({ open, onClose }: Props) {
                       )}
                     </div>
                     </MagicCard>
+                  );
+                  return unlocked ? (
+                    <AnimatedGlowCard
+                      key={item.id}
+                      color={rColor}
+                      intensity={0.8}
+                      speed={item.rarity === 'legendary' ? 4 : item.rarity === 'epic' ? 5 : 7}
+                      borderRadius={14}
+                    >
+                      {card}
+                    </AnimatedGlowCard>
+                  ) : (
+                    <div key={item.id}>{card}</div>
                   );
                 })}
               </div>
