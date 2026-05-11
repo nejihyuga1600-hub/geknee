@@ -30,11 +30,18 @@ export function PointToPointGlobe({ points, size = 380, className }: PointToPoin
     if (!canvasRef.current) return;
     const start = Date.now();
 
-    // Markers stay constant; arcs are computed every frame so we can animate
-    // which segments are visible based on elapsed time.
+    // Markers + chronological journey wave. Each marker pulses to peak in
+    // the order the user collected the monuments — a "voyage trace" that
+    // sweeps around the globe across a 6s cycle. Even when paused on the
+    // hero card, the eye reads the order of visits because the brightness
+    // wave travels through the points sequentially.
+    const BASE_SIZE = 0.05;
+    const PEAK_SIZE = 0.12;
+    const CYCLE_S = 6;
+    const N = Math.max(points.length, 1);
     const markers = points.map((p) => ({
       location: [p.lat, p.lon] as [number, number],
-      size: 0.06,
+      size: BASE_SIZE,
     }));
 
     const opts = {
@@ -59,6 +66,23 @@ export function PointToPointGlobe({ points, size = 380, className }: PointToPoin
         (state as { phi: number }).phi = phiRef.current + pointerInteractionMovement.current / 200;
         (state as { width: number }).width = widthRef.current * 2;
         (state as { height: number }).height = widthRef.current * 2;
+
+        // Chronological journey wave — peak size travels through markers
+        // in the order they were collected, completing one full pass every
+        // CYCLE_S seconds. Each marker stays at base size most of the time
+        // and briefly blooms to peak when its slot in the wave arrives.
+        const elapsed = (Date.now() - start) / 1000;
+        const phase = (elapsed % CYCLE_S) / CYCLE_S; // 0..1 across the cycle
+        for (let i = 0; i < markers.length; i++) {
+          const slot = i / N;
+          // Distance from this marker's slot to the current phase position,
+          // wrapping around 0..1. Closer = brighter.
+          let d = Math.abs(phase - slot);
+          if (d > 0.5) d = 1 - d;
+          // Gaussian-ish falloff — only the nearest marker(s) bloom.
+          const proximity = Math.max(0, 1 - d * N * 1.2);
+          markers[i].size = BASE_SIZE + (PEAK_SIZE - BASE_SIZE) * Math.pow(proximity, 2);
+        }
       },
     } as unknown as COBEOptions;
 
