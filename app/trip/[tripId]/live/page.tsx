@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import BudgetTracker from './BudgetTracker';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -319,6 +320,13 @@ export default function LiveTripPage() {
       <div style={{ padding: '24px 22px 0' }}>
         <DayTimeline activities={activities} currentClock={currentClock} />
       </div>
+
+      {/* ── Live budget tracker ────────────────────────────────────────── */}
+      {tripId && (
+        <div style={{ padding: '20px 22px 0' }}>
+          <BudgetTracker tripId={tripId} />
+        </div>
+      )}
 
       {loadingTrip && (
         <div style={{ padding: '24px 22px', color: 'var(--brand-ink-mute)', fontSize: 12 }}>

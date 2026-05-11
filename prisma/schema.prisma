@@ -58,6 +58,14 @@ model User {
   notifications          Notification[]
   notificationPref       NotificationPref?
   notificationLog        NotificationLog[]
+  tripExpenses           TripExpense[]
+
+  // Dietary / personal context — fed into itinerary prompts so restaurant
+  // and food-related recommendations respect allergies and diet style.
+  // Comma-separated short tags ("vegetarian, gluten-free, peanut-allergy");
+  // free text so the user isn't boxed into a fixed list.
+  dietaryTags        String?
+  dietaryNotes       String?
   collectedMonuments     CollectedMonument[]
   completedMissions      CompletedMission[]
   tokenUsage             DailyTokenUsage[]
@@ -120,9 +128,10 @@ model TripDraft {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   files    TripFile[]
   bookings Booking[]
+  expenses TripExpense[]
 }
 
 // ── Affiliate-partner conversion records ─────────────────────────────────────
@@ -227,6 +236,24 @@ model NotificationLog {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, key])
+}
+
+// In-trip spending log. The live trip page lets the user tap-add an
+// expense (amount + category + optional note); the budget widget rolls
+// these up by day and against the trip's stated budget tier.
+model TripExpense {
+  id        String   @id @default(cuid())
+  userId    String
+  tripId    String
+  date      String   // ISO YYYY-MM-DD — local date, not UTC, so 'today' matches user expectation
+  amount    Float    // user-entered, in their preferred currency (USD for now)
+  category  String   // 'food' | 'lodging' | 'transport' | 'activities' | 'shopping' | 'other'
+  note      String?
+  createdAt DateTime @default(now())
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip TripDraft @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  @@index([userId, tripId, date])
 }
 
 // ── Monument Collection (gamification) ───────────────────────────────────────
