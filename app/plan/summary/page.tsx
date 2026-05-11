@@ -23,10 +23,19 @@ export default async function SummaryPage({
     if (userId) {
       const trip = await prisma.tripDraft.findUnique({
         where: { id },
-        select: { itinerary: true, userId: true },
+        select: { itinerary: true, userId: true, startDate: true, endDate: true },
       });
-      if (trip && trip.userId === userId && trip.itinerary) {
-        redirect(`/plan/${id}/itinerary`);
+      if (trip && trip.userId === userId) {
+        // Today inside trip dates → user is on the trip right now, send them
+        // to the live planner instead of the static itinerary view.
+        // ISO YYYY-MM-DD strings compare lexicographically.
+        const today = new Date().toISOString().slice(0, 10);
+        if (trip.startDate && trip.endDate && today >= trip.startDate && today <= trip.endDate) {
+          redirect(`/trip/${id}/live`);
+        }
+        if (trip.itinerary) {
+          redirect(`/plan/${id}/itinerary`);
+        }
       }
     }
     redirect(`/plan/${id}/planning`);
