@@ -615,44 +615,55 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     }
 
     // === Unlock celebration animation ===
+    // Tuned for cinematic impact in tandem with the modal-side UnlockCeremony:
+    // the modal auto-closes ~1.5s into the unlock and the orb arrives on the
+    // globe around 2.5s, at which point the ring shockwave + sparkles + model
+    // bounce should be at peak intensity. 5.0s total so the user has time to
+    // appreciate the just-collected monument before chrome returns to baseline.
     const ua = unlockAnimRef.current;
     if (ua.active) {
       ua.time += dt;
 
-      // Ring scale: 0 → 1.2 → 1.0 (spring bounce over 0.6s)
-      if (ua.time < 0.3) {
-        ua.ringScale = (ua.time / 0.3) * 1.2;
-      } else if (ua.time < 0.6) {
-        const t = (ua.time - 0.3) / 0.3;
-        ua.ringScale = 1.2 - 0.2 * t; // 1.2 → 1.0
+      // Ring shockwave: 0 → 2.5 (huge outward burst) → 1.0 over 1.4s.
+      // 2.5x overshoot reads as a visible energy ring rippling outward — like
+      // a sonar ping announcing the collection.
+      if (ua.time < 0.5) {
+        const t = ua.time / 0.5;
+        ua.ringScale = 2.5 * (1 - Math.pow(1 - t, 3)); // ease-out cubic
+      } else if (ua.time < 1.4) {
+        const t = (ua.time - 0.5) / 0.9;
+        ua.ringScale = 2.5 - 1.5 * t; // 2.5 → 1.0
       } else {
         ua.ringScale = 1.0;
       }
 
-      // Ring pulse glow for 3 seconds (opacity 0.5 → 1.0 pulsing)
-      if (ua.time < 3.0) {
-        ua.ringOpacity = 0.75 + 0.25 * Math.sin(ua.time * 6);
+      // Ring pulse glow for 5 seconds — sustained "I'm new" beacon.
+      if (ua.time < 5.0) {
+        ua.ringOpacity = 0.8 + 0.2 * Math.sin(ua.time * 5);
       } else {
         ua.ringOpacity = 0.7;
       }
 
-      // Model scale pop: 1.0 → 1.15 → 1.0 over 0.5s
-      if (ua.time < 0.25) {
-        ua.modelScale = 1.0 + 0.15 * (ua.time / 0.25);
-      } else if (ua.time < 0.5) {
-        const t = (ua.time - 0.25) / 0.25;
-        ua.modelScale = 1.15 - 0.15 * t;
+      // Model scale pop: 1.0 → 1.4 → 1.0 spring bounce over 1.0s.
+      // Bigger overshoot — the model itself reacts to its own collection.
+      if (ua.time < 0.4) {
+        const t = ua.time / 0.4;
+        ua.modelScale = 1.0 + 0.4 * (1 - Math.pow(1 - t, 2));
+      } else if (ua.time < 1.0) {
+        const t = (ua.time - 0.4) / 0.6;
+        ua.modelScale = 1.4 - 0.4 * t;
       } else {
         ua.modelScale = 1.0;
       }
 
-      // Sparkles active for 2 seconds
-      if (ua.time > 2.0) {
+      // Sparkles active for 4 seconds — long enough for the user to catch
+      // them after the modal closes and the camera frames the monument.
+      if (ua.time > 4.0) {
         ua.sparkleActive = false;
       }
 
-      // End unlock animation after 3 seconds
-      if (ua.time >= 3.0) {
+      // End unlock animation after 5 seconds
+      if (ua.time >= 5.0) {
         ua.active = false;
         ua.ringScale = 1.0;
         ua.modelScale = 1.0;

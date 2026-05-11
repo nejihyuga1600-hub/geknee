@@ -638,6 +638,12 @@ export default function MonumentShop({ open, onClose }: Props) {
       if (collected.length === 0) track('first_unlock', { mk: item.id, via: 'unlock' });
       await load();
       window.dispatchEvent(new Event('geknee:monuments-updated'));
+      // Auto-close the modal mid-ceremony so the user lands back on the
+      // globe by the time UnlockCeremony's orb arrives (~2.5s after tap).
+      // Modal closes around T+1.5s — Stage 2 reveal is done, Stage 3 orb
+      // travels across the now-empty screen, the amplified ring shockwave
+      // in landmark.tsx peaks just as the camera reveals the new monument.
+      setTimeout(onClose, 1500);
     }
     else { setMsg(data.error ?? 'Error'); setLastUnlock(null); await load(); } // refresh state on error too (e.g. "Already collected" from another session)
     setLoading(false);
