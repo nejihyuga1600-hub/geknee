@@ -35,6 +35,7 @@ import { ToastProvider } from "./components/Toast";
 import PostHogProvider from "./components/PostHogProvider";
 import TravelpayoutsScript from "./components/TravelpayoutsScript";
 import InstallPrompt from "./components/InstallPrompt";
+import PushPermissionPrompt from "./components/PushPermissionPrompt";
 import RegisterSW from "./components/RegisterSW";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -89,6 +90,7 @@ export default function RootLayout({
               <div style={{ animation: 'pageFadeIn 0.35s ease-out' }}>{children}</div>
             </ToastProvider>
           </PostHogProvider>
+          <PushPermissionPrompt />
         </SessionProvider>
         <GlobalChat />
         <InstallPrompt />
