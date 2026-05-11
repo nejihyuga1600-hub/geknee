@@ -486,6 +486,24 @@ export default function SettingsPanel({ open, onClose }: Props) {
             </RowLast>
           </Section>
 
+          {/* ── Year Wrap ── */}
+          <Section title={`${new Date().getFullYear()} Wrap`}>
+            <a
+              href="/wrapped"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "14px 16px", textDecoration: "none",
+                color: "#fff", fontSize: 14, fontWeight: 600,
+              }}
+            >
+              <span>
+                <span style={{ marginRight: 8 }}>✦</span>
+                See your travel year in review
+              </span>
+              <span style={{ fontSize: 18, color: "rgba(255,255,255,0.4)" }}>→</span>
+            </a>
+          </Section>
+
           {/* ── Help & Feedback ── */}
           <Section title="Help & Feedback">
             <div style={{ padding: "14px 16px" }}>
