@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import InstallEntry from "./InstallEntry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -477,9 +477,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
           {/* ── Notifications ── */}
           <Section title="Notifications">
-            <Row label="Trip reminders" sub="Alerts before your departure">
-              <Toggle on={s.notifTripReminders} onChange={v => update("notifTripReminders", v)} />
-            </Row>
+            <NotificationPrefsRows />
             <Row label="Friend activity" sub="When friends add trips or come online">
               <Toggle on={s.notifFriendActivity} onChange={v => update("notifFriendActivity", v)} />
             </Row>
@@ -541,6 +539,49 @@ export default function SettingsPanel({ open, onClose }: Props) {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+// Server-backed notification preference toggles. Hydrates from
+// /api/notification-prefs on mount, PATCHes on every change. Each toggle
+// silences a whole category of cron-emitted notifications when off.
+function NotificationPrefsRows() {
+  const [prefs, setPrefs] = React.useState<{
+    weatherTwoWeeks: boolean;
+    packingPrep: boolean;
+    dailyBriefing: boolean;
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch('/api/notification-prefs')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setPrefs({ weatherTwoWeeks: d.weatherTwoWeeks, packingPrep: d.packingPrep, dailyBriefing: d.dailyBriefing }); })
+      .catch(() => { /* leave null — toggles render disabled */ });
+  }, []);
+
+  function patch<K extends keyof NonNullable<typeof prefs>>(key: K, value: boolean) {
+    if (!prefs) return;
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    fetch('/api/notification-prefs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    }).catch(() => { /* optimistic — revert on error left as future polish */ });
+  }
+
+  return (
+    <>
+      <Row label="Weather forecast" sub="Outlook for your destination, 2 weeks before departure">
+        <Toggle on={prefs?.weatherTwoWeeks ?? true} onChange={v => patch('weatherTwoWeeks', v)} />
+      </Row>
+      <Row label="Packing prep" sub="Tailored packing checklist, 2 weeks before departure">
+        <Toggle on={prefs?.packingPrep ?? true} onChange={v => patch('packingPrep', v)} />
+      </Row>
+      <Row label="Daily briefing" sub="Morning rundown of today's plan during the trip">
+        <Toggle on={prefs?.dailyBriefing ?? true} onChange={v => patch('dailyBriefing', v)} />
+      </Row>
     </>
   );
 }

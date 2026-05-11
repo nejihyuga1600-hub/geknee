@@ -56,6 +56,8 @@ model User {
   sentFriendRequests     Friendship[]   @relation("SentRequests")
   receivedFriendRequests Friendship[]   @relation("ReceivedRequests")
   notifications          Notification[]
+  notificationPref       NotificationPref?
+  notificationLog        NotificationLog[]
   collectedMonuments     CollectedMonument[]
   completedMissions      CompletedMission[]
   tokenUsage             DailyTokenUsage[]
@@ -191,13 +193,40 @@ model InboundMessage {
 model Notification {
   id        String   @id @default(cuid())
   userId    String                        // recipient
-  type      String                        // "friend_message" | "friend_request" | "trip_update"
+  type      String                        // "friend_message" | "friend_request" | "trip_update" | "weather_forecast" | "packing_prep" | "daily_briefing"
   title     String
   body      String
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Per-user notification preferences. One row per user; defaults to all-on.
+// The cron job consults these flags before emitting a notification of a
+// given category — turning a flag off silences that whole category.
+model NotificationPref {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  weatherTwoWeeks Boolean @default(true)
+  packingPrep     Boolean @default(true)
+  dailyBriefing   Boolean @default(true)
+  tripUpdates     Boolean @default(true)
+  friendActivity  Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Idempotency log so the daily cron doesn't fire the same notification
+// twice for the same user/trip/day. key = "<type>:<tripId>:<isoDate?>"
+model NotificationLog {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, key])
 }
 
 // ── Monument Collection (gamification) ───────────────────────────────────────
