@@ -685,6 +685,37 @@ export default function TripSocialPanel({
                             {fmtDate(trip.startDate)}{trip.endDate ? ` \u2013 ${fmtDate(trip.endDate)}` : ''}{trip.nights ? ` \u00B7 ${trip.nights} nights` : ''}
                           </div>
                         )}
+                        {(() => {
+                          const today = new Date().toISOString().slice(0, 10);
+                          const isLiveNow = !!trip.startDate && !!trip.endDate && today >= trip.startDate && today <= trip.endDate;
+                          const isPast = !!trip.endDate && today > trip.endDate;
+                          const label = isLiveNow ? 'LIVE NOW' : isPast ? 'Recap' : 'Go Live';
+                          return (
+                            <button
+                              onClick={e => { e.stopPropagation(); router.push(`/trip/${trip.id}/live`); }}
+                              aria-label={isLiveNow ? 'Open live planner' : 'Preview live planner'}
+                              style={{
+                                marginTop: 10,
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '5px 10px',
+                                borderRadius: 999,
+                                background: isLiveNow ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(167,139,250,0.12)',
+                                border: isLiveNow ? 'none' : '1px solid rgba(167,139,250,0.32)',
+                                color: isLiveNow ? '#0a0a1f' : '#c7d2fe',
+                                fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                                cursor: 'pointer', fontFamily: 'inherit',
+                              }}
+                            >
+                              {isLiveNow && (
+                                <span style={{
+                                  width: 6, height: 6, borderRadius: '50%',
+                                  background: '#0a0a1f',
+                                }} />
+                              )}
+                              {label}
+                            </button>
+                          );
+                        })()}
                         <button
                           onClick={e => { e.stopPropagation(); setActiveFilesTrip({ id: trip.id, name: trip.title }); }}
                           aria-label="Open files"
