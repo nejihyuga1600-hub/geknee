@@ -113,8 +113,12 @@ export default function DayMap({
     const map = new mapboxgl.Map({
       container: divRef.current,
       style: 'mapbox://styles/mapbox/dark-v11',
-      center: [139.6917, 35.6895],
-      zoom: 11,
+      // Neutral world-view center until geocode resolves the trip city.
+      // Hardcoded Shinjuku coords were leaking through whenever
+      // geocoding was slow or failed, leaving Tokyo visible on a Paris
+      // trip until the recenter fired.
+      center: [0, 20],
+      zoom: 1.2,
       attributionControl: false,
       cooperativeGestures: true,
     });

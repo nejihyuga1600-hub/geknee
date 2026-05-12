@@ -579,7 +579,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
           if (res.status === 403) {
             const data = await res.json().catch(() => ({}));
             if (data.code === 'GENERATION_LIMIT') {
-              track('upgrade_click', { surface: 'ai_limit', feature: 'generations' }); setUpgradeModal({ open: true, feature: 'Unlimited AI generations', reason: data.error });
+              track('upgrade_click', { surface: 'ai_limit', feature: 'generations' }); setUpgradeModal({ open: true, feature: 'Unlimited geknee agent generations', reason: data.error });
               setStreaming(false);
               setLoadingStage('idle');
               return;
@@ -2158,9 +2158,9 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   <span aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', animation: 'pulse 1.4s ease-in-out infinite' }} />
                   <span>
                     {loadingStage === 'loading-trip'  ? 'Loading saved trip…'
-                    : loadingStage === 'no-itinerary' ? 'Trip loaded · starting AI generation…'
-                    : loadingStage === 'requesting'   ? 'Reaching the AI · request in flight…'
-                    : loadingStage === 'streaming'    ? 'Receiving itinerary from AI…'
+                    : loadingStage === 'no-itinerary' ? 'Trip loaded · starting geknee agent…'
+                    : loadingStage === 'requesting'   ? 'Reaching geknee agent · request in flight…'
+                    : loadingStage === 'streaming'    ? 'Receiving itinerary from geknee agent…'
                     : 'Crafting your personalized itinerary…'}
                     {elapsedSec > 0 && <span style={{ opacity: 0.55 }}> · {elapsedSec}s</span>}
                   </span>
@@ -2190,8 +2190,8 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                       letterSpacing: '0.04em',
                     }}>
                       {elapsedSec >= 60
-                        ? 'Taking longer than usual. The AI may be stuck — retry?'
-                        : 'Taking longer than usual · the AI is working through your trip…'}
+                        ? 'Taking longer than usual. The geknee agent may be stuck — retry?'
+                        : 'Taking longer than usual · the geknee agent is working through your trip…'}
                     </p>
                     {elapsedSec >= 60 && (
                       <button
@@ -2244,7 +2244,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   {(() => {
                     const dayCount = lines.filter(l => /^##\s/.test(l)).length;
                     const totalDays = parseInt(nights || '0', 10) + 1;
-                    if (dayCount === 0) return 'Receiving from AI…';
+                    if (dayCount === 0) return 'Receiving from geknee agent…';
                     if (totalDays > 0 && dayCount <= totalDays) return `Streaming day ${dayCount} of ${totalDays}`;
                     return `Streaming day ${dayCount}`;
                   })()}

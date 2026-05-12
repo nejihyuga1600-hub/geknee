@@ -17,7 +17,13 @@ export async function GET(req: Request) {
   const hit = cache.get(address);
   if (hit) return Response.json(hit);
 
-  const apiKey = process.env.GOOGLE_GEOCODE_KEY;
+  // Fall through the same key chain the agent's geocode tool uses, so
+  // production deploys that only configured GOOGLE_MAPS_API_KEY (or the
+  // NEXT_PUBLIC_ variant) don't 500 here and silently kill the day map.
+  const apiKey =
+    process.env.GOOGLE_GEOCODE_KEY ??
+    process.env.GOOGLE_MAPS_API_KEY ??
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) return Response.json({ error: 'no API key' }, { status: 500 });
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;

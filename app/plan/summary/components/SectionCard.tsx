@@ -210,7 +210,7 @@ export function SectionCard({
           <button
             onClick={onReplan}
             disabled={replanning}
-            title="Replan this section with AI"
+            title="Replan this section with geknee agent"
             style={{
               flexShrink: 0, padding: '5px 12px', borderRadius: 999,
               fontSize: 10, fontWeight: 600, letterSpacing: '0.02em',
