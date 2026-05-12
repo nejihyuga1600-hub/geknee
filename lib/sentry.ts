@@ -24,6 +24,16 @@ export function identifyUser(id: string, email?: string | null) {
   Sentry.setUser({ id, email: email ?? undefined });
 }
 
+/**
+ * Drop a breadcrumb that attaches to the next captured error. Use for
+ * traceable steps inside long-running flows (agent tool calls, cron
+ * stages) so when something blows up we can see what came just before.
+ */
+export function breadcrumb(category: string, message: string, data?: Record<string, unknown>) {
+  if (!process.env.NEXT_PUBLIC_SENTRY_DSN && !process.env.SENTRY_DSN) return;
+  Sentry.addBreadcrumb({ category, message, data, level: 'info' });
+}
+
 /** Forget the user on sign-out. */
 export function clearUser() {
   if (!process.env.NEXT_PUBLIC_SENTRY_DSN) return;

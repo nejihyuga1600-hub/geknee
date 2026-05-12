@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { runAgent, type AgentEvent } from '@/lib/agent/loop';
 import { getAgentTools } from '@/lib/agent/tools';
 import { isAgentEnabledFor } from '@/lib/agent/feature-flag';
+import { captureError } from '@/lib/sentry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        captureError(err, { route: '/api/agent', userId, tripId: body.tripId });
         send({ type: 'tool_error', name: '__agent__', error: msg });
       } finally {
         controller.close();

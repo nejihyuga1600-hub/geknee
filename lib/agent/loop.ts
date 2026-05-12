@@ -1,8 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentTool, ToolContext } from './tools';
 import { addTokenUsage } from '@/lib/tokenTracking';
+import { breadcrumb, captureError } from '@/lib/sentry';
 
 const MODEL = 'claude-sonnet-4-6';
+
+// Production guardrails. A misbehaving prompt could in principle make
+// the model demand 50 geocodes in one turn or chain 30 turns of tools.
+// These caps abort the loop with a tool_error rather than letting it
+// run our token bill into the ground.
+const MAX_TOOL_CALLS_PER_TURN = 8;
+const MAX_TOTAL_TOOL_CALLS = 30;
+const MAX_TOTAL_INPUT_TOKENS = 100_000;
+const MAX_TOTAL_OUTPUT_TOKENS = 30_000;
 
 export type AgentEvent =
   | { type: 'text'; delta: string }
@@ -57,7 +67,10 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
 
   let totalIn = 0;
   let totalOut = 0;
+  let totalToolCalls = 0;
   let stopReason: string = 'unknown';
+
+  breadcrumb('agent', 'loop start', { userId: ctx.userId, tripId: ctx.tripId, toolCount: tools.length });
 
   for (let iter = 0; iter < maxIter; iter++) {
     const stream = client.messages.stream({
@@ -85,6 +98,14 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
       });
     }
 
+    if (totalIn > MAX_TOTAL_INPUT_TOKENS || totalOut > MAX_TOTAL_OUTPUT_TOKENS) {
+      const reason = `token budget exceeded (in=${totalIn}/${MAX_TOTAL_INPUT_TOKENS}, out=${totalOut}/${MAX_TOTAL_OUTPUT_TOKENS})`;
+      breadcrumb('agent', 'aborted: token budget', { totalIn, totalOut });
+      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+      stopReason = 'budget_exhausted';
+      break;
+    }
+
     const toolCalls = final.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
@@ -94,6 +115,23 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
     if (toolCalls.length === 0 || stopReason === 'end_turn') {
       break;
     }
+
+    if (toolCalls.length > MAX_TOOL_CALLS_PER_TURN) {
+      const reason = `model requested ${toolCalls.length} tools in one turn (cap ${MAX_TOOL_CALLS_PER_TURN})`;
+      breadcrumb('agent', 'aborted: per-turn tool cap', { requested: toolCalls.length });
+      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+      stopReason = 'per_turn_cap';
+      break;
+    }
+
+    if (totalToolCalls + toolCalls.length > MAX_TOTAL_TOOL_CALLS) {
+      const reason = `total tool calls would exceed cap ${MAX_TOTAL_TOOL_CALLS} (so far ${totalToolCalls}, this turn ${toolCalls.length})`;
+      breadcrumb('agent', 'aborted: total tool cap', { totalToolCalls, requested: toolCalls.length });
+      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+      stopReason = 'total_cap';
+      break;
+    }
+    totalToolCalls += toolCalls.length;
 
     messages.push({ role: 'assistant', content: final.content });
 
@@ -112,6 +150,7 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
         continue;
       }
       const t0 = Date.now();
+      breadcrumb('agent.tool', `call ${call.name}`, { input: call.input });
       try {
         const result = await tool.handler(call.input as Record<string, unknown>, ctx);
         const durationMs = Date.now() - t0;
@@ -123,6 +162,7 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
         await onEvent({ type: 'tool_result', name: call.name, result, durationMs });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        captureError(err, { tool: call.name, input: call.input, userId: ctx.userId, tripId: ctx.tripId });
         toolResults.push({
           type: 'tool_result',
           tool_use_id: call.id,
@@ -137,6 +177,12 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
   }
 
   await onEvent({ type: 'done', reason: stopReason });
+  breadcrumb('agent', 'loop end', {
+    stopReason,
+    totalIn,
+    totalOut,
+    totalToolCalls,
+  });
 
   if (ctx.userId && (totalIn || totalOut)) {
     // Best-effort: don't let DB hiccups bubble up and abort the response.
