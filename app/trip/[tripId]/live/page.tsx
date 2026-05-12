@@ -8,6 +8,7 @@ import Link from 'next/link';
 import BudgetTracker from './BudgetTracker';
 import { GoogleLiveMap } from './GoogleLiveMap';
 import { AddStopModal } from './AddStopModal';
+import { useTilePrewarm } from '@/lib/useTilePrewarm';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -23,6 +24,10 @@ interface TripData {
   startDate: string | null;
   endDate: string | null;
   nights: number | null;
+  // Phase 0/2: when populated, this trip had a flight detected via Gmail
+  // scan — kicks the tile-prewarm hook so the SW caches static maps for
+  // the trip city ahead of any network loss.
+  flightBookingDetectedAt?: string | null;
 }
 
 interface DayWeather {
@@ -167,6 +172,7 @@ export default function LiveTripPage() {
           startDate: d.trip.startDate ?? null,
           endDate: d.trip.endDate ?? null,
           nights: d.trip.nights ?? null,
+          flightBookingDetectedAt: d.trip.flightBookingDetectedAt ?? null,
         });
         if (typeof d.trip.itinerary === 'string') setItinerary(d.trip.itinerary);
       })
@@ -196,6 +202,15 @@ export default function LiveTripPage() {
   // map; null = launched from the "+ Add stop" button (no pre-seed).
   const [addStopOpen, setAddStopOpen] = useState(false);
   const [addStopCoords, setAddStopCoords] = useState<{ lat: number; lon: number } | null>(null);
+
+  // Offline tile prewarm — only kicks for trips with a Gmail-detected
+  // flight. The SW caches /api/map-tile responses; this fires a handful
+  // of background fetches to populate the cache for the trip city so
+  // when network drops mid-trip, GoogleLiveMap's offline fallback works.
+  useTilePrewarm({
+    city: trip?.location ?? null,
+    enabled: !!trip?.flightBookingDetectedAt,
+  });
   useEffect(() => {
     // When the calendar advances (new day on a running trip), follow along
     // — but don't override an explicit user choice. Heuristic: if the user
