@@ -10,15 +10,6 @@ import { extractDayNumber, stripDayPrefix, groupLines, type Section } from '../l
 import { extractActivityPlace, extractActivityCandidates, extractTransitMode, type TransitMode } from '../lib/places';
 import type { EditTarget, RouteStop } from '../lib/types';
 
-// DayMap mounts a Google Maps view; dynamic-import keeps the maps SDK out
-// of the initial bundle. Mirrors the previous loader in page.tsx.
-const DayMap = dynamic(() => import('../DayMap'), {
-  ssr: false,
-  loading: () => (
-    <div style={{ height: 320, borderRadius: 12, background: 'rgba(255,255,255,0.04)' }} />
-  ),
-});
-
 export interface SectionCardProps {
   section: Section;
   sectionIdx: number;
@@ -241,36 +232,13 @@ export function SectionCard({
           inline in the day heading (DAY 1 · 18°/9° · CLEAR) and the trip-wide
           weather strip lives once at the top of SummaryView. */}
 
-      {isDayOrCity ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
-            {renderLines(section.lines)}
-            <DayImages heading={section.heading} location={mapLocation} />
-          </div>
-          <div style={{
-            position: 'sticky', top: 24,
-            alignSelf: 'start',
-            borderRadius: 12,
-            overflow: 'hidden',
-            border: '1px solid var(--brand-border)',
-          }}>
-            <DayMap
-              heading={section.heading}
-              lines={section.lines}
-              location={mapLocation}
-              height={340}
-              namedPlaces={orderedActivityPlaces.length > 0 ? orderedActivityPlaces : undefined}
-              placeCandidates={placeCandidates.length > 0 ? placeCandidates : undefined}
-              legModes={legModes}
-              onPlacesResolved={setResolvedPlaces}
-            />
-          </div>
-        </div>
-      ) : (
-        <div>
-          {renderLines(section.lines)}
-        </div>
-      )}
+      {/* Per-section DayMap removed — replaced by a single sticky
+          UnifiedTripMap mounted at the top of SummaryView. DayImages
+          stay because they're the day's hero image, not a per-step thumb. */}
+      <div style={{ minWidth: 0 }}>
+        {renderLines(section.lines)}
+        {isDayOrCity && <DayImages heading={section.heading} location={mapLocation} />}
+      </div>
     </div>
   );
 }

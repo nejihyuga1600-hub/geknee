@@ -353,7 +353,9 @@ export function ActivityBlock({
             </div>
           )}
         </div>
-        {place && <PlaceThumb place={place} city={city} />}
+        {/* Per-step PlaceThumb removed — places now surface on the
+            unified Google Map at the top of the itinerary. Click a
+            numbered pin there to open the destination. */}
       </div>
     </div>
   );

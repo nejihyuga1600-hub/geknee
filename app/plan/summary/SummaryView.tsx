@@ -35,7 +35,9 @@ import { ChatPanel } from './components/ChatPanel';
 import { SectionCard } from './components/SectionCard';
 import type { EditTarget, RouteStop, ChatMessage } from './lib/types';
 
-// DayMap dynamic import moved into components/SectionCard.tsx, the only caller.
+// Unified trip map (one Google Map for all days, with day-filter chips).
+// Lazy-loaded so the maps SDK doesn't ship until the itinerary tab opens.
+const UnifiedTripMap = dynamic(() => import('./UnifiedTripMap'), { ssr: false });
 
 const PlanningMapDynamic = dynamic(() => import('./PlanningMap'), {
   ssr: false,
@@ -2124,6 +2126,13 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
               }}>
                 Click any line to edit &nbsp;&middot;&nbsp; Hover for {STAR} genie suggestions
               </div>
+            )}
+            {/* One sticky Google Map for the whole trip with day-filter
+                chips. Replaces the per-day Mapbox DayMap that used to
+                live inside each SectionCard. Lets the user see cross-
+                day geography at a glance. */}
+            {sections.length > 0 && (
+              <UnifiedTripMap sections={sections} location={location} />
             )}
             {sections.map((section, sectionIdx) => {
               // Match section to a weather city. Day sections → use first stop; city sections → match by name.
