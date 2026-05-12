@@ -64,14 +64,14 @@ export function JourneyArcs({ year }: JourneyArcsProps) {
       : order;
 
     if (typeof window !== 'undefined') {
-      // Soft diagnostic — only logs when the result is empty, so a healthy
-      // session stays quiet.
-      if (filtered.length < 2) {
-        // eslint-disable-next-line no-console
-        console.info(
-          `[JourneyArcs] no arcs — order.length=${order.length}, filtered.length=${filtered.length}, year=${year ?? '(all)'}`,
-        );
-      }
+      // Diagnostic — `console.warn` shows at the Default level filter so we
+      // don't need users to toggle Verbose to see it. Always fires so we can
+      // tell whether the component is mounting + how many entries the bridge
+      // exposed. Remove once arcs are confirmed working in prod.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[JourneyArcs] mount/render — order.length=${order.length}, filtered.length=${filtered.length}, year=${year ?? '(all)'}, sample=${order.slice(0, 3).map((e) => `${e.monumentId}@${e.collectedAt?.slice(0, 10)}`).join(' | ')}`,
+      );
     }
 
     if (filtered.length < 2) return [];
