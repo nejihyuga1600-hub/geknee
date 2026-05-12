@@ -346,7 +346,9 @@ export default function LiveTripPage() {
           }}>
             {String.fromCodePoint(0x25D0)} OFFLINE MAPS CACHED
           </span>
-          <Link href={`/plan/summary?tripId=${encodeURIComponent(tripId)}`}
+          {/* Cohesion: point to the modern tabbed itinerary view rather
+              than the legacy /plan/summary entry. */}
+          <Link href={`/plan/${tripId}/itinerary`}
             style={{
               fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
               color: 'var(--brand-accent)', textDecoration: 'none',
@@ -354,6 +356,15 @@ export default function LiveTripPage() {
               border: '1px solid var(--brand-border-hi)',
             }}>
             ITINERARY {String.fromCodePoint(0x2197)}
+          </Link>
+          <Link href={`/plan/${tripId}/vault`}
+            style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+              color: 'var(--brand-ink-dim)', textDecoration: 'none',
+              padding: '4px 10px', borderRadius: 999,
+              border: '1px solid var(--brand-border)',
+            }}>
+            VAULT {String.fromCodePoint(0x2197)}
           </Link>
         </div>
       </div>

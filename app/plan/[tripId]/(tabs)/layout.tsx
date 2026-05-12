@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { NextStepHint } from './NextStepHint';
 
 const MONO = 'var(--font-mono-display), ui-monospace, monospace';
 
@@ -106,7 +107,13 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
         })}
         </div>
       </nav>
-      <main>{children}</main>
+      <main>
+        {children}
+        {/* Context-aware next-step nudge. Reads the current tab + trip
+            state and surfaces the natural next surface (e.g. Itinerary
+            → Booking, Vault → Live). Hides when no useful suggestion. */}
+        <NextStepHint />
+      </main>
     </div>
   );
 }
