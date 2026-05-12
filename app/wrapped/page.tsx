@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { MONUMENT_LATLON } from '@/app/plan/location/globe/skins';
 import { INFO } from '@/app/plan/location/globe/info';
 import { getRarity } from '@/app/plan/location/globe/quests';
+import { currentIssueYear } from '@/lib/issue-year';
 import { WrappedClient } from './WrappedClient';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,9 @@ export default async function WrappedPage({
   }
 
   const yearParam = (await searchParams).year;
-  const year = yearParam ? Number(yearParam) : new Date().getFullYear();
+  // Default to the *active issue year*, which is the prior calendar year
+  // during Jan 1–14 (extension window before the Jan 15 rollover).
+  const year = yearParam ? Number(yearParam) : currentIssueYear();
   const start = new Date(Date.UTC(year, 0, 1));
   const end = new Date(Date.UTC(year + 1, 0, 1));
 

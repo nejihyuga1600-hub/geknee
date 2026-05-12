@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import InstallEntry from "./InstallEntry";
+import { currentIssueYear, isWrapUpWindow, nextRolloverDate } from "@/lib/issue-year";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -486,23 +487,48 @@ export default function SettingsPanel({ open, onClose }: Props) {
             </RowLast>
           </Section>
 
-          {/* ── Year Wrap ── */}
-          <Section title={`${new Date().getFullYear()} Wrap`}>
-            <a
-              href="/wrapped"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "14px 16px", textDecoration: "none",
-                color: "#fff", fontSize: 14, fontWeight: 600,
-              }}
-            >
-              <span>
-                <span style={{ marginRight: 8 }}>✦</span>
-                See your travel year in review
-              </span>
-              <span style={{ fontSize: 18, color: "rgba(255,255,255,0.4)" }}>→</span>
-            </a>
-          </Section>
+          {/* ── Year Wrap ──
+              Active issue year = prior calendar year during Jan 1–14, current
+              calendar year otherwise. During the Dec 1 → Jan 14 wrap-up window
+              we show a "closes on Jan 15" hint to nudge final captures. */}
+          {(() => {
+            const issueYear = currentIssueYear();
+            const inWrapUp = isWrapUpWindow();
+            const rollover = nextRolloverDate();
+            const rolloverLabel = rollover.toLocaleDateString(undefined, {
+              month: "short", day: "numeric",
+            });
+            return (
+              <Section title={`${issueYear} Wrap`}>
+                <a
+                  href={`/wrapped?year=${issueYear}`}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "14px 16px", textDecoration: "none",
+                    color: "#fff", fontSize: 14, fontWeight: 600,
+                  }}
+                >
+                  <span>
+                    <span style={{ marginRight: 8 }}>✦</span>
+                    See your travel year in review
+                  </span>
+                  <span style={{ fontSize: 18, color: "rgba(255,255,255,0.4)" }}>→</span>
+                </a>
+                {inWrapUp && (
+                  <div style={{
+                    padding: "0 16px 12px 16px",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono-display, monospace)",
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "rgba(251, 191, 36, 0.85)",
+                  }}>
+                    Issue {issueYear} closes {rolloverLabel}
+                  </div>
+                )}
+              </Section>
+            );
+          })()}
 
           {/* ── Help & Feedback ── */}
           <Section title="Help & Feedback">
