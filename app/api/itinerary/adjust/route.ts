@@ -8,6 +8,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
+import { runAgent } from "@/lib/agent/loop";
+import { getAgentTools } from "@/lib/agent/tools";
+import { captureError } from "@/lib/sentry";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -86,17 +90,34 @@ practical tips section. Output the FULL revised itinerary as
 markdown text. No commentary, no fences, just the itinerary content.`;
 
   try {
-    const resp = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      system: SYSTEM,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    let text = "";
 
-    const text = resp.content
-      .filter(b => b.type === "text")
-      .map(b => (b as { type: "text"; text: string }).text)
-      .join("");
+    if (isAgentEnabledFor(userId)) {
+      // Agent path: tool-grounded slot-in. find_places validates the
+      // booking name maps to a real place; route_between confirms it
+      // makes geographic sense on the chosen day. Same DB-update flow.
+      await runAgent({
+        client,
+        systemPrompt: SYSTEM,
+        userPrompt,
+        tools: getAgentTools(),
+        ctx: { userId, tripId: body.tripId },
+        onEvent: (e) => {
+          if (e.type === "text") text += e.delta;
+        },
+      });
+    } else {
+      const resp = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: SYSTEM,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+      text = resp.content
+        .filter(b => b.type === "text")
+        .map(b => (b as { type: "text"; text: string }).text)
+        .join("");
+    }
 
     const cleaned = text
       .replace(/^\s*```(?:markdown|md)?\s*/i, "")
@@ -116,6 +137,7 @@ markdown text. No commentary, no fences, just the itinerary content.`;
     return Response.json({ itinerary: cleaned });
   } catch (err) {
     console.error("[itinerary/adjust] error:", err);
+    captureError(err, { route: "/api/itinerary/adjust", userId, tripId: body.tripId });
     return Response.json({ error: "adjustment failed" }, { status: 500 });
   }
 }

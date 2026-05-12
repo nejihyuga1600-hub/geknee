@@ -2,6 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { checkAndIncrementGeneration } from "@/lib/plan";
+import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
+import { runAgent } from "@/lib/agent/loop";
+import { getAgentTools } from "@/lib/agent/tools";
+import { captureError } from "@/lib/sentry";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -244,6 +248,13 @@ export async function POST(req: Request) {
     return new Response("Interests too long (max 1000 characters)", { status: 400 });
   }
 
+  // Agent-enabled users get tool-grounded itinerary generation. Same
+  // plain-text response shape (priming, heartbeats, server-side
+  // accumulate, DB persist) so the existing client doesn't notice.
+  if (userId && isAgentEnabledFor(userId)) {
+    return runViaAgent(body, userId);
+  }
+
   const encoder = new TextEncoder();
 
   // Accumulate the full text server-side. Even if the client disconnects
@@ -357,6 +368,96 @@ export async function POST(req: Request) {
       // some paths) to stop holding the body — without it, even a
       // properly-flushed ReadableStream can sit buffered for tens of
       // seconds before the client gets the first byte.
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "Transfer-Encoding": "chunked",
+      "Connection": "keep-alive",
+    },
+  });
+}
+
+// ── Agent path ──────────────────────────────────────────────────────────────
+//
+// Tool-grounded generation. Mirrors the legacy path's response shape
+// exactly (8 KB primer → heartbeats → text deltas → DB persist) so the
+// client experience is identical. Differences:
+//   - Tools (find_places, geocode, route_between, weather_forecast,
+//     flight_search) get called during the planner phase before any
+//     text is produced. The first user-visible byte arrives a few
+//     hundred ms later than the legacy path; the heartbeat covers it.
+//   - Restaurants / venues are grounded in real Google Places hits
+//     instead of model recall.
+//   - Transit times come from real Mapbox routing.
+async function runViaAgent(body: TripParams, userId: string): Promise<Response> {
+  const encoder = new TextEncoder();
+  let accumulated = "";
+  let clientStillConnected = true;
+
+  const readable = new ReadableStream({
+    async start(controller) {
+      const PRIME = " ".repeat(8192) + "\n";
+      try { controller.enqueue(encoder.encode(PRIME)); } catch { /* aborted */ }
+
+      let firstDeltaSeen = false;
+      const HEARTBEAT = " ".repeat(64) + "\n";
+      const heartbeat = setInterval(() => {
+        if (firstDeltaSeen || !clientStillConnected) return;
+        try { controller.enqueue(encoder.encode(HEARTBEAT)); }
+        catch { clientStillConnected = false; }
+      }, 500);
+
+      try {
+        const agentClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        await runAgent({
+          client: agentClient,
+          systemPrompt: SYSTEM,
+          userPrompt: buildPrompt(body),
+          tools: getAgentTools(),
+          ctx: { userId, tripId: body.tripId },
+          onEvent: (e) => {
+            if (e.type !== "text") return;
+            firstDeltaSeen = true;
+            accumulated += e.delta;
+            if (clientStillConnected) {
+              try {
+                controller.enqueue(encoder.encode(e.delta));
+              } catch {
+                clientStillConnected = false;
+              }
+            }
+          },
+        });
+      } catch (err) {
+        captureError(err, { route: "/api/itinerary", path: "agent", userId, tripId: body.tripId });
+        try {
+          controller.enqueue(encoder.encode("\n\n[Error generating itinerary. Please try again.]"));
+        } catch { /* client disconnected */ }
+      } finally {
+        clearInterval(heartbeat);
+        if (body.tripId && accumulated.trim().length > 0) {
+          try {
+            const trip = await prisma.tripDraft.findUnique({
+              where: { id: body.tripId },
+              select: { userId: true },
+            });
+            if (trip && trip.userId === userId) {
+              await prisma.tripDraft.update({
+                where: { id: body.tripId },
+                data: { itinerary: accumulated, itineraryUpdatedAt: new Date() },
+              });
+            }
+          } catch (e) {
+            console.error("[itinerary/agent] DB save failed:", e);
+          }
+        }
+        try { controller.close(); } catch { /* already closed */ }
+      }
+    },
+  });
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
       "Transfer-Encoding": "chunked",
