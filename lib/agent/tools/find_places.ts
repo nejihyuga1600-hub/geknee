@@ -1,7 +1,12 @@
 import type { AgentTool } from '../tools';
 
+// Places API is a distinct Google Cloud product from Maps Geocoding —
+// the dedicated key (if present) is the right one to use here.
 const KEY =
-  process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  process.env.GOOGLE_PLACES_API_KEY ??
+  process.env.GOOGLE_MAPS_API_KEY ??
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
+  '';
 
 // Google Places "Nearby Search" via the Text Search endpoint, which
 // handles natural-language queries ("ramen in Shinjuku") better than
