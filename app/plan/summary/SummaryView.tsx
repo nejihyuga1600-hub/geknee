@@ -240,6 +240,14 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
 
   // ── Interactive state ────────────────────────────────────────────────────────
   const [sections, setSections] = useState<Section[]>([]);
+
+  // Confirm-before-clobber: if the user clicks Generate when an
+  // itinerary already exists, surface a modal that offers either a
+  // smart edit (free-text prompt → /api/agent/edit) or a full
+  // regenerate. Avoids accidentally throwing away a curated trip.
+  const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
+  const [smartEditPrompt, setSmartEditPrompt] = useState('');
+  const [smartEditing, setSmartEditing] = useState(false);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editValue, setEditValue]   = useState('');
 
@@ -1017,6 +1025,107 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   const showGenie = !streaming || lines.length > 8;
   const STAR = String.fromCodePoint(0x2726);
 
+  // ── Generate / smart-edit handlers ─────────────────────────────────────────
+  // Both legacy "Generate" buttons used the same 7-line block. Hoisting
+  // it once keeps them in sync and lets the regen-confirm modal reuse
+  // the exact same behavior on "Generate from scratch".
+  function startGeneration() {
+    loadedFromSave.current = false;
+    setItineraryRequested(true);
+    setStreaming(true);
+    setLines([]);
+    setSections([]);
+    setError('');
+    setMainTab('itinerary');
+    setLoadingStage('requesting');
+    requestStartRef.current = Date.now();
+  }
+
+  function requestGeneration() {
+    // If an itinerary already exists, ask whether the user wants a
+    // surgical edit (cheap, fast) or a full regen (expensive, throws
+    // the curated trip away). Without this, an accidental click here
+    // wipes the planned trip.
+    if (sections.length > 0 || (savedTripId && lines.length > 0)) {
+      setSmartEditPrompt('');
+      setRegenConfirmOpen(true);
+      return;
+    }
+    startGeneration();
+  }
+
+  async function applySmartEdit(prompt: string) {
+    if (!savedTripId || !prompt.trim() || smartEditing) return;
+    setSmartEditing(true);
+    setRegenConfirmOpen(false);
+    setStreaming(true);
+    setLines([]);
+    setSections([]);
+    setError('');
+    setMainTab('itinerary');
+    setLoadingStage('streaming');
+    requestStartRef.current = Date.now();
+
+    try {
+      const res = await fetch('/api/agent/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId: savedTripId, prompt }),
+      });
+      if (!res.ok || !res.body) {
+        setError('Smart edit failed. Try again or pick "Generate from scratch".');
+        setStreaming(false);
+        setLoadingStage('idle');
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let raw = '';
+      let accumulated = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += decoder.decode(value, { stream: true });
+        // Drain whole SSE blocks (separated by \n\n). Leave any partial
+        // tail in `raw` for the next iteration.
+        const blocks = raw.split('\n\n');
+        raw = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const dataLine = block.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            const ev = JSON.parse(dataLine.slice(6)) as { type?: string; delta?: string };
+            if (ev.type === 'text' && typeof ev.delta === 'string') {
+              accumulated += ev.delta;
+              setLines(accumulated.split('\n'));
+            }
+          } catch { /* ignore non-JSON keepalives */ }
+        }
+      }
+
+      const parsed = parseLines(accumulated.split('\n'));
+      setSections(parsed);
+      setStreaming(false);
+      setLoadingStage('done');
+
+      // Persist the edited itinerary back to the trip row so reloads
+      // pick it up. Best-effort; UI already shows the new content.
+      try {
+        await fetch(`/api/trips/${savedTripId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itinerary: accumulated }),
+        });
+      } catch { /* swallow */ }
+    } catch {
+      setError('Smart edit failed.');
+      setStreaming(false);
+      setLoadingStage('idle');
+    } finally {
+      setSmartEditing(false);
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <main style={{ minHeight: '100vh', background: '#060816' }}>
@@ -1026,6 +1135,99 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
         reason={upgradeModal.reason}
         onClose={() => setUpgradeModal({ open: false })}
       />
+
+      {/* Regen-confirm modal — fires when the user clicks Generate on a
+          trip that already has an itinerary. Two paths: smart edit
+          (surgical, ~$0.02) or full regenerate (current behavior, ~$0.05). */}
+      {regenConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setRegenConfirmOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(6,8,22,0.78)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'rgba(13,13,36,0.96)',
+              border: '1px solid rgba(167,139,250,0.3)',
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 480, width: '100%',
+              fontFamily: 'var(--font-ui), Inter, system-ui, sans-serif',
+              color: '#e2e8f0',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ fontSize: 11, color: '#a8a8c0', letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>
+              You already have an itinerary
+            </div>
+            <div style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 18, marginBottom: 14, lineHeight: 1.3 }}>
+              Tweak it, or start over from scratch?
+            </div>
+            <p style={{ fontSize: 13, color: '#cbd5e1', marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>
+              For small changes (swap a restaurant, move an activity), describe what you want and we&apos;ll edit only that part. For a fundamentally different trip, regenerate.
+            </p>
+            <textarea
+              value={smartEditPrompt}
+              onChange={(e) => setSmartEditPrompt(e.target.value)}
+              placeholder="e.g. swap the Day 3 dinner for a sushi spot · add a museum on Day 1 · make Day 2 less packed"
+              rows={3}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(167,139,250,0.25)',
+                borderRadius: 10, padding: '10px 12px',
+                color: '#fff', fontSize: 13, fontFamily: 'inherit',
+                resize: 'vertical', minHeight: 60, marginBottom: 14,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setRegenConfirmOpen(false)}
+                style={{
+                  flex: 1, padding: '9px 0', borderRadius: 10,
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  color: '#a8a8c0', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setRegenConfirmOpen(false); startGeneration(); }}
+                style={{
+                  flex: 1, padding: '9px 0', borderRadius: 10,
+                  background: 'transparent',
+                  border: '1px solid rgba(167,139,250,0.4)',
+                  color: '#c7d2fe', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                }}
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={() => applySmartEdit(smartEditPrompt)}
+                disabled={!smartEditPrompt.trim() || smartEditing}
+                style={{
+                  flex: 2, padding: '9px 0', borderRadius: 10,
+                  background: smartEditPrompt.trim() ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(167,139,250,0.2)',
+                  border: 'none',
+                  color: smartEditPrompt.trim() ? '#0a0a1f' : '#6b6b85',
+                  cursor: smartEditPrompt.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                }}
+              >
+                {smartEditing ? 'Editing…' : 'Apply edit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Auto-retry toast — surfaces when the safety net detects a stuck
           load and kicks a retry. Auto-clears after 6 s. Sits top-center so
@@ -1167,19 +1369,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             )}
             {mainTab === 'planning' && (
               <button
-                onClick={() => {
-                  // User explicitly asked to (re)generate. Clear the
-                  // loadedFromSave flag so the generate-effect actually
-                  // runs even when the page came in via savedTripId.
-                  loadedFromSave.current = false;
-                  setItineraryRequested(true);
-                  setStreaming(true);
-                  setLines([]);
-                  setSections([]);
-                  setError('');
-                  setMainTab('itinerary');
-                  setLoadingStage('requesting');
-                }}
+                onClick={requestGeneration}
                 style={{
                   padding: '8px 16px', borderRadius: 10,
                   background: 'linear-gradient(135deg, #a78bfa 0%, #818cf8 100%)',
@@ -1435,18 +1625,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             ...c,
             count: bookmarks.filter(b => b.category === c.key).length,
           })).filter(c => c.count > 0);
-          const handleGenerate = () => {
-            // Same fix as the other Generate button — explicit user intent
-            // means we should ignore the loaded-from-save short circuit.
-            loadedFromSave.current = false;
-            setItineraryRequested(true);
-            setStreaming(true);
-            setLines([]);
-            setSections([]);
-            setError('');
-            setLoadingStage('requesting');
-            setMainTab('itinerary');
-          };
+          const handleGenerate = requestGeneration;
           return (
             <div style={{
               display: 'grid',
