@@ -138,7 +138,10 @@ export function PointToPointGlobe({ points, size = 380, className }: PointToPoin
           if (!el) continue;
           const pos = positions[i];
           el.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -150%)`;
-          el.style.opacity = pos.visible ? '1' : '0.12';
+          // Labels stay readable on the back hemisphere too — they're part of
+          // the permanent year record, not transient anchors. Front: full.
+          // Back: dimmed so it reads as "behind the globe" without vanishing.
+          el.style.opacity = pos.visible ? '1' : '0.35';
           el.style.zIndex = pos.visible ? '2' : '1';
         }
 
@@ -173,8 +176,11 @@ export function PointToPointGlobe({ points, size = 380, className }: PointToPoin
             'd',
             `M ${a.x} ${a.y} Q ${cxArc} ${cyArc} ${b.x} ${b.y}`,
           );
-          // Fade arc when either endpoint is back-side.
-          const op = a.visible && b.visible ? 0.85 : 0.32;
+          // Arcs are permanent for the issue — they record the full year's
+          // journey and stay drawn on every frame regardless of rotation.
+          // Back-hemisphere arcs only dim slightly so the journey reads as
+          // a continuous record that wraps the globe.
+          const op = a.visible && b.visible ? 0.9 : 0.6;
           arc.setAttribute('opacity', String(op));
         }
       },
