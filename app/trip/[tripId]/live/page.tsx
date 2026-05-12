@@ -9,6 +9,7 @@ import BudgetTracker from './BudgetTracker';
 import { GoogleLiveMap } from './GoogleLiveMap';
 import { AddStopModal } from './AddStopModal';
 import { useTilePrewarm } from '@/lib/useTilePrewarm';
+import { useOnlineStatus } from '@/lib/useOnlineStatus';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -211,6 +212,8 @@ export default function LiveTripPage() {
     city: trip?.location ?? null,
     enabled: !!trip?.flightBookingDetectedAt,
   });
+
+  const online = useOnlineStatus();
   useEffect(() => {
     // When the calendar advances (new day on a running trip), follow along
     // — but don't override an explicit user choice. Heuristic: if the user
@@ -282,6 +285,24 @@ export default function LiveTripPage() {
       fontFamily: 'var(--font-ui), system-ui, sans-serif',
       paddingBottom: 80,
     }}>
+      {/* ── Offline status banner (Phase 3) ───────────────────────────── */}
+      {!online && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 40,
+          padding: '8px 22px',
+          background: 'rgba(251, 146, 60, 0.18)',
+          borderBottom: '1px solid rgba(251, 146, 60, 0.45)',
+          color: 'var(--brand-warn)',
+          fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em',
+          textTransform: 'uppercase', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>● Offline</span>
+          <span style={{ color: 'var(--brand-ink-dim)', letterSpacing: '0.06em', textTransform: 'none' }}>
+            — using cached map data. Itinerary edits will retry when you reconnect.
+          </span>
+        </div>
+      )}
       {/* ── Top app bar ─────────────────────────────────────────────────── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 30,
