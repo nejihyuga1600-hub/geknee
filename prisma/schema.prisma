@@ -126,6 +126,13 @@ model TripDraft {
   itinerary          String?  // Full markdown itinerary text
   itineraryUpdatedAt DateTime?
 
+  // Offline-map flow (Phase 0 / 1). flightBookingDetectedAt is set when the
+  // Gmail scan worker matches an InboundMessage flight to this trip
+  // (destination + dates overlap). offlineMapPrefetched is flipped true by
+  // the native Capacitor build after the offline region download completes.
+  flightBookingDetectedAt DateTime?
+  offlineMapPrefetched    Boolean   @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -196,6 +203,15 @@ model InboundMessage {
   status      String   // "received" | "extracted" | "filed" | "skipped" | "error"
   reason      String?  // free-text on skipped / error
   receivedAt  DateTime @default(now())
+
+  // Flight extraction (Phase 0). Populated by the Gmail scan worker when a
+  // booking confirmation contains a flight. Null when the email isn't a
+  // flight (hotel-only, car, train, etc.) or extraction failed.
+  flightDest      String?     // destination IATA airport or city name
+  flightDestCity  String?     // human-readable city ("Rome")
+  flightArrivesAt DateTime?   // local arrival timestamp at destination
+  flightReturnsAt DateTime?   // optional return flight timestamp
+  parsedAt        DateTime?
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────

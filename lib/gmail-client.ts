@@ -218,3 +218,55 @@ export function getRfc822MessageId(msg: GmailMessage): string | null {
   const h = msg.payload?.headers?.find(x => x.name.toLowerCase() === "message-id");
   return h?.value ?? null;
 }
+
+/**
+ * Extract a usable text body from a Gmail message. Walks the MIME tree
+ * preferring text/plain, falling back to text/html with tags stripped.
+ * Returns the empty string when nothing is decodable — caller decides
+ * whether that warrants skipping extraction.
+ */
+export function extractMessageBody(msg: GmailMessage): string {
+  // Gmail uses URL-safe base64. Decoded body strings often contain CR/LF
+  // pairs and quoted-printable artefacts — the flight extractor is tolerant.
+  const decode = (b64: string): string => {
+    try {
+      const norm = b64.replace(/-/g, "+").replace(/_/g, "/");
+      return Buffer.from(norm, "base64").toString("utf8");
+    } catch {
+      return "";
+    }
+  };
+
+  const walk = (part: GmailMessage["payload"] | undefined): { plain: string; html: string } => {
+    if (!part) return { plain: "", html: "" };
+    let plain = "";
+    let html = "";
+    if (part.mimeType === "text/plain" && part.body?.data) {
+      plain += decode(part.body.data);
+    } else if (part.mimeType === "text/html" && part.body?.data) {
+      html += decode(part.body.data);
+    }
+    for (const child of part.parts ?? []) {
+      const r = walk(child);
+      plain += r.plain;
+      html += r.html;
+    }
+    return { plain, html };
+  };
+
+  const { plain, html } = walk(msg.payload);
+  if (plain.trim()) return plain;
+  if (html.trim()) {
+    // Cheap HTML → text strip. Confirmation emails rarely need full DOM
+    // parsing; we just want enough chars for the LLM to read.
+    return html
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return msg.snippet ?? "";
+}

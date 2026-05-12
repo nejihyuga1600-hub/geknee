@@ -18,7 +18,9 @@ import {
   listBookingConfirmations,
   fetchGmailMessage,
   getRfc822MessageId,
+  extractMessageBody,
 } from "@/lib/gmail-client";
+import { extractFlight, matchFlightToTrip } from "@/lib/flight-extractor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,10 +90,60 @@ export async function POST() {
         continue;
       }
 
-      await prisma.inboundMessage.create({
+      const inbound = await prisma.inboundMessage.create({
         data: { messageId, userId, status: "received" },
       });
       newCount += 1;
+
+      // ── Flight extraction (Phase 0) ────────────────────────────────────
+      // Inline best-effort. Failures don't break the scan — we just leave
+      // parsedAt null and the record can be retried by a future worker.
+      // We use claude-haiku-4-5 (small, cheap, fast — flight extraction
+      // is well within its capability envelope).
+      try {
+        const body = extractMessageBody(msg);
+        const flight = await extractFlight(body);
+        if (flight) {
+          // Persist extracted flight fields onto the InboundMessage row.
+          const arrives = new Date(flight.arrivesAt);
+          const returns = flight.returnsAt ? new Date(flight.returnsAt) : null;
+          await prisma.inboundMessage.update({
+            where: { id: inbound.id },
+            data: {
+              flightDest: flight.destinationIata ?? flight.destinationCity,
+              flightDestCity: flight.destinationCity,
+              flightArrivesAt: isNaN(arrives.getTime()) ? null : arrives,
+              flightReturnsAt: returns && !isNaN(returns.getTime()) ? returns : null,
+              parsedAt: new Date(),
+              status: "extracted",
+            },
+          });
+
+          // Match against existing trip drafts — destination + arrival date
+          // within ±1 day flags the trip as "flight detected".
+          const trips = await prisma.tripDraft.findMany({
+            where: { userId },
+            select: { id: true, location: true, startDate: true },
+          });
+          const matchedTripId = matchFlightToTrip(flight, trips);
+          if (matchedTripId) {
+            await prisma.tripDraft.update({
+              where: { id: matchedTripId },
+              data: { flightBookingDetectedAt: new Date() },
+            });
+          }
+        } else {
+          // Not a flight (hotel-only, etc.) or low confidence. Mark parsed
+          // so we don't retry, but keep flight columns null.
+          await prisma.inboundMessage.update({
+            where: { id: inbound.id },
+            data: { parsedAt: new Date(), status: "skipped", reason: "not-a-flight" },
+          });
+        }
+      } catch (parseErr) {
+        console.error("[email/gmail/scan] flight extraction failed:", parseErr);
+        // Leave parsedAt null — eligible for retry.
+      }
     } catch (err) {
       console.error("[email/gmail/scan] per-message error:", err);
       errorCount += 1;
