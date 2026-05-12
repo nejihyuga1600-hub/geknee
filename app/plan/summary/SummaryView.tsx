@@ -1706,6 +1706,19 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                         ? `We'll order your ${bookmarks.length} stop${bookmarks.length === 1 ? '' : 's'} into a daily route, with timing and walking distance.`
                         : "We'll generate a day-by-day plan based on your travel style."}
                     </p>
+                    {/* Reassurance: the AI will autofill more stops if the
+                        user's curated set doesn't cover their declared
+                        travel style (e.g. they pinned 2 sights but their
+                        style says "deep-dive culture"). Soft signal — not
+                        a warning — so users feel safe even with sparse pins. */}
+                    <p style={{
+                      margin: '6px 0 0', fontSize: 10, lineHeight: 1.45,
+                      color: 'rgba(167,139,250,0.85)',
+                      fontFamily: 'var(--font-mono-display), monospace',
+                      letterSpacing: '0.08em',
+                    }}>
+                      ✦ Light on pins? The agent fills the gaps to match your travel style.
+                    </p>
                   </div>
                   <button
                     onClick={handleGenerate}
@@ -1784,6 +1797,15 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             </p>
             <p style={{ margin: 0, fontSize: 13, color: 'var(--brand-ink-dim)', maxWidth: 380, lineHeight: 1.6 }}>
               Mark the places you want to visit on the map, then we&apos;ll arrange them into a day-by-day plan.
+            </p>
+            <p style={{
+              margin: '4px 0 0', fontSize: 11, lineHeight: 1.5,
+              color: 'rgba(167,139,250,0.85)', maxWidth: 380,
+              fontFamily: 'var(--font-mono-display), monospace',
+              letterSpacing: '0.06em',
+            }}>
+              ✦ Don&apos;t worry about coverage — if your pins don&apos;t fill the days, the agent
+              suggests more stops that match your travel style.
             </p>
             <Link
               href={savedTripId ? `/plan/${encodeURIComponent(savedTripId)}/map` : '/plan'}
