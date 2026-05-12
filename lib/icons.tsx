@@ -2,16 +2,24 @@
 // voice. Replaces generic Unicode emojis (🚶 🚕 🏛 etc.) across the app
 // with a single coherent visual language.
 //
+// Two render layers:
+//   1. Bare glyph — `<Walk />` etc. — 24×24, stroke 1.8, currentColor
+//   2. Game-badge — `<IconBadge icon="walk" tier="gold" />` — wraps the
+//      glyph in a hex shard with rarity-tinted ring + soft cosmic glow.
+//      Use this on monument cards, quest unlocks, achievement chips.
+//
 // Design rules (per ui-design / ui-ux-pro-max):
-//   - 24×24 viewBox
-//   - stroke-width 1.6, currentColor — tints from CSS context
+//   - stroke-width 1.8 — game badges need a touch more weight than
+//     pure UI chrome
 //   - stroke-linecap / linejoin round
-//   - Pure line art (no fills) — keeps mass low so the icons read on
-//     both dark + light surfaces equally
-//   - Geometric primitives only — no swooshes, no fake gradients
-//   - Each icon is one named export → consumers import { Walk } from '@/lib/icons'
+//   - Pure line art (no fills inside the glyph) — keeps mass low so
+//     the icon reads on tinted hex backgrounds
+//   - Hex frame for "game" feel — every modern adult-game UI (Apex,
+//     Destiny, Monument Valley shards) leans on hex. Not bubbly,
+//     not childish — confident geometric containment.
+//   - Each glyph is one named export → consumers import { Walk } from '@/lib/icons'
 
-import type { ReactElement, SVGProps } from 'react';
+import type { ReactElement, ReactNode, SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -21,12 +29,99 @@ const base = ({ size = 16, ...rest }: IconProps) => ({
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.6,
+  strokeWidth: 1.8,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   'aria-hidden': true,
   ...rest,
 });
+
+// Rarity → tint table. Mirrors the monument-collection skin tiers so a
+// gold-tier unlock badge and a gold-skinned monument speak the same
+// color language. Lavender (default) ties back to --brand-accent.
+const TIER_TINT: Record<string, { ring: string; glow: string; ink: string }> = {
+  default:   { ring: '#a78bfa', glow: 'rgba(167,139,250,0.30)', ink: '#f2f2f8' },
+  bronze:    { ring: '#cd7f32', glow: 'rgba(205,127,50,0.28)',  ink: '#fdf3e6' },
+  silver:    { ring: '#cbd5e1', glow: 'rgba(203,213,225,0.28)', ink: '#f8fafc' },
+  gold:      { ring: '#fbbf24', glow: 'rgba(251,191,36,0.30)',  ink: '#fffbeb' },
+  diamond:   { ring: '#60e8ff', glow: 'rgba(96,232,255,0.30)',  ink: '#ecfeff' },
+  aurora:    { ring: '#34d399', glow: 'rgba(52,211,153,0.30)',  ink: '#ecfdf5' },
+  celestial: { ring: '#818cf8', glow: 'rgba(129,140,248,0.32)', ink: '#eef2ff' },
+};
+
+interface IconBadgeProps {
+  /** A glyph from this module — pass the component itself, not a string. */
+  icon: (p: IconProps) => ReactElement;
+  /** Rarity/skin tier — drives the ring + glow color. */
+  tier?: keyof typeof TIER_TINT;
+  /** Outer hex size in pixels. Default 44 — fits inline next to mono labels. */
+  size?: number;
+  /** Optional decorative children (e.g. number badge in the corner). */
+  children?: ReactNode;
+}
+
+/**
+ * Game-feel hex badge wrapper. Drop any icon component inside a faceted
+ * hexagonal shard with a rarity-tinted ring + soft cosmic glow. Use this
+ * for "trophy moments" — monument unlocks, quest completions, leaderboard
+ * positions. NOT for inline UI chrome (use the bare glyph there).
+ */
+export function IconBadge({ icon: Icon, tier = 'default', size = 44, children }: IconBadgeProps) {
+  const t = TIER_TINT[tier] ?? TIER_TINT.default;
+  // Hex points for a 100-unit hex centered at 50,50 (pointy-top).
+  const HEX = '50,4 92,28 92,76 50,100 8,76 8,28';
+  return (
+    <span
+      style={{
+        position: 'relative',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: size, height: size,
+      }}
+    >
+      {/* Outer glow halo — bleeds past the hex edge for the cosmic feel. */}
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute', inset: -4, borderRadius: 12,
+          background: `radial-gradient(circle, ${t.glow} 0%, transparent 70%)`,
+          filter: 'blur(6px)',
+          pointerEvents: 'none',
+        }}
+      />
+      {/* Hex frame. Two layers: subtle inner fill + crisp tier-tinted ring. */}
+      <svg
+        viewBox="0 0 100 100"
+        width={size} height={size}
+        style={{ position: 'relative' }}
+      >
+        <polygon points={HEX} fill="rgba(13,13,36,0.85)" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        <polygon points={HEX} fill="none" stroke={t.ring} strokeWidth="2" strokeLinejoin="round" opacity="0.85" />
+        {/* Inner orbit — three tiny constellation dots; reads as "cosmic"
+            without going pictorial. Skip on small sizes (<32) so they
+            don't crowd. */}
+        {size >= 32 && (
+          <>
+            <circle cx="18" cy="18" r="1.2" fill={t.ring} opacity="0.5" />
+            <circle cx="84" cy="22" r="0.9" fill={t.ring} opacity="0.4" />
+            <circle cx="82" cy="80" r="1.1" fill={t.ring} opacity="0.45" />
+          </>
+        )}
+      </svg>
+      {/* Glyph — sized to ~55% of hex so it sits comfortably inside. */}
+      <span
+        style={{
+          position: 'absolute',
+          color: t.ink,
+          display: 'inline-flex',
+          pointerEvents: 'none',
+        }}
+      >
+        <Icon size={Math.round(size * 0.5)} />
+      </span>
+      {children}
+    </span>
+  );
+}
 
 // ── Transit ───────────────────────────────────────────────────────────
 

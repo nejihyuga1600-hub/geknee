@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  geknee icon set — game-badge contact sheet.
+  Source: lib/icons.tsx IconBadge wrapper.
+
+  Each glyph sits inside a hex shard tinted by skin tier. Use this on
+  monument unlocks, quest completions, leaderboard positions.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="600" viewBox="0 0 780 600" font-family="JetBrains Mono, ui-monospace, monospace" font-size="9">
+  <defs>
+    <radialGradient id="halo-lav" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#a78bfa" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo-gold" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo-blue" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#60e8ff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#60e8ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo-em" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo-bronze" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#cd7f32" stop-opacity="0.40"/>
+      <stop offset="100%" stop-color="#cd7f32" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo-cel" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0"/>
+    </radialGradient>
+    <symbol id="hex" viewBox="0 0 100 100">
+      <polygon points="50,4 92,28 92,76 50,100 8,76 8,28" fill="rgba(13,13,36,0.85)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+      <polygon points="50,4 92,28 92,76 50,100 8,76 8,28" fill="none" stroke-width="2.2" stroke-linejoin="round" opacity="0.9"/>
+    </symbol>
+    <style>
+      .bg { fill: #0a0a1f; }
+      .label { fill: #a8a8c0; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
+      .tier-tag { fill: #6b6b85; font-size: 8px; letter-spacing: 0.18em; }
+      .header { fill: #f2f2f8; font-family: Georgia, serif; font-size: 24px; }
+      .accent { fill: #a78bfa; letter-spacing: 0.16em; }
+      .glyph { stroke: #f2f2f8; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="780" height="600"/>
+
+  <text x="36" y="52" class="accent" font-size="9" font-weight="700">✦ GEKNEE ICONS · BADGE MODE</text>
+  <text x="36" y="84" class="header">Hex shards. Tier-tinted. Built for unlocks.</text>
+  <text x="36" y="104" fill="#6b6b85" font-size="9" letter-spacing="0.16em" text-transform="uppercase">USE: monument unlock · quest claim · leaderboard chip · achievement chip</text>
+
+  <!-- BADGE GRID — 6 sample glyphs, each on a different tier -->
+
+  <!-- 1: Walk · default lavender -->
+  <g transform="translate(36,150)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-lav)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#a78bfa"/>
+    <g class="glyph" transform="translate(43,43) scale(1.0)">
+      <circle cx="13" cy="4.5" r="1.8"/>
+      <path d="M11 8l-2 5 3 1 1 5"/>
+      <path d="M14 10l3 1-1 3"/>
+      <path d="M11 13l-3 3"/>
+      <path d="M3 11h2M2 14h3" opacity="0.55"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Walk</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">DEFAULT</text>
+  </g>
+
+  <!-- 2: Bus · bronze -->
+  <g transform="translate(170,150)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-bronze)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#cd7f32"/>
+    <g class="glyph" transform="translate(43,43)">
+      <path d="M5 5h14v11a1 1 0 01-1 1H6a1 1 0 01-1-1V5z"/>
+      <path d="M5 10h14"/>
+      <circle cx="9" cy="13.5" r="0.7" fill="#fdf3e6"/>
+      <circle cx="15" cy="13.5" r="0.7" fill="#fdf3e6"/>
+      <path d="M7 17v2M17 17v2"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Bus</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">BRONZE</text>
+  </g>
+
+  <!-- 3: Plane · gold -->
+  <g transform="translate(304,150)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-gold)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#fbbf24"/>
+    <g class="glyph" transform="translate(43,43)">
+      <path d="M21 12l-7 7-2-5-5-2 7-7 7 7z"/>
+      <path d="M14 19l-1-4M5 12l4-1"/>
+      <path d="M2 4l3 1M2 7l4 1" opacity="0.55"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Plane</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">GOLD</text>
+  </g>
+
+  <!-- 4: Globe · diamond -->
+  <g transform="translate(438,150)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-blue)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#60e8ff"/>
+    <g class="glyph" transform="translate(43,43)">
+      <circle cx="12" cy="12" r="8.5"/>
+      <path d="M3.5 12h17"/>
+      <path d="M12 3.5c2.5 2.5 4 5.5 4 8.5s-1.5 6-4 8.5c-2.5-2.5-4-5.5-4-8.5s1.5-6 4-8.5z"/>
+      <circle cx="22" cy="4" r="0.8" fill="#ecfeff"/>
+      <circle cx="2.5" cy="20" r="0.6" fill="#ecfeff" opacity="0.7"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Globe</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">DIAMOND</text>
+  </g>
+
+  <!-- 5: Pin · aurora -->
+  <g transform="translate(572,150)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-em)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#34d399"/>
+    <g class="glyph" transform="translate(43,43)">
+      <path d="M12 21s-7-7.5-7-12a7 7 0 0114 0c0 4.5-7 12-7 12z"/>
+      <circle cx="12" cy="9" r="2.5"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Pin</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">AURORA</text>
+  </g>
+
+  <!-- 6: Trophy · celestial -->
+  <g transform="translate(36,330)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-cel)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#818cf8"/>
+    <g class="glyph" transform="translate(43,43)">
+      <path d="M7 3h10v4a5 5 0 01-10 0V3z"/>
+      <path d="M5 5H3v2a3 3 0 003 3M19 5h2v2a3 3 0 01-3 3"/>
+      <path d="M9 14h6l1 4H8z"/>
+      <path d="M7 21h10"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Trophy</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">CELESTIAL</text>
+  </g>
+
+  <!-- 7: Monument · gold -->
+  <g transform="translate(170,330)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-gold)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#fbbf24"/>
+    <g class="glyph" transform="translate(43,43)">
+      <path d="M3 9l9-5 9 5"/>
+      <path d="M4 9v9M20 9v9"/>
+      <path d="M8 11v7M12 11v7M16 11v7"/>
+      <path d="M3 20h18"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Monument</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">GOLD</text>
+  </g>
+
+  <!-- 8: Sparkle · default lavender (small, inline scale demo) -->
+  <g transform="translate(304,330)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-lav)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#a78bfa"/>
+    <g class="glyph" transform="translate(43,43)" stroke="#f2f2f8">
+      <path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>
+      <path d="M7 7l3.5 3.5M13.5 13.5L17 17M17 7l-3.5 3.5M10.5 13.5L7 17"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Sparkle</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">DEFAULT</text>
+  </g>
+
+  <!-- 9: Unlock · gold -->
+  <g transform="translate(438,330)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-gold)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#fbbf24"/>
+    <g class="glyph" transform="translate(43,43)">
+      <rect x="5" y="11" width="14" height="9" rx="2"/>
+      <path d="M8 11V8a4 4 0 018 0"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Unlock</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">GOLD</text>
+  </g>
+
+  <!-- 10: Compass · celestial -->
+  <g transform="translate(572,330)">
+    <circle cx="55" cy="55" r="55" fill="url(#halo-cel)"/>
+    <use href="#hex" x="5" y="5" width="100" height="100" stroke="#818cf8"/>
+    <g class="glyph" transform="translate(43,43)">
+      <circle cx="12" cy="12" r="8.5"/>
+      <path d="M15 9l-1.5 4.5L9 15l1.5-4.5L15 9z"/>
+    </g>
+    <text x="55" y="135" class="label" text-anchor="middle">Compass</text>
+    <text x="55" y="148" class="tier-tag" text-anchor="middle">CELESTIAL</text>
+  </g>
+
+  <text x="36" y="510" class="accent" font-size="9" font-weight="700">USAGE</text>
+  <text x="36" y="535" fill="#a8a8c0" font-size="11" font-family="Georgia, serif">{`<IconBadge icon={Walk} tier="gold" size={44} />`}</text>
+  <text x="36" y="556" fill="#6b6b85" font-size="9" letter-spacing="0.10em" text-transform="uppercase">23 glyphs · 7 tiers · ~16-64px range</text>
+</svg>
