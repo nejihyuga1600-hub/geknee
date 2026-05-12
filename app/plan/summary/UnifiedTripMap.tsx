@@ -133,6 +133,10 @@ export default function UnifiedTripMap({
   const polylinesRef = useRef<GooglePolyline[]>([]);
   const infoWindowRef = useRef<GoogleInfoWindow | null>(null);
   const placesServiceRef = useRef<PlacesService | null>(null);
+  // name (lower-cased, normalized) → handler that pans + opens the
+  // place card. Populated as markers are created. Lets the in-itinerary
+  // step-number click resolve to a specific pin via window event.
+  const pinHandlersRef = useRef<Map<string, () => void>>(new Map());
   const [ready, setReady] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +196,26 @@ export default function UnifiedTripMap({
     return out;
   }, [daySections]);
 
+  // Listen for the in-itinerary number-circle click. ActivityBlock
+  // dispatches geknee:focus-map-pin with { name, city }; we look up
+  // the matching pin handler and invoke it. preventDefault() signals
+  // back to ActivityBlock that we handled it (else it falls back to
+  // opening Google Maps in a new tab).
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const ce = e as CustomEvent<{ name: string; city: string | null }>;
+      const key = normalizePinKey(ce.detail?.name ?? '');
+      if (!key) return;
+      const handler = pinHandlersRef.current.get(key);
+      if (handler) {
+        ce.preventDefault();
+        handler();
+      }
+    };
+    window.addEventListener('geknee:focus-map-pin', onFocus);
+    return () => window.removeEventListener('geknee:focus-map-pin', onFocus);
+  }, []);
+
   // Init map once.
   useEffect(() => {
     if (!divRef.current) return;
@@ -226,11 +250,12 @@ export default function UnifiedTripMap({
     if (!ready || !mapRef.current || !window.google?.maps) return;
     let cancelled = false;
 
-    // Clear existing markers + polylines.
+    // Clear existing markers + polylines + per-pin handler index.
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
     polylinesRef.current.forEach((p) => p.setMap(null));
     polylinesRef.current = [];
+    pinHandlersRef.current.clear();
     infoWindowRef.current?.close();
 
     const visible = pins.filter((p) => activeFilter === 'all' || p.dayNumber === activeFilter);
@@ -390,6 +415,13 @@ export default function UnifiedTripMap({
         marker.addListener('click', () => {
           openPlaceCard(p);
         });
+        // Register a handler so the in-itinerary number-circle click
+        // can resolve to this exact marker. Pan first, then open.
+        const handler = () => {
+          if (mapRef.current && p.resolved) mapRef.current.panTo(p.resolved);
+          openPlaceCard(p);
+        };
+        pinHandlersRef.current.set(normalizePinKey(p.name), handler);
         markersRef.current.push(marker);
         bounds.extend(p.resolved);
       }
@@ -626,6 +658,17 @@ function renderCard(opts: {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+}
+
+// Pin index key. Lower-case + strip diacritics + collapse non-alnum so
+// "Café Trinité" and "Cafe Trinite" both resolve to the same pin.
+function normalizePinKey(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
 }
 
 // Dark Mapbox-equivalent style for Google Maps. Pulled from Google's

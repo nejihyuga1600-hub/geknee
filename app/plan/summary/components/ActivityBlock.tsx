@@ -318,16 +318,25 @@ export function ActivityBlock({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {activityNumber !== undefined ? (() => {
           const isMonument = isMonumentQuest || /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(group.headline);
-          // Click the number circle to open the place in Google Maps —
-          // same URL formula the unified map's pin click uses, so the
-          // step number is effectively a deep-link to the destination.
+          // Click the number circle to open the same Google place card
+          // the on-map pin click opens. Dispatches a window event the
+          // UnifiedTripMap listens for and resolves to the matching
+          // marker. Falls back to a direct Google Maps URL if the
+          // unified map isn't mounted (e.g. small-screen edit views).
           const openInMaps = () => {
             if (!place) return;
-            const q = city ? `${place}, ${city}` : place;
-            window.open(
-              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
-              '_blank', 'noopener,noreferrer',
-            );
+            const ev = new CustomEvent('geknee:focus-map-pin', {
+              detail: { name: place, city: city ?? null },
+              cancelable: true,
+            });
+            window.dispatchEvent(ev);
+            if (!ev.defaultPrevented) {
+              const q = city ? `${place}, ${city}` : place;
+              window.open(
+                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
+                '_blank', 'noopener,noreferrer',
+              );
+            }
           };
           return (
             <button

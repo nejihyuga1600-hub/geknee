@@ -2135,7 +2135,9 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 380px',
+                // 40% itinerary / 60% map on desktop, reactive to viewport.
+                // Stacks 1-col on mobile (Capacitor app + narrow web).
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 2fr) minmax(0, 3fr)',
                 gap: 20,
                 alignItems: 'start',
               }}
