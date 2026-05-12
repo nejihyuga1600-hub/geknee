@@ -55,7 +55,6 @@ import {
   _triggerGlobeReady,
 } from "./globe/landmark";
 import AllLandmarks from "./globe/AllLandmarks";
-import JourneyArcs from "./globe/JourneyArcs";
 import UnlockShareToast from "./UnlockShareToast";
 // ─── GeoJSON types ────────────────────────────────────────────────────────────
 type GeoFeature = {
@@ -2476,11 +2475,6 @@ function GlobeScene() {
 
         {/* Landmarks — Lm self-gates on isCollected so only unlocked monuments appear */}
         <AllLandmarks />
-
-        {/* Chronological journey arcs — connect each consecutive monument
-            collection in the active issue year with a gold→purple great-circle
-            bow. Empty when the user has < 2 collected for the active issue. */}
-        <JourneyArcs />
 
         {/* Dropped star pin + nearby city selection pins */}
         {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}

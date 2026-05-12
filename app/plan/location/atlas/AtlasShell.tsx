@@ -369,18 +369,9 @@ export default function AtlasShell() {
           <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends" iconOnly={isMobile}>
             <TripsIcon /> {!isMobile && <span>Trips</span>}
           </NavPill>
-          {/* Year-in-review link — only meaningful for signed-in users with
-              at least one collected monument. Hidden when signed out so it
-              doesn't feel like an empty CTA. */}
-          {session?.user && (
-            <NavPill
-              onClick={() => { window.location.href = `/wrapped?year=${currentIssueYear()}`; }}
-              title={`${currentIssueYear()} Wrap`}
-              iconOnly={isMobile}
-            >
-              <WrapIcon /> {!isMobile && <span>{currentIssueYear()} Wrap</span>}
-            </NavPill>
-          )}
+          {/* Wrap entry moved into the MonumentShop header (next to
+              Leaderboard) — they're sibling year-in-review surfaces and the
+              top nav was getting crowded. */}
           {session?.user ? (
             <button
               onClick={() => setTripsOpen(true)}

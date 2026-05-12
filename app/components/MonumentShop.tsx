@@ -8,8 +8,8 @@ import { INFO } from '@/app/plan/location/globe/info';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
 import { ShimmerButton } from './animations/ShimmerButton';
 import { MagicCard } from './animations/MagicCard';
-import { AnimatedGlowCard } from './animations/AnimatedGlowCard';
 import { UnlockCeremony } from './animations/UnlockCeremony';
+import { currentIssueYear } from '@/lib/issue-year';
 
 const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
 
@@ -796,6 +796,28 @@ export default function MonumentShop({ open, onClose }: Props) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Year Wrap — lives next to Leaderboard in the MonumentShop
+                  header since they're sibling "year in review" surfaces. */}
+              <Link
+                href={`/wrapped?year=${currentIssueYear()}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 999,
+                  background: 'rgba(125,211,252,0.14)',
+                  border: '1px solid rgba(125,211,252,0.35)',
+                  color: '#bae6fd',
+                  fontSize: 11, fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  textDecoration: 'none',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+                  <circle cx="8" cy="8" r="5" />
+                  <path d="M3 8c2 1.6 4 2.5 5 2.5s3-.9 5-2.5" />
+                </svg>
+                <span>{currentIssueYear()} Wrap</span>
+              </Link>
               <Link
                 href="/leaderboard"
                 style={{
@@ -1150,19 +1172,11 @@ export default function MonumentShop({ open, onClose }: Props) {
                     </div>
                     </MagicCard>
                   );
-                  return unlocked ? (
-                    <AnimatedGlowCard
-                      key={item.id}
-                      color={rColor}
-                      intensity={0.8}
-                      speed={item.rarity === 'legendary' ? 4 : item.rarity === 'epic' ? 5 : 7}
-                      borderRadius={14}
-                    >
-                      {card}
-                    </AnimatedGlowCard>
-                  ) : (
-                    <div key={item.id}>{card}</div>
-                  );
+                  // AnimatedGlowCard removed — the rotating conic-gradient
+                  // border leaked outside the card on some layouts and read
+                  // as a glitch. The MagicCard pointer spotlight + rarity
+                  // border on unlocked cards is enough.
+                  return <div key={item.id}>{card}</div>;
                 })}
               </div>
 
