@@ -5,6 +5,9 @@ import { checkAndIncrementGeneration } from "@/lib/plan";
 import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
 import { runAgent } from "@/lib/agent/loop";
 import { getAgentTools } from "@/lib/agent/tools";
+import { geocodeTool } from "@/lib/agent/tools/geocode";
+import { findPlacesTool } from "@/lib/agent/tools/find_places";
+import { weatherForecastTool } from "@/lib/agent/tools/weather_forecast";
 import { captureError } from "@/lib/sentry";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -408,12 +411,63 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
 
       try {
         const agentClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        // Pre-fetch the predictable tool calls in parallel BEFORE the
+        // agent loop. Most itineraries always need these four lookups;
+        // doing them serially inside the planner phase costs 5–10s of
+        // round-trip latency. Fanning them out in Promise.all collapses
+        // it to ~1s and lets the agent skip those tool calls entirely.
+        const ctx = { userId, tripId: body.tripId };
+        let prefetchBlock = "";
+        try {
+          const geo = (await geocodeTool.handler({ query: body.location }, ctx)) as {
+            best?: { lat: number; lon: number; formatted_address: string };
+          };
+          if (geo.best) {
+            const near = { lat: geo.best.lat, lon: geo.best.lon };
+            const days = Math.min(14, Math.max(1, parseInt(body.nights, 10) + 1));
+            const [restaurants, sights, weather] = await Promise.all([
+              findPlacesTool.handler({ query: "well-rated restaurants", near, radius_m: 4000 }, ctx),
+              findPlacesTool.handler({ query: "iconic sights and museums", near, radius_m: 6000 }, ctx),
+              weatherForecastTool.handler({ lat: near.lat, lon: near.lon, days }, ctx),
+            ]) as Array<Record<string, unknown>>;
+
+            const fmtPlaces = (label: string, list?: Array<Record<string, unknown>>) =>
+              list?.length
+                ? `${label}:\n${list.slice(0, 8).map((p) => {
+                    const name = p.name as string;
+                    const rating = p.rating ? ` ★${p.rating}` : "";
+                    const price = p.price_level ? ` ${"$".repeat(p.price_level as number)}` : "";
+                    const addr = p.address ? ` — ${p.address}` : "";
+                    return `  - ${name}${rating}${price}${addr}`;
+                  }).join("\n")}`
+                : "";
+
+            const fmtWeather = (forecast?: Array<Record<string, unknown>>) =>
+              forecast?.length
+                ? `WEATHER FORECAST:\n${forecast.slice(0, 14).map((d) =>
+                    `  - ${d.date as string}: ${d.temp_min_c}°–${d.temp_max_c}°C, ${d.summary as string}`,
+                  ).join("\n")}`
+                : "";
+
+            const blocks = [
+              `CITY ANCHOR: ${geo.best.formatted_address} (${near.lat}, ${near.lon})`,
+              fmtPlaces("RESTAURANTS NEARBY (use these names; never invent)", (restaurants as { places?: Array<Record<string, unknown>> }).places),
+              fmtPlaces("SIGHTS NEARBY (use these names; never invent)", (sights as { places?: Array<Record<string, unknown>> }).places),
+              fmtWeather((weather as { forecast?: Array<Record<string, unknown>> }).forecast),
+            ].filter(Boolean);
+            prefetchBlock = `\n\nPRE-FETCHED FACTS — do NOT re-call geocode/find_places/weather_forecast for these. Use route_between as needed for transit times.\n${blocks.join("\n\n")}\n`;
+          }
+        } catch (err) {
+          captureError(err, { route: "/api/itinerary", phase: "prefetch", userId, tripId: body.tripId });
+        }
+
         await runAgent({
           client: agentClient,
           systemPrompt: SYSTEM,
-          userPrompt: buildPrompt(body),
+          userPrompt: buildPrompt(body) + prefetchBlock,
           tools: getAgentTools(),
-          ctx: { userId, tripId: body.tripId },
+          ctx,
           onEvent: (e) => {
             if (e.type !== "text") return;
             firstDeltaSeen = true;

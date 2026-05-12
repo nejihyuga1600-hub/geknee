@@ -216,6 +216,96 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
   await finish(stopReason, budget, ctx, onEvent);
 }
 
+// Single-phase streaming variant for surfaces where perceived latency
+// matters more than cost (full itinerary generation). Sonnet streams
+// text from the very first token — no Haiku planner phase, no dead air.
+// Tools fire inline; the model interleaves text + tool_use blocks.
+//
+// Cost: ~50% higher than runAgent's two-phase split. Worth it for the
+// itinerary surface because users were waiting 15-25s before any text
+// appeared with the two-phase loop.
+export async function runStreamingAgent(args: AgentLoopArgs): Promise<void> {
+  const { client, systemPrompt, userPrompt, tools, ctx, onEvent } = args;
+  const maxTokens = args.maxTokens ?? 8192;
+
+  const toolByName = new Map(tools.map((t) => [t.name, t]));
+  const toolsForApi = tools.map(({ handler: _handler, ...t }, i) =>
+    i === tools.length - 1
+      ? { ...t, cache_control: { type: 'ephemeral' as const } }
+      : t,
+  );
+  const systemForApi = [
+    { type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } },
+  ];
+
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: userPrompt },
+  ];
+
+  const budget: BudgetState = { totalIn: 0, totalOut: 0, totalToolCalls: 0 };
+  let stopReason = 'unknown';
+
+  breadcrumb('agent', 'streaming loop start', { userId: ctx.userId, tripId: ctx.tripId, toolCount: tools.length });
+  await onEvent({ type: 'phase', phase: 'synthesis', model: SYNTH_MODEL });
+
+  for (let iter = 0; iter < MAX_PLANNER_ITERATIONS; iter++) {
+    const stream = client.messages.stream({
+      model: SYNTH_MODEL,
+      max_tokens: maxTokens,
+      system: systemForApi,
+      tools: toolsForApi,
+      messages,
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        await onEvent({ type: 'text', delta: event.delta.text });
+      }
+    }
+
+    const final = await stream.finalMessage();
+    if (final.usage) {
+      budget.totalIn += final.usage.input_tokens;
+      budget.totalOut += final.usage.output_tokens;
+      await onEvent({
+        type: 'usage',
+        model: SYNTH_MODEL,
+        inputTokens: final.usage.input_tokens,
+        outputTokens: final.usage.output_tokens,
+      });
+    }
+
+    if (await checkBudget(budget, onEvent)) {
+      stopReason = 'budget_exhausted';
+      break;
+    }
+
+    const toolCalls = final.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+
+    stopReason = final.stop_reason ?? 'unknown';
+
+    if (toolCalls.length === 0 || stopReason === 'end_turn') {
+      break;
+    }
+
+    if (await checkToolCallCaps(toolCalls.length, budget, onEvent)) {
+      stopReason = toolCalls.length > MAX_TOOL_CALLS_PER_TURN ? 'per_turn_cap' : 'total_cap';
+      break;
+    }
+    budget.totalToolCalls += toolCalls.length;
+
+    messages.push({ role: 'assistant', content: final.content });
+    messages.push({
+      role: 'user',
+      content: await runTools(toolCalls, toolByName, ctx, onEvent),
+    });
+  }
+
+  await finish(stopReason, budget, ctx, onEvent);
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 async function runTools(
