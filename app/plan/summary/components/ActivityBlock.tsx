@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { EditableLine } from './EditableLine';
 import type { ActivityGroup } from '../lib/itinerary-parse';
 import type { EditTarget } from '../lib/types';
 import { extractPlace, fetchPlaceImage, imgCache } from '../lib/places';
+import { Walk, Bike, Subway, Bus, Taxi, Train, Ferry, Plane } from '@/lib/icons';
 
 // Single activity row inside a day-card section. Numbered pin (lavender or
 // gold for monument quests), headline as an EditableLine, always-visible
@@ -156,10 +157,17 @@ const EMOJI_TO_MODE: Record<string, string> = {
   '⛵': 'ferry',
   '✈️': 'flight', '🛩': 'flight', '🛬': 'flight', '🚁': 'flight',
 };
-// Canonical mode → emoji used for chip display until the SVG swap lands.
+// Canonical mode → emoji. Retained as a fallback in case the SVG map
+// is missing a mode key for some reason.
 const MODE_TO_EMOJI: Record<string, string> = {
   walk: '🚶', bike: '🚴', subway: '🚇', bus: '🚌',
   taxi: '🚕', train: '🚂', ferry: '⛵', flight: '✈️',
+};
+// Canonical mode → SVG icon component from the geknee icon set.
+// Drives the transit-chip render.
+const MODE_TO_ICON: Record<string, (p: { size?: number }) => ReactNode> = {
+  walk: Walk, bike: Bike, subway: Subway, bus: Bus,
+  taxi: Taxi, train: Train, ferry: Ferry, flight: Plane,
 };
 function markerToMode(marker: string): string {
   if (marker.startsWith('[') && marker.endsWith(']')) return marker.slice(1, -1);
@@ -255,7 +263,7 @@ function stripCostFromLine(line: string): string {
     .trim();
 }
 
-function Chip({ icon, label, accent }: { icon?: string; label: string; accent?: string }) {
+function Chip({ icon, label, accent }: { icon?: ReactNode; label: string; accent?: string }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -268,7 +276,9 @@ function Chip({ icon, label, accent }: { icon?: string; label: string; accent?: 
       letterSpacing: '0.03em',
       whiteSpace: 'nowrap',
     }}>
-      {icon && <span style={{ fontSize: 11 }}>{icon}</span>}
+      {icon !== undefined && icon !== null && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11 }}>{icon}</span>
+      )}
       <span>{label}</span>
     </span>
   );
@@ -375,7 +385,15 @@ export function ActivityBlock({
               {/* Price sits next to time so the user reads "how long /
                   how much" as one scan. */}
               {cost && <Chip label={cost} accent="#fbbf24" />}
-              {transit && <Chip icon={transit.icon} label={transit.label} />}
+              {transit && (() => {
+                const Icon = MODE_TO_ICON[transit.mode];
+                return (
+                  <Chip
+                    icon={Icon ? <Icon size={12} /> : transit.icon}
+                    label={transit.label}
+                  />
+                );
+              })()}
             </div>
           )}
           {hasDetails && (
