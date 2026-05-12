@@ -811,7 +811,9 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       // the face into the surface. Applies to every monument and any new
       // ones added to MONUMENT_LATLON / AVAILABLE_SKINS later, since this
       // logic lives in the shared Lm component.
-      const STATIC_UPWARD_TILT = -0.175;  // ~10° (negative = top tips back)
+      // ~15° static back-tilt (was 10°) — user added another 5° so the
+      // monument fronts read clearly from an eagle-eye / top-down camera.
+      const STATIC_UPWARD_TILT = -0.262;
       const camDirLocal = _monPos.copy(camera.position).sub(_v.set(...p.pos));
       camDirLocal.applyQuaternion(_qInv.copy(p.q).invert());
       const horizDist = Math.hypot(camDirLocal.x, camDirLocal.z);
@@ -917,31 +919,10 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
         </mesh>
       </group>
 
-      {/* Always-visible floating monument name. Billboard keeps it readable
-          at any camera angle. Sits just above the GLB at world scale so its
-          height stays proportional to the monument size. Soft dark halo for
-          contrast over bright satellite terrain — same style as city labels. */}
-      {info && (
-        <Billboard position={[0, effS * 1.15 + 0.08, 0]} follow lockX={false} lockY={false} lockZ={false}>
-          <Text
-            fontSize={0.10}
-            color={isCollected ? ringColor : "#ffffff"}
-            outlineWidth={0.012}
-            outlineColor="#000000"
-            outlineOpacity={0.55}
-            outlineBlur={0.045}
-            anchorX="center"
-            anchorY="bottom"
-            sdfGlyphSize={128}
-            renderOrder={4}
-            material-depthWrite={false}
-            material-depthTest={false}
-            material-toneMapped={false}
-          >
-            {info.name}
-          </Text>
-        </Billboard>
-      )}
+      {/* Persistent floating monument name removed at user request — the
+          mobile-active Html popover (below) still shows the full info card
+          on tap, so the name remains discoverable without cluttering the
+          ambient globe view. */}
       </group>
 
       {showLabel && info && (
