@@ -46,6 +46,7 @@ import {
   _setLmNavDirect,
   _setGlobeClick,
   _setCollectedMonuments,
+  _setCollectedOrder,
   _setActiveSkins,
   _setOnGlobeReady,
   _triggerLmNav,
@@ -54,6 +55,7 @@ import {
   _triggerGlobeReady,
 } from "./globe/landmark";
 import AllLandmarks from "./globe/AllLandmarks";
+import JourneyArcs from "./globe/JourneyArcs";
 import UnlockShareToast from "./UnlockShareToast";
 // ─── GeoJSON types ────────────────────────────────────────────────────────────
 type GeoFeature = {
@@ -2475,6 +2477,11 @@ function GlobeScene() {
         {/* Landmarks — Lm self-gates on isCollected so only unlocked monuments appear */}
         <AllLandmarks />
 
+        {/* Chronological journey arcs — connect each consecutive monument
+            collection in the active issue year with a gold→purple great-circle
+            bow. Empty when the user has < 2 collected for the active issue. */}
+        <JourneyArcs />
+
         {/* Dropped star pin + nearby city selection pins */}
         {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}
         {starPos && zoomLevel >= 1 && <NearbyCities key={`nc-${starPos.key}`} lat={starPos.lat} lon={starPos.lon} />}
@@ -2575,9 +2582,16 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
       try {
         const res = await fetch('/api/monuments');
         if (!res.ok) return;
-        const data = await res.json() as { collected: { monumentId: string; skin: string; active: boolean }[]; activeSkins?: Record<string, string> };
+        const data = await res.json() as { collected: { monumentId: string; skin: string; active: boolean; collectedAt?: string }[]; activeSkins?: Record<string, string> };
         const ids = new Set(data.collected.map((c: { monumentId: string }) => c.monumentId));
         _setCollectedMonuments(ids);
+        // Ordered list (default-skin rows only — that's the "first collected"
+        // event used for journey arcs).
+        _setCollectedOrder(
+          data.collected
+            .filter(c => c.skin === 'default' && c.collectedAt)
+            .map(c => ({ monumentId: c.monumentId, collectedAt: c.collectedAt! })),
+        );
         setCollectedMonumentsState(data.collected);
         if (data.activeSkins) {
           _setActiveSkins(new Map(Object.entries(data.activeSkins)));
@@ -2587,10 +2601,15 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
 
     // Re-fetch when monument shop closes (user may have collected something)
     const handler = () => {
-      fetch('/api/monuments').then(r => r.ok ? r.json() : null).then(data => {
+      fetch('/api/monuments').then(r => r.ok ? r.json() : null).then((data: { collected: { monumentId: string; skin: string; active: boolean; collectedAt?: string }[]; activeSkins?: Record<string, string> } | null) => {
         if (!data) return;
         const ids = new Set<string>(data.collected.map((c: { monumentId: string }) => c.monumentId));
         _setCollectedMonuments(ids);
+        _setCollectedOrder(
+          data.collected
+            .filter(c => c.skin === 'default' && c.collectedAt)
+            .map(c => ({ monumentId: c.monumentId, collectedAt: c.collectedAt! })),
+        );
         setCollectedMonumentsState(data.collected);
         if (data.activeSkins) {
           _setActiveSkins(new Map(Object.entries(data.activeSkins)));

@@ -83,7 +83,12 @@ export async function GET() {
 
   try {
     const [collected, missions, trips, isDev] = await Promise.all([
-      prisma.collectedMonument.findMany({ where: { userId } }),
+      // Order by collectedAt so the client can render chronological journey
+      // arcs on the main globe without re-querying.
+      prisma.collectedMonument.findMany({
+        where: { userId },
+        orderBy: { collectedAt: 'asc' },
+      }),
       prisma.completedMission.findMany({ where: { userId } }),
       prisma.tripDraft.findMany({ where: { userId }, select: { location: true } }),
       isDevAccount(userId),

@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt } from "@/lib/globeAnim";
+import { currentIssueYear } from "@/lib/issue-year";
 import {
   POPULAR_SUGGESTIONS,
   resolveDestination,
@@ -368,6 +369,18 @@ export default function AtlasShell() {
           <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends" iconOnly={isMobile}>
             <TripsIcon /> {!isMobile && <span>Trips</span>}
           </NavPill>
+          {/* Year-in-review link — only meaningful for signed-in users with
+              at least one collected monument. Hidden when signed out so it
+              doesn't feel like an empty CTA. */}
+          {session?.user && (
+            <NavPill
+              onClick={() => { window.location.href = `/wrapped?year=${currentIssueYear()}`; }}
+              title={`${currentIssueYear()} Wrap`}
+              iconOnly={isMobile}
+            >
+              <WrapIcon /> {!isMobile && <span>{currentIssueYear()} Wrap</span>}
+            </NavPill>
+          )}
           {session?.user ? (
             <button
               onClick={() => setTripsOpen(true)}
@@ -697,6 +710,18 @@ function MenuIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
       <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+    </svg>
+  );
+}
+
+// Globe with an arc circling it — reads as "year in review on the globe"
+// without leaning on Spotify-style sparkles.
+function WrapIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+      <circle cx="8" cy="8" r="5" />
+      <path d="M3 8c2 1.6 4 2.5 5 2.5s3-.9 5-2.5" />
+      <path d="M2 9.5 Q8 2 14 9.5" strokeDasharray="1.5 1.5" />
     </svg>
   );
 }

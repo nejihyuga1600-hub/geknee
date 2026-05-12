@@ -441,6 +441,27 @@ export function useCollectedMonumentSet(): Set<string> {
   return _collectedMonuments;
 }
 
+// Chronological-order bridge — used by JourneyArcs to draw the connecting
+// great-circle arcs across the globe in the order the user collected the
+// monuments. The order list carries collectedAt so consumers can filter to
+// a specific issue year (or all-time).
+export type CollectedOrderEntry = { monumentId: string; collectedAt: string };
+let _collectedOrder: CollectedOrderEntry[] = [];
+export function _setCollectedOrder(order: CollectedOrderEntry[]) {
+  _collectedOrder = order;
+  _monumentVersion++;
+  _monumentListeners.forEach(fn => fn());
+}
+export function useCollectedMonumentOrder(): CollectedOrderEntry[] {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setTick(t => t + 1);
+    _monumentListeners.add(cb);
+    return () => { _monumentListeners.delete(cb); };
+  }, []);
+  return _collectedOrder;
+}
+
 // ─── Pending unlock bridge (Lm + MonumentShop → page chrome share-toast) ─────
 // Fires when a monument transitions from uncollected → collected so the page
 // can surface a share prompt. Keeps the toast UI out of the 3D scene.
