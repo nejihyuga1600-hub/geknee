@@ -34,6 +34,7 @@ import { ActivityBlock } from './components/ActivityBlock';
 import { ChatPanel } from './components/ChatPanel';
 import { SectionCard } from './components/SectionCard';
 import type { EditTarget, RouteStop, ChatMessage } from './lib/types';
+import { Sparkle } from '@/lib/icons';
 
 // Unified trip map (one Google Map for all days, with day-filter chips).
 // Lazy-loaded so the maps SDK doesn't ship until the itinerary tab opens.
@@ -1976,7 +1977,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                       fontFamily: 'var(--font-mono-display), monospace',
                       letterSpacing: '0.08em',
                     }}>
-                      ✦ Light on pins? The agent fills the gaps to match your travel style.
+                      <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Light on pins? The agent fills the gaps to match your travel style.
                     </p>
                   </div>
                   <button
@@ -2063,7 +2064,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
               fontFamily: 'var(--font-mono-display), monospace',
               letterSpacing: '0.06em',
             }}>
-              ✦ Don&apos;t worry about coverage — if your pins don&apos;t fill the days, the agent
+              <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Don&apos;t worry about coverage — if your pins don&apos;t fill the days, the agent
               suggests more stops that match your travel style.
             </p>
             <Link

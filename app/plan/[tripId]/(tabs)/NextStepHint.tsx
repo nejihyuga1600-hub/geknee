@@ -16,6 +16,7 @@
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { Sparkle } from '@/lib/icons';
 
 interface TripSnapshot {
   hasItinerary: boolean;
@@ -131,7 +132,7 @@ export function NextStepHint() {
           fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'var(--brand-accent)', fontWeight: 700, marginBottom: 4,
         }}>
-          ✦ Next
+          <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Next
         </div>
         <div style={{
           fontFamily: 'var(--font-display), Georgia, serif',

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { GENIES, GenieAvatar } from './GenieCharacters';
+import { Sparkle } from '@/lib/icons';
 
 const STORAGE_KEY = 'geknee_genie_id';
 
@@ -191,7 +192,7 @@ export default function GenieSelector({ onClose }: { onClose: () => void }) {
             color: '#fff', fontSize: 14, cursor: 'pointer', fontWeight: 700,
             boxShadow: `0 4px 20px ${GENIES.find(g => g.id === chosen)!.colors.glow}`,
           }}>
-            Choose {GENIES.find(g => g.id === chosen)!.name} ✦
+            Choose {GENIES.find(g => g.id === chosen)!.name} <Sparkle size={12} style={{ verticalAlign: '-2px', marginLeft: 4 }} />
           </button>
         </div>
       </div>

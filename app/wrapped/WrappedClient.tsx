@@ -15,6 +15,7 @@ import { AuroraBackground } from '@/app/components/animations/AuroraBackground';
 import { TextShimmerWave } from '@/app/components/animations/TextShimmer';
 import { ShimmerButton } from '@/app/components/animations/ShimmerButton';
 import { Globe as ShadcnGlobe } from '@/components/ui/cobe-globe';
+import { Sparkle } from '@/lib/icons';
 
 interface TimelineEntry {
   mk: string;
@@ -305,7 +306,9 @@ export function WrappedClient({ year, userName, timeline, stats }: WrappedClient
               {stats.total} monuments · {stats.countryCount} countries · {stats.rarest?.rarity ?? 'unranked'} highest tier
             </p>
             <ShimmerButton onClick={handleShare}>
-              ✦ Share your {year} wrap
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Sparkle size={12} /> Share your {year} wrap
+              </span>
             </ShimmerButton>
             <a
               href="/plan/location"

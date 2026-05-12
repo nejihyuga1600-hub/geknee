@@ -14,6 +14,7 @@
 //   - WCAG 4.5:1 contrast on label text in both schemes
 
 import { useEffect, useRef, useState } from 'react';
+import { Sparkle } from '@/lib/icons';
 
 interface Props {
   tripId: string;
@@ -121,7 +122,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
             color: 'var(--brand-accent)', textTransform: 'uppercase',
             fontWeight: 700, marginBottom: 2,
           }}>
-            ✦ Attach a photo
+            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Attach a photo
           </div>
           <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
             Drop an image, or pick one. geknee reads it and adds the stop to the day.
@@ -303,7 +304,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
             color: 'var(--brand-accent)', textTransform: 'uppercase',
             fontWeight: 700, marginBottom: 2,
           }}>
-            ✦ Attach a photo
+            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Attach a photo
           </div>
           <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
             Drop an image, or pick one. geknee reads it and adds the stop to the day.

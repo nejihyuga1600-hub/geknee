@@ -10,6 +10,7 @@
 // rec-on-map affordance (info popup, photo, add-as-pin CTA).
 
 import { useCallback, useEffect, useState } from 'react';
+import { Sparkle } from '@/lib/icons';
 
 interface Rec {
   id: string;
@@ -109,7 +110,7 @@ export function RecPanel({ tripId, onPick }: Props) {
           fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'var(--brand-ink-mute)',
         }}>
-          ✦ Curating…
+          <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Curating…
         </div>
       )}
 
@@ -188,7 +189,7 @@ export function RecPanel({ tripId, onPick }: Props) {
                   color: CATEGORY_TINT[rec.category].fg,
                   lineHeight: 1.3,
                 }}>
-                  ✦ {rec.whyItFits}
+                  <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> {rec.whyItFits}
                 </div>
               </button>
             </li>

@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import InstallEntry from "./InstallEntry";
 import { currentIssueYear, isWrapUpWindow, nextRolloverDate } from "@/lib/issue-year";
+import { Sparkle } from "@/lib/icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -509,7 +510,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
                   }}
                 >
                   <span>
-                    <span style={{ marginRight: 8 }}>✦</span>
+                    <Sparkle size={12} style={{ marginRight: 8, verticalAlign: "-2px" }} />
                     See your travel year in review
                   </span>
                   <span style={{ fontSize: 18, color: "rgba(255,255,255,0.4)" }}>→</span>

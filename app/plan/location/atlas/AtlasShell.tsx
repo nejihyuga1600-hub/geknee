@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt } from "@/lib/globeAnim";
 import { currentIssueYear } from "@/lib/issue-year";
+import { Sparkle } from "@/lib/icons";
 import {
   POPULAR_SUGGESTIONS,
   resolveDestination,
@@ -783,7 +784,7 @@ function GenieCorner({
           transition: "transform 150ms",
           transform: open ? "scale(0.94)" : "scale(1)",
         }}
-      >✦</button>
+      ><Sparkle size={22} /></button>
 
       {open && (
         <div style={{
@@ -811,7 +812,7 @@ function GenieCorner({
                 display: "grid", placeItems: "center",
                 fontFamily: "var(--font-display, Georgia, serif)",
                 fontWeight: 600, fontSize: 13,
-              }}>✦</span>
+              }}><Sparkle size={14} /></span>
               <div>
                 <div style={{ fontFamily: "var(--font-display, Georgia, serif)", fontSize: 15, fontWeight: 500 }}>geknee</div>
                 <div style={{ fontSize: 10, color: "var(--brand-ink-mute)", letterSpacing: "0.1em" }}>
@@ -1856,7 +1857,7 @@ function StepReview({ trip, onBack }: { trip: Trip; onBack: () => void }) {
         fontSize: 10, color: "var(--brand-accent)", letterSpacing: "0.16em",
         fontWeight: 600, marginBottom: 6,
       }}>
-        ✦ YOUR ITINERARY
+        <Sparkle size={10} style={{ verticalAlign: "-1px", marginRight: 4 }} /> YOUR ITINERARY
       </div>
 
       {/* Title */}
@@ -1915,7 +1916,7 @@ function StepReview({ trip, onBack }: { trip: Trip; onBack: () => void }) {
           fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase",
           color: "var(--brand-accent)", fontWeight: 700, marginBottom: 4,
         }}>
-          ✦ Your genie says
+          <Sparkle size={10} style={{ verticalAlign: "-1px", marginRight: 4 }} /> Your genie says
         </div>
         <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--brand-ink)" }}>
           Based on a {trip.style || "relaxed"} trip to {trip.destination || "your destination"},

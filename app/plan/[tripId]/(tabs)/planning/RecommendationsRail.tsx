@@ -15,6 +15,7 @@
 //   - color contrast: ink-on-glass-surface ≥4.5:1 in both light + dark
 
 import { useEffect, useState, useCallback } from 'react';
+import { Sparkle } from '@/lib/icons';
 
 interface Rec {
   id: string;
@@ -93,7 +94,7 @@ export function RecommendationsRail({ tripId, destination }: Props) {
             color: 'var(--brand-accent)', textTransform: 'uppercase',
             marginBottom: 6, fontWeight: 700,
           }}>
-            ✦ Curated for you
+            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Curated for you
           </div>
           <h2 style={{
             margin: 0,
@@ -261,7 +262,7 @@ function RecCard({ rec }: { rec: Rec }) {
         fontStyle: 'italic',
         color: tint.fg,
       }}>
-        ✦ {rec.whyItFits}
+        <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> {rec.whyItFits}
       </p>
     </article>
   );
