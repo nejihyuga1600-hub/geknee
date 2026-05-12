@@ -22,6 +22,8 @@ export interface CaseScore {
   output: string;
   toolCalls: { name: string; input: unknown }[];
   usage: { inputTokens: number; outputTokens: number };
+  judgeScore?: number;  // 1–5 from LLM-as-judge if enabled
+  judgeReason?: string;
 }
 
 interface CaseTrace {
@@ -151,6 +153,11 @@ export function summarize(scores: CaseScore[]): string {
   const avgPassRate = scores.reduce((a, s) => a + s.passRate, 0) / Math.max(1, total);
   const totalIn = scores.reduce((a, s) => a + s.usage.inputTokens, 0);
   const totalOut = scores.reduce((a, s) => a + s.usage.outputTokens, 0);
+  const judged = scores.filter((s) => typeof s.judgeScore === 'number' && s.judgeScore > 0);
+  const avgJudge =
+    judged.length > 0
+      ? judged.reduce((a, s) => a + (s.judgeScore ?? 0), 0) / judged.length
+      : null;
 
   const lines: string[] = [];
   lines.push(`# Agent Eval Report`);
@@ -158,6 +165,9 @@ export function summarize(scores: CaseScore[]): string {
   lines.push(`- **Cases:** ${total}`);
   lines.push(`- **Passing (all rules):** ${passing}/${total}`);
   lines.push(`- **Average pass rate:** ${(avgPassRate * 100).toFixed(1)}%`);
+  if (avgJudge !== null) {
+    lines.push(`- **Avg LLM-judge score:** ${avgJudge.toFixed(2)} / 5 (${judged.length} cases)`);
+  }
   lines.push(`- **Tokens (in/out):** ${totalIn.toLocaleString()} / ${totalOut.toLocaleString()}`);
   lines.push('');
   lines.push(`## Per-case`);
@@ -167,6 +177,9 @@ export function summarize(scores: CaseScore[]): string {
     lines.push(`### ${s.caseId} — ${s.pass ? 'PASS' : 'FAIL'} (${(s.passRate * 100).toFixed(0)}%)`);
     lines.push(`- tokens: ${s.usage.inputTokens.toLocaleString()} in / ${s.usage.outputTokens.toLocaleString()} out`);
     lines.push(`- tool calls: ${s.toolCalls.length} (${s.toolCalls.map((t) => t.name).join(', ')})`);
+    if (typeof s.judgeScore === 'number' && s.judgeScore > 0) {
+      lines.push(`- judge: ${s.judgeScore}/5 — ${s.judgeReason ?? ''}`);
+    }
     if (failed.length) {
       lines.push(`- **failed rules:**`);
       for (const r of failed) {

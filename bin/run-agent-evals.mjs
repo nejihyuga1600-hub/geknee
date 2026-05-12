@@ -29,6 +29,7 @@ const ROOT = join(HERE, '..');
 
 const { CASES } = await import(join(ROOT, 'evals/agent/cases.ts'));
 const { scoreCase, summarize } = await import(join(ROOT, 'evals/agent/scorer.ts'));
+const { judgeNarrative } = await import(join(ROOT, 'evals/agent/judge.ts'));
 const { runAgent } = await import(join(ROOT, 'lib/agent/loop.ts'));
 // Use a slimmed tools list — recall_user_context needs Prisma which the
 // runner doesn't bootstrap. The eval cases inline any user context
@@ -88,8 +89,20 @@ for (const c of cases) {
   }
   const elapsedMs = Date.now() - t0;
   const score = scoreCase(c, events);
+
+  if (process.env.AGENT_EVAL_LLM_JUDGE === 'true' && score.output.length > 0) {
+    try {
+      const verdict = await judgeNarrative(client, c, score.output);
+      score.judgeScore = verdict.score;
+      score.judgeReason = verdict.reason;
+    } catch (err) {
+      console.error(`  judge error: ${err.message}`);
+    }
+  }
+
   scores.push(score);
-  console.log(`${score.pass ? 'PASS' : 'FAIL'} ${(score.passRate * 100).toFixed(0)}% (${(elapsedMs / 1000).toFixed(1)}s, ${score.usage.inputTokens.toLocaleString()}in/${score.usage.outputTokens.toLocaleString()}out)`);
+  const judgeStr = score.judgeScore ? ` · judge ${score.judgeScore}/5` : '';
+  console.log(`${score.pass ? 'PASS' : 'FAIL'} ${(score.passRate * 100).toFixed(0)}% (${(elapsedMs / 1000).toFixed(1)}s, ${score.usage.inputTokens.toLocaleString()}in/${score.usage.outputTokens.toLocaleString()}out${judgeStr})`);
 }
 
 const report = summarize(scores);
