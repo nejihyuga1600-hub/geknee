@@ -10,6 +10,7 @@ import { ShimmerButton } from './animations/ShimmerButton';
 import { MagicCard } from './animations/MagicCard';
 import { UnlockCeremony } from './animations/UnlockCeremony';
 import { currentIssueYear } from '@/lib/issue-year';
+import { Unlock, Lock, Sparkle, Camera } from '@/lib/icons';
 
 const DEV_EMAILS = new Set(['nghiaphan081301@gmail.com']);
 
@@ -517,12 +518,19 @@ function DetailView({
         <div style={{ flexShrink: 0 }}>
           {!unlocked && canUnlock && (
             <ShimmerButton onClick={(e) => onUnlock(item, e)} disabled={loading}>
-              {loading ? '...' : `${String.fromCodePoint(0x1F513)} Collect`}
+              {loading ? '...' : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Unlock size={14} /> Collect
+                </span>
+              )}
             </ShimmerButton>
           )}
           {!unlocked && !canUnlock && (
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textAlign: 'center', lineHeight: 1.3 }}>
-              {String.fromCodePoint(0x1F512)} Visit<br />to unlock
+            <div style={{
+              fontSize: 10, color: 'rgba(255,255,255,0.3)', textAlign: 'center', lineHeight: 1.3,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}>
+              <Lock size={12} /> <span>Visit<br />to unlock</span>
             </div>
           )}
         </div>
@@ -551,7 +559,9 @@ function DetailView({
               color: 'var(--brand-accent-2, #7dd3fc)',
               fontWeight: 700, marginBottom: 2,
             }}>
-              ✦ Want to go?
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Sparkle size={10} /> Want to go?
+              </span>
             </div>
             <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.4 }}>
               Plan a trip to <strong style={{ color: 'var(--brand-ink)', fontWeight: 600 }}>{item.location}</strong>
@@ -594,7 +604,7 @@ function DetailView({
                     border: `1px solid ${ms.skin.color}35`,
                     color: ms.skin.color, fontSize: 10, fontWeight: 700,
                   }}>
-                    {String.fromCodePoint(0x2728)} {ms.skin.name} Skin
+                    <Sparkle size={10} /> {ms.skin.name} Skin
                   </div>
                 </div>
                 {done ? (
@@ -606,7 +616,11 @@ function DetailView({
                     color: '#000', fontSize: 11, fontWeight: 800,
                     cursor: loading ? 'wait' : 'pointer',
                   }}>
-                    {loading ? '...' : ms.verify === 'photo' ? '\u{1F4F7} Claim' : 'Claim'}
+                    {loading ? '...' : ms.verify === 'photo' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Camera size={12} /> Claim
+                      </span>
+                    ) : 'Claim'}
                   </button>
                 )}
               </div>

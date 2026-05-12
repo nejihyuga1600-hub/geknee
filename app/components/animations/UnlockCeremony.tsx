@@ -23,6 +23,7 @@ import { useEffect, useState, type RefObject } from 'react';
 import { AuroraBackground } from './AuroraBackground';
 import { TextShimmerWave } from './TextShimmer';
 import { Spinning3DOrb } from './Spinning3DOrb';
+import { IconBadge, Unlock } from '@/lib/icons';
 
 // Per-skin tier color. 'default' is the geknee primary purple — used when
 // the base monument is unlocked (no specific skin yet).
@@ -89,6 +90,12 @@ export function UnlockCeremony({ trigger, originRef }: UnlockCeremonyProps) {
 
   if (phase === 'idle' || !activeTrigger || !viewport) return null;
   const color = SKIN_TIER_COLOR[activeTrigger.skin] ?? SKIN_TIER_COLOR.default;
+  // IconBadge's TIER_TINT only knows the core tiers; map any other skin
+  // (damascus, stone, etc.) to default so the badge still renders cleanly.
+  const BADGE_TIERS = ['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial'] as const;
+  const badgeTier = (BADGE_TIERS as readonly string[]).includes(activeTrigger.skin)
+    ? (activeTrigger.skin as typeof BADGE_TIERS[number])
+    : 'default';
 
   // Globe corner: bottom-right on landscape, just above the bottom edge on
   // narrow viewports (where the planner sheet lives).
@@ -162,6 +169,9 @@ export function UnlockCeremony({ trigger, originRef }: UnlockCeremonyProps) {
               }}
             >
               Added to your passport
+            </div>
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <IconBadge icon={Unlock} tier={badgeTier} size={72} />
             </div>
             <div
               style={{
