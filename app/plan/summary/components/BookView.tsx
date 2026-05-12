@@ -444,6 +444,9 @@ export default function BookView(props: BookTabProps) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        // tripId enables persistence — server caches the result on
+        // TripDraft.bookingSuggestions so the next visit is instant.
+        tripId: props.tripId,
         location: props.location,
         startDate: props.startDate,
         endDate: props.endDate,

@@ -133,6 +133,14 @@ model TripDraft {
   flightBookingDetectedAt DateTime?
   offlineMapPrefetched    Boolean   @default(false)
 
+  // Cached booking suggestions. The Booking tab used to re-generate
+  // hotels/flights/activities/transport on every mount — wasted spend +
+  // slow render. Persist the model output here so repeat visits are
+  // instant. Stored as stringified JSON (same convention as `style`).
+  // Stale after ~14 days; the booking endpoint re-fetches automatically.
+  bookingSuggestions   String?
+  bookingSuggestionsAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

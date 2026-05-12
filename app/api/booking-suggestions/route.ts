@@ -3,13 +3,14 @@
 // hotels, a flight option, and activities specific to the trip's
 // destination, dates, budget, and travel style.
 //
-// Single non-streaming Anthropic call returns structured JSON. Server-
-// side cached per (location, startDate, endDate, budget, style) via
-// Vercel's fetch cache so repeat visits in the same session don't
-// re-bill the model.
+// Persistence: when tripId is provided, the model output is stored on
+// TripDraft.bookingSuggestions (stringified JSON) + a timestamp. Repeat
+// visits within 14 days return the cached row instead of re-billing
+// the model. Pass `force: true` to regenerate.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -28,7 +29,15 @@ interface SuggestionsRequest {
   userHomeCountry?: string; // fallback origin from client locale
   currency?: string; // ISO code, used as a hint for the secondary price
   itineraryPlaces?: string[]; // place names already in the user's itinerary
+  /** When provided, enables persistence — cached on TripDraft.bookingSuggestions. */
+  tripId?: string;
+  /** When true, bypasses the cache and regenerates fresh. */
+  force?: boolean;
 }
+
+// Suggestions are considered fresh for 14 days. After that the booking
+// landscape (hotels, prices) is stale enough to warrant a regenerate.
+const CACHE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 const SYSTEM = `You are a travel-booking assistant generating realistic, well-known booking options for a destination. Respond with ONLY a single JSON object — no markdown fences, no commentary, no leading/trailing prose. Use real venues that a knowledgeable concierge would name. Match the budget level: a luxury traveler should not see hostels; a budget traveler should not see Park Hyatt.`;
 
@@ -190,6 +199,7 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = (session.user as { id?: string })?.id;
 
   let body: SuggestionsRequest;
   try {
@@ -201,10 +211,48 @@ export async function POST(req: Request) {
     return Response.json({ error: "location required" }, { status: 400 });
   }
 
+  // ── Cache hit ────────────────────────────────────────────────────────
+  // When the client passes tripId, look up the persisted suggestions on
+  // the TripDraft row. Repeat visits in the booking tab — and revisits
+  // in subsequent sessions — return instantly without re-billing the
+  // model. Pass force: true to override and regenerate.
+  if (body.tripId && userId && !body.force) {
+    try {
+      const cached = await prisma.tripDraft.findUnique({
+        where: { id: body.tripId },
+        select: {
+          userId: true,
+          bookingSuggestions: true,
+          bookingSuggestionsAt: true,
+        },
+      });
+      if (
+        cached &&
+        cached.userId === userId &&
+        cached.bookingSuggestions &&
+        cached.bookingSuggestionsAt &&
+        Date.now() - cached.bookingSuggestionsAt.getTime() < CACHE_MAX_AGE_MS
+      ) {
+        try {
+          const parsed = JSON.parse(cached.bookingSuggestions);
+          return Response.json(parsed);
+        } catch { /* malformed cache row — fall through to regenerate */ }
+      }
+    } catch (err) {
+      // DB hiccup shouldn't block the generation path — just regenerate.
+      console.warn("[booking-suggestions] cache lookup failed:", err);
+    }
+  }
+
   try {
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 7168,
+      // Switched sonnet → haiku-4-5. Booking suggestions are a structured
+      // JSON task — Haiku is 3-4x faster, well within its capability,
+      // and the user flagged Sonnet was too slow on this surface.
+      model: "claude-haiku-4-5-20251001",
+      // Lowered 7168 → 4500. Realistic max output: 3 hotels + 1 flight
+      // + 8 activities + flight options ≈ 3500 tokens.
+      max_tokens: 4500,
       system: SYSTEM,
       messages: [{ role: "user", content: buildPrompt(body) }],
     });
@@ -229,6 +277,23 @@ export async function POST(req: Request) {
     } catch {
       console.error("[booking-suggestions] JSON parse failed:", cleaned.slice(0, 400));
       return Response.json({ error: "model returned invalid JSON" }, { status: 502 });
+    }
+
+    // Persist the result so subsequent visits return instantly.
+    // Skip silently if the DB write fails — the user still gets their
+    // result from the in-flight response.
+    if (body.tripId && userId) {
+      try {
+        await prisma.tripDraft.update({
+          where: { id: body.tripId },
+          data: {
+            bookingSuggestions: JSON.stringify(parsed),
+            bookingSuggestionsAt: new Date(),
+          },
+        });
+      } catch (err) {
+        console.warn("[booking-suggestions] cache write failed:", err);
+      }
     }
 
     return Response.json(parsed);
