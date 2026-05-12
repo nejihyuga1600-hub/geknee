@@ -19,8 +19,7 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
     // the day-by-day. Itinerary then renders the day plan around those
     // commitments. Vault holds passports / tickets / bookings for the
     // trip, scoped to this tripId.
-    { href: `/plan/${tripId}/planning`,  label: 'Planning' },
-    { href: `/plan/${tripId}/itinerary`, label: 'Itinerary' },
+    { href: `/plan/${tripId}/planning`,  label: 'Planning / Itinerary' },
     { href: `/plan/${tripId}/booking`,   label: 'Booking' },
     { href: `/plan/${tripId}/vault`,     label: 'Vault' },
   ];
