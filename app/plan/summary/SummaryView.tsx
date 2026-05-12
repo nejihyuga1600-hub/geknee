@@ -248,6 +248,12 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
   const [smartEditPrompt, setSmartEditPrompt] = useState('');
   const [smartEditing, setSmartEditing] = useState(false);
+
+  // Live status surfaced under the loading message during the dead-air
+  // window before first itinerary text arrives. Server emits side-
+  // channel "STATUS:..." lines as it geocodes, fetches weather, calls
+  // tools, etc. Cleared between generation runs by startGeneration.
+  const [currentStatus, setCurrentStatus] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editValue, setEditValue]   = useState('');
 
@@ -605,7 +611,21 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
           bufferRef.current += decoder.decode(value, { stream: true });
           const all = bufferRef.current.split('\n');
           bufferRef.current = all.pop() ?? '';
-          setLines(prev => [...prev, ...all]);
+          // Pull status side-channel lines (zero-width space + sparkle +
+          // "STATUS:") out before they hit the itinerary content. They
+          // drive the live "Looking up Paris…" status under the loading
+          // message so the dead-air window before first text isn't
+          // silent.
+          const STATUS_PREFIX = '​✨STATUS:';
+          const visible: string[] = [];
+          for (const line of all) {
+            if (line.startsWith(STATUS_PREFIX)) {
+              setCurrentStatus(line.slice(STATUS_PREFIX.length).trim());
+            } else {
+              visible.push(line);
+            }
+          }
+          if (visible.length) setLines(prev => [...prev, ...visible]);
           // Surface the unfinished trailing line so users see Anthropic's
           // tokens arrive char-by-char instead of waiting for the next \n.
           setInFlightTail(bufferRef.current);
@@ -1036,6 +1056,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     setLines([]);
     setSections([]);
     setError('');
+    setCurrentStatus(null);
     setMainTab('itinerary');
     setLoadingStage('requesting');
     requestStartRef.current = Date.now();
@@ -2165,6 +2186,20 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                     {elapsedSec > 0 && <span style={{ opacity: 0.55 }}> · {elapsedSec}s</span>}
                   </span>
                 </div>
+                {currentStatus && (
+                  <div
+                    aria-live="polite"
+                    style={{
+                      marginTop: 6, marginLeft: 16,
+                      color: 'rgba(167,139,250,0.85)',
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                      letterSpacing: '0.03em',
+                    }}
+                  >
+                    {currentStatus}
+                  </div>
+                )}
                 {/* Slow-load surface: warn at 30 s, offer a retry at 60 s.
                    The /api/itinerary stream can legitimately take that long
                    for a multi-day trip, but if it hangs the user otherwise

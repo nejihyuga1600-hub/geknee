@@ -409,6 +409,21 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
         catch { clientStillConnected = false; }
       }, 500);
 
+      // Status side-channel. The plain-text contract doesn't carry
+      // structured events, so we slip status updates into the same
+      // stream prefixed with a sentinel that's effectively impossible
+      // to appear in real markdown (zero-width space + sparkle).
+      // The client filters these lines out of the itinerary content
+      // and surfaces them as live "Looking up Paris…" copy under the
+      // loading message — turning the dead-air window into visible
+      // progress.
+      const STATUS = "​✨STATUS:";
+      const sendStatus = (msg: string) => {
+        if (!clientStillConnected) return;
+        try { controller.enqueue(encoder.encode(`${STATUS}${msg}\n`)); }
+        catch { clientStillConnected = false; }
+      };
+
       try {
         const agentClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -420,12 +435,14 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
         const ctx = { userId, tripId: body.tripId };
         let prefetchBlock = "";
         try {
+          sendStatus(`Locating ${body.location}…`);
           const geo = (await geocodeTool.handler({ query: body.location }, ctx)) as {
             best?: { lat: number; lon: number; formatted_address: string };
           };
           if (geo.best) {
             const near = { lat: geo.best.lat, lon: geo.best.lon };
             const days = Math.min(14, Math.max(1, parseInt(body.nights, 10) + 1));
+            sendStatus("Pulling weather, restaurants, and top sights…");
             const [restaurants, sights, weather] = await Promise.all([
               findPlacesTool.handler({ query: "well-rated restaurants", near, radius_m: 4000 }, ctx),
               findPlacesTool.handler({ query: "iconic sights and museums", near, radius_m: 6000 }, ctx),
@@ -462,6 +479,18 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
           captureError(err, { route: "/api/itinerary", phase: "prefetch", userId, tripId: body.tripId });
         }
 
+        sendStatus("Researching your trip…");
+        const TOOL_LABELS: Record<string, string> = {
+          geocode: "Resolving a location…",
+          find_places: "Looking up places…",
+          route_between: "Checking transit times…",
+          weather_forecast: "Pulling weather forecast…",
+          flight_search: "Comparing flight prices…",
+          currency_convert: "Converting currency…",
+          recall_user_context: "Recalling your preferences…",
+        };
+        let saidDrafting = false;
+
         await runAgent({
           client: agentClient,
           systemPrompt: SYSTEM,
@@ -469,7 +498,20 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
           tools: getAgentTools(),
           ctx,
           onEvent: (e) => {
+            if (e.type === "tool_call") {
+              sendStatus(TOOL_LABELS[e.name] ?? `Calling ${e.name}…`);
+              return;
+            }
+            if (e.type === "phase" && e.phase === "synthesis") {
+              sendStatus("Drafting your itinerary…");
+              saidDrafting = true;
+              return;
+            }
             if (e.type !== "text") return;
+            if (!saidDrafting) {
+              sendStatus("Drafting your itinerary…");
+              saidDrafting = true;
+            }
             firstDeltaSeen = true;
             accumulated += e.delta;
             if (clientStillConnected) {
