@@ -32,6 +32,14 @@ interface PlacePin {
 
 const QUEST_COLOR = '#fbbf24'; // gold — matches monument-quest pill in ActivityBlock
 
+interface Bookmark {
+  id: string;
+  name: string;
+  coords: [number, number]; // [lng, lat]
+  category?: string;
+  placeId?: string;
+}
+
 interface Props {
   sections: Section[];
   location: string;        // trip city (anchors map view + biases geocoding)
@@ -39,6 +47,14 @@ interface Props {
   sticky?: boolean;
   topOffset?: number;      // px from top when sticky
   fillHeight?: boolean;    // when true, map fills its parent's height (split layout)
+  // Optional planning-mode integration. When provided, the map shows
+  // bookmark markers, lets the user click any Google POI to open its
+  // detail panel, and the panel surfaces a "Pin destination" CTA that
+  // calls onAddBookmark. Without these props the map is read-only
+  // (itinerary-only mode).
+  bookmarks?: Bookmark[];
+  onAddBookmark?: (b: Bookmark) => void;
+  onRemoveBookmark?: (id: string) => void;
 }
 
 declare global {
@@ -93,6 +109,10 @@ interface PlaceDetails {
 interface PlacePanelData {
   pin: PlacePin;
   loading: boolean;
+  // When the panel was opened from a POI click (rather than an
+  // itinerary pin), this carries the placeId + coords needed to wire
+  // the "Pin destination" CTA. Itinerary-pin opens leave it undefined.
+  poi?: { placeId: string; coords?: { lat: number; lng: number } };
   details?: {
     name: string;
     address?: string;
@@ -149,7 +169,12 @@ export default function UnifiedTripMap({
   sticky = true,
   topOffset = 16,
   fillHeight = false,
+  bookmarks,
+  onAddBookmark,
+  onRemoveBookmark,
 }: Props) {
+  const planningEnabled = !!bookmarks && !!onAddBookmark;
+  const bookmarkMarkersRef = useRef<GoogleMarker[]>([]);
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markersRef = useRef<GoogleMarker[]>([]);
@@ -270,6 +295,121 @@ export default function UnifiedTripMap({
       .catch((e: Error) => setError(e.message ?? 'Failed to load Google Maps'));
     return () => { cancelled = true; };
   }, []);
+
+  // ── Bookmark markers + POI click handler (planning mode) ────────────────
+  // When bookmarks are passed in, render them as sky-blue numbered
+  // markers distinct from the day-colored itinerary pins. Also wire a
+  // click handler on the map so any tap on a Google POI opens the
+  // place panel with a "Pin destination" CTA.
+  useEffect(() => {
+    if (!ready || !mapRef.current || !window.google?.maps) return;
+    if (!planningEnabled) return;
+    const gmaps = window.google.maps;
+
+    // Clear and re-render bookmark markers from scratch.
+    bookmarkMarkersRef.current.forEach((m) => m.setMap(null));
+    bookmarkMarkersRef.current = [];
+
+    (bookmarks ?? []).forEach((b, i) => {
+      const marker = new gmaps.Marker({
+        position: { lat: b.coords[1], lng: b.coords[0] },
+        map: mapRef.current,
+        label: { text: String(i + 1), color: '#0a0a1f', fontSize: '12px', fontWeight: '700' },
+        icon: {
+          path: gmaps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: '#7dd3fc',
+          fillOpacity: 0.95,
+          strokeColor: '#0a0a1f',
+          strokeWeight: 2,
+        },
+        title: `Pinned: ${b.name}`,
+        zIndex: 50,
+      });
+      marker.addListener('click', () => {
+        if (b.placeId) {
+          openPlaceFromPlaceId(b.placeId, b.name, { lat: b.coords[1], lng: b.coords[0] });
+        }
+      });
+      bookmarkMarkersRef.current.push(marker);
+    });
+    // POI click → fetch detail, open panel.
+    const listener = (mapRef.current as unknown as {
+      addListener: (e: string, h: (ev: { placeId?: string; latLng?: { lat: () => number; lng: () => number }; stop?: () => void }) => void) => unknown;
+    }).addListener('click', (e) => {
+      if (e.placeId && e.latLng) {
+        e.stop?.();
+        openPlaceFromPlaceId(e.placeId, undefined, { lat: e.latLng.lat(), lng: e.latLng.lng() });
+      }
+    });
+    return () => {
+      gmaps.event.clearInstanceListeners(listener as object);
+      bookmarkMarkersRef.current.forEach((m) => m.setMap(null));
+      bookmarkMarkersRef.current = [];
+    };
+  }, [ready, planningEnabled, bookmarks]);
+
+  // Open the place panel given a Place ID (POI click or bookmark click).
+  // No day context — panel surfaces the "Pin destination" CTA instead.
+  function openPlaceFromPlaceId(placeId: string, fallbackName?: string, coords?: { lat: number; lng: number }) {
+    const svc = placesServiceRef.current;
+    const synth: PlacePin = {
+      dayIdx: -1,
+      dayNumber: 0,
+      dayLabel: '',
+      positionInDay: 0,
+      name: fallbackName ?? 'Loading…',
+      candidates: [fallbackName ?? ''],
+      isQuest: false,
+      legModeToNext: null,
+      resolved: coords,
+    };
+    setActivePhoto(0);
+    setActiveTab('info');
+    setPanel({ pin: synth, loading: true, poi: { placeId, coords } });
+    if (coords && mapRef.current) mapRef.current.panTo(coords);
+    if (!svc) return;
+    svc.getDetails(
+      {
+        placeId,
+        fields: [
+          'name', 'rating', 'user_ratings_total', 'price_level',
+          'formatted_address', 'photos', 'opening_hours',
+          'website', 'formatted_phone_number', 'editorial_summary',
+          'reviews', 'url', 'geometry',
+        ],
+      },
+      (d, st) => {
+        if (st !== 'OK' || !d) {
+          setPanel({ pin: synth, loading: false, poi: { placeId, coords } });
+          return;
+        }
+        setPanel({
+          pin: { ...synth, name: d.name ?? synth.name },
+          loading: false,
+          poi: { placeId, coords },
+          details: {
+            name: d.name ?? synth.name,
+            address: d.formatted_address,
+            rating: d.rating,
+            reviewCount: d.user_ratings_total,
+            priceLevel: d.price_level,
+            photos: (d.photos ?? []).slice(0, 8).map((ph) => ph.getUrl({ maxWidth: 800, maxHeight: 600 })),
+            openingHours: d.opening_hours?.weekday_text,
+            phone: d.formatted_phone_number,
+            website: d.website,
+            summary: d.editorial_summary?.overview,
+            reviews: (d.reviews ?? []).slice(0, 5).map((r) => ({
+              author: r.author_name ?? 'Anonymous',
+              rating: r.rating ?? 0,
+              text: r.text ?? '',
+            })),
+            canonicalUrl: d.url,
+          },
+        });
+      },
+    );
+  }
 
   // Geocode + render markers whenever pins or filter changes.
   useEffect(() => {
@@ -581,6 +721,8 @@ export default function UnifiedTripMap({
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             onClose={() => setPanel(null)}
+            bookmarks={bookmarks}
+            onAddBookmark={onAddBookmark}
           />
         )}
       </div>
@@ -640,9 +782,34 @@ function PlacePanelOverlay(props: {
   activeTab: 'info' | 'reviews';
   setActiveTab: (t: 'info' | 'reviews') => void;
   onClose: () => void;
+  bookmarks?: Bookmark[];
+  onAddBookmark?: (b: Bookmark) => void;
 }) {
-  const { data, location, activePhoto, setActivePhoto, activeTab, setActiveTab, onClose } = props;
-  const { pin, loading, details } = data;
+  const { data, location, activePhoto, setActivePhoto, activeTab, setActiveTab, onClose, bookmarks, onAddBookmark } = props;
+  const { pin, loading, details, poi } = data;
+  const isFromPOI = !!poi;
+  const placeName = details?.name ?? pin.name;
+  const isAlreadyPinned = !!(
+    bookmarks &&
+    (bookmarks.some((b) => poi?.placeId && b.placeId === poi.placeId) ||
+      bookmarks.some((b) => b.name.toLowerCase() === placeName.toLowerCase()))
+  );
+  const canPin = isFromPOI && onAddBookmark && !isAlreadyPinned;
+  const handlePin = () => {
+    if (!onAddBookmark || !poi) return;
+    const coords: [number, number] = poi.coords
+      ? [poi.coords.lng, poi.coords.lat]
+      : pin.resolved
+        ? [pin.resolved.lng, pin.resolved.lat]
+        : [0, 0];
+    onAddBookmark({
+      id: `bm_${Date.now()}`,
+      name: placeName,
+      coords,
+      category: 'other',
+      placeId: poi.placeId,
+    });
+  };
   const dayColor = DAY_COLORS[(pin.dayNumber - 1) % DAY_COLORS.length];
   const accent = pin.isQuest ? QUEST_COLOR : dayColor;
   const mapsQuery = `${pin.name}, ${location}`;
@@ -713,13 +880,15 @@ function PlacePanelOverlay(props: {
       {/* Body — scrollable */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={{ padding: '14px 16px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: accent, letterSpacing: '0.1em', fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: accent, display: 'inline-block' }} />
-            {pin.dayLabel}
-            {pin.isQuest && (
-              <span style={{ background: QUEST_COLOR, color: '#0a0a1f', padding: '2px 6px', borderRadius: 6, fontSize: 9, fontWeight: 700, marginLeft: 6 }}>QUEST</span>
-            )}
-          </div>
+          {pin.dayLabel && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: accent, letterSpacing: '0.1em', fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: accent, display: 'inline-block' }} />
+              {pin.dayLabel}
+              {pin.isQuest && (
+                <span style={{ background: QUEST_COLOR, color: '#0a0a1f', padding: '2px 6px', borderRadius: 6, fontSize: 9, fontWeight: 700, marginLeft: 6 }}>QUEST</span>
+              )}
+            </div>
+          )}
           <h3 style={{
             margin: '0 0 6px', fontFamily: 'var(--font-display, Georgia, serif)',
             fontSize: 20, fontWeight: 400, lineHeight: 1.2, color: '#fff',
@@ -740,10 +909,30 @@ function PlacePanelOverlay(props: {
           {details?.address && (
             <p style={{ margin: '0 0 12px', color: 'rgba(255,255,255,0.45)', fontSize: 11, lineHeight: 1.4 }}>{details.address}</p>
           )}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <a href={url} target="_blank" rel="noopener noreferrer" style={ctaPrimary()}>Open in Google Maps</a>
             <a href={dirUrl} target="_blank" rel="noopener noreferrer" style={ctaSecondary()}>Directions</a>
           </div>
+          {isFromPOI && onAddBookmark && (
+            <button
+              type="button"
+              onClick={canPin ? handlePin : undefined}
+              disabled={!canPin}
+              style={{
+                width: '100%', marginBottom: 12,
+                padding: '10px 0', borderRadius: 10,
+                fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase',
+                background: isAlreadyPinned ? 'rgba(56,189,248,0.08)' : 'rgba(56,189,248,0.18)',
+                border: `1px solid ${isAlreadyPinned ? 'rgba(56,189,248,0.3)' : 'rgba(56,189,248,0.5)'}`,
+                color: '#7dd3fc',
+                cursor: isAlreadyPinned ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}
+            >
+              {isAlreadyPinned ? '✓ Pinned' : '📍 Pin destination'}
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
