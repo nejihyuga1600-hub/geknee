@@ -70,6 +70,19 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
   iguazuFalls:    { lat: -25.69, lon: -54.44 },
   tokyoSkytree:   { lat: 35.71, lon: 139.81 },
   victoriaFalls:  { lat: -17.92, lon: 25.86 },
+  niagaraFalls:   { lat: 43.10, lon: -79.06 },
+  forbiddenCity:  { lat: 39.92, lon: 116.39 },
+  fushimiInari:   { lat: 34.97, lon: 135.78 },
+  mountFuji:      { lat: 35.36, lon: 138.73 },
+  petra:          { lat: 30.33, lon: 35.44 },
+  uluru:          { lat: -25.34, lon: 131.04 },
+  mtRushmore:     { lat: 43.88, lon: -103.46 },
+  notreDame:      { lat: 48.85, lon: 2.35 },
+  chichenItza:    { lat: 20.68, lon: -88.57 },
+  easterIsland:   { lat: -27.11, lon: -109.36 },
+  hagiaSophia:    { lat: 41.01, lon: 28.98 },
+  burjKhalifa:    { lat: 25.20, lon: 55.27 },
+  // animals (no globe-position; intentionally omitted): blueWhale, bear, …
 };
 
 // Rarity tier colors — used by the ring around collected monuments on the

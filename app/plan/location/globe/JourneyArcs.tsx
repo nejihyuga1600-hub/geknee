@@ -25,7 +25,11 @@ import { geoPos, R } from './geo';
 import { useCollectedMonumentOrder } from './landmark';
 
 const ARC_SEGMENTS = 64;
-const ARC_LIFT = 0.18; // peak bow as a fraction of R (R=10 → ~1.8 units)
+// Lift increased from 0.18 → 0.35 so the bow is clearly above the dotted
+// earth texture instead of grazing the surface. Endpoints are also pushed
+// outward by SURFACE_OFFSET to avoid z-fighting at the marker positions.
+const ARC_LIFT = 0.35;
+const SURFACE_OFFSET = 0.02;
 // Brand palette — matches --brand-accent / --brand-accent-2 in globals.css.
 // Gold is reserved for "magic-moment highlights only" per brand notes, so
 // permanent year arcs use the lavender → icy-blue spectrum instead.
@@ -37,8 +41,11 @@ function buildArc(a: THREE.Vector3, b: THREE.Vector3, lift: number): THREE.Vecto
   for (let i = 0; i <= ARC_SEGMENTS; i++) {
     const t = i / ARC_SEGMENTS;
     const v = new THREE.Vector3().lerpVectors(a, b, t).normalize();
+    // Sin-bow plus a small surface offset on every vertex — even endpoints
+    // sit slightly above the sphere so they don't z-fight with the dotted
+    // earth and the marker rings.
     const bow = Math.sin(t * Math.PI) * lift;
-    v.multiplyScalar(R + bow);
+    v.multiplyScalar(R + bow + R * SURFACE_OFFSET);
     points.push(v);
   }
   return points;
@@ -109,16 +116,20 @@ export function JourneyArcs({ year }: JourneyArcsProps) {
   if (arcs.length === 0) return null;
 
   return (
-    <group renderOrder={2}>
+    <group renderOrder={999}>
       {arcs.map(({ points, vertexColors }, i) => (
         <Line
           key={i}
           points={points}
           vertexColors={vertexColors}
-          lineWidth={2.5}
-          transparent
-          opacity={0.95}
+          lineWidth={4}
+          // depthTest=false lifts the arc above ALL geometry — guarantees
+          // visibility even if the earth dome happens to overlap. Combined
+          // with high renderOrder, the arc renders last and on top.
+          depthTest={false}
           depthWrite={false}
+          transparent
+          opacity={1}
           toneMapped={false}
         />
       ))}
