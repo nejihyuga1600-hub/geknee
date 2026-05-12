@@ -281,17 +281,37 @@ export function ActivityBlock({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {activityNumber !== undefined ? (() => {
           const isMonument = isMonumentQuest || /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(group.headline);
+          // Click the number circle to open the place in Google Maps —
+          // same URL formula the unified map's pin click uses, so the
+          // step number is effectively a deep-link to the destination.
+          const openInMaps = () => {
+            if (!place) return;
+            const q = city ? `${place}, ${city}` : place;
+            window.open(
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
+              '_blank', 'noopener,noreferrer',
+            );
+          };
           return (
-            <div style={{
-              flexShrink: 0, marginTop: 3,
-              width: 22, height: 22, borderRadius: '50%',
-              background: isMonument ? 'var(--brand-gold)' : 'rgba(167,139,250,0.15)',
-              border: `1.5px solid ${isMonument ? 'var(--brand-bg)' : 'rgba(167,139,250,0.45)'}`,
-              color: isMonument ? 'var(--brand-bg)' : 'var(--brand-accent)',
-              fontSize: 10, fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
-            }}>{activityNumber}</div>
+            <button
+              type="button"
+              onClick={openInMaps}
+              disabled={!place}
+              aria-label={place ? `Open ${place} in Google Maps` : `Step ${activityNumber}`}
+              title={place ? `Open ${place} in Google Maps` : undefined}
+              style={{
+                flexShrink: 0, marginTop: 3,
+                width: 22, height: 22, borderRadius: '50%',
+                background: isMonument ? 'var(--brand-gold)' : 'rgba(167,139,250,0.15)',
+                border: `1.5px solid ${isMonument ? 'var(--brand-bg)' : 'rgba(167,139,250,0.45)'}`,
+                color: isMonument ? 'var(--brand-bg)' : 'var(--brand-accent)',
+                fontSize: 10, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                cursor: place ? 'pointer' : 'default',
+                padding: 0,
+              }}
+            >{activityNumber}</button>
           );
         })() : (
           <div style={{ width: 22, flexShrink: 0 }} />

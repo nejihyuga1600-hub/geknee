@@ -154,6 +154,22 @@ export default function UnifiedTripMap({
 
     const visible = pins.filter((p) => activeFilter === 'all' || p.dayNumber === activeFilter);
 
+    // Reject candidate names that are obviously generic activity verbs
+    // (geocoding "Lunch" returns a random Lunch, NJ; "Breakfast" returns
+    // a Breakfast, ID, etc). Without this, the unified map sprays pins
+    // worldwide for any trip whose itinerary mentions meals or generic
+    // activities by category instead of by specific place.
+    const GENERIC_REJECTS = new Set([
+      'lunch', 'dinner', 'breakfast', 'brunch', 'snack', 'snacks', 'meal',
+      'check-in', 'check in', 'checkout', 'check-out', 'arrival', 'departure',
+      'transfer', 'transit', 'rest', 'free time', 'optional', 'overview',
+      'restaurant', 'hotel', 'cafe', 'bar', 'shop', 'market', 'museum',
+    ]);
+    const isGeneric = (name: string) => {
+      const n = name.toLowerCase().replace(/[^a-z\s-]/g, '').trim();
+      return n.length === 0 || GENERIC_REJECTS.has(n);
+    };
+
     async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
       const cacheKey = `geo:${query}`;
       try {
@@ -173,11 +189,14 @@ export default function UnifiedTripMap({
       return null;
     }
 
-    async function resolve(p: PlacePin): Promise<{ lat: number; lng: number } | null> {
+    async function resolve(p: PlacePin, anchor: { lat: number; lng: number } | null): Promise<{ lat: number; lng: number } | null> {
+      const inBbox = (c: { lat: number; lng: number }) =>
+        !anchor || (Math.abs(c.lat - anchor.lat) < 1.5 && Math.abs(c.lng - anchor.lng) < 2.0);
+
       for (const c of p.candidates) {
+        if (isGeneric(c)) continue;
         const tries = [
           `${c}, ${location}`,
-          c,
           `${c.replace(/\([^)]*\)/g, '').trim()}, ${location}`,
         ];
         const seen = new Set<string>();
@@ -185,15 +204,21 @@ export default function UnifiedTripMap({
           if (seen.has(q.toLowerCase())) continue;
           seen.add(q.toLowerCase());
           const hit = await geocode(q);
-          if (hit) return hit;
+          if (hit && inBbox(hit)) return hit;
         }
       }
       return null;
     }
 
     (async () => {
+      // Anchor on the trip city first so we can reject candidate
+      // geocode hits that fall outside it. Without this, generic words
+      // ("Lunch", "Restaurant") that slip past isGeneric still pin
+      // wherever Google's first match happens to be.
+      const anchor = await geocode(location);
+
       const resolved = await Promise.all(
-        visible.map(async (p) => ({ ...p, resolved: (await resolve(p)) ?? undefined })),
+        visible.map(async (p) => ({ ...p, resolved: (await resolve(p, anchor)) ?? undefined })),
       );
       if (cancelled) return;
 
@@ -232,13 +257,11 @@ export default function UnifiedTripMap({
 
       if (!bounds.isEmpty()) {
         mapRef.current?.fitBounds(bounds, 64);
-      } else if (pins.length === 0 && location) {
-        // No pins yet — anchor on the city if we can.
-        const cityHit = await geocode(location);
-        if (cityHit && mapRef.current) {
-          mapRef.current.setCenter(cityHit);
-          mapRef.current.setZoom(11);
-        }
+      } else if (anchor && mapRef.current) {
+        // No resolved pins (or none in current filter) — anchor on the
+        // city so the user sees the right region instead of a world view.
+        mapRef.current.setCenter(anchor);
+        mapRef.current.setZoom(11);
       }
     })();
 
