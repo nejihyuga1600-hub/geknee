@@ -12,7 +12,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import type { Section } from './lib/itinerary-parse';
-import { extractActivityCandidates, extractActivityPlace } from './lib/places';
+import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
+
+const QUEST_RE = /\[\s*MONUMENT\s*QUEST\s*\]/i;
+
+type LegMode = 'walking' | 'cycling' | 'driving';
 
 interface PlacePin {
   dayIdx: number;          // 0 = first day section, 1 = second, ...
@@ -21,8 +25,12 @@ interface PlacePin {
   positionInDay: number;   // 1-based — drives the marker badge label
   name: string;            // primary display name
   candidates: string[];    // fallback names for geocoding
+  isQuest: boolean;        // [MONUMENT QUEST] marker → gold pin
+  legModeToNext: LegMode | null; // transit mode used to reach the next stop
   resolved?: { lat: number; lng: number };
 }
+
+const QUEST_COLOR = '#fbbf24'; // gold — matches monument-quest pill in ActivityBlock
 
 interface Props {
   sections: Section[];
@@ -39,6 +47,7 @@ declare global {
       maps?: {
         Map: new (el: HTMLElement, opts: Record<string, unknown>) => GoogleMap;
         Marker: new (opts: Record<string, unknown>) => GoogleMarker;
+        Polyline: new (opts: Record<string, unknown>) => GooglePolyline;
         InfoWindow: new (opts?: Record<string, unknown>) => { open: (opts: Record<string, unknown>) => void; close: () => void; setContent: (s: string) => void };
         LatLngBounds: new () => { extend: (p: { lat: number; lng: number }) => void; isEmpty: () => boolean };
         Size: new (w: number, h: number) => unknown;
@@ -48,6 +57,10 @@ declare global {
       };
     };
   }
+}
+
+interface GooglePolyline {
+  setMap: (m: GoogleMap | null) => void;
 }
 
 interface GoogleMap {
@@ -78,6 +91,7 @@ export default function UnifiedTripMap({
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markersRef = useRef<GoogleMarker[]>([]);
+  const polylinesRef = useRef<GooglePolyline[]>([]);
   const infoWindowRef = useRef<{ open: (opts: Record<string, unknown>) => void; close: () => void; setContent: (s: string) => void } | null>(null);
   const [ready, setReady] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
@@ -92,25 +106,44 @@ export default function UnifiedTripMap({
   }, [sections]);
 
   // Build the candidate place list per day, in chronological order.
+  // Walk lines in order so we can capture each activity's transit-mode-
+  // to-next (the emoji line that follows the headline). That lets the
+  // route polylines pick the right Mapbox profile per leg.
   const pins = useMemo<PlacePin[]>(() => {
     const out: PlacePin[] = [];
     daySections.forEach((entry, dayIdx) => {
       const dayNum = parseInt(((entry.s.heading ?? '').match(/Day\s*(\d+)/i) ?? [])[1] ?? `${dayIdx + 1}`, 10);
-      const headlines = entry.s.lines.filter((l: string) => /\*\*[^*]+\*\*/.test(l));
       let pos = 0;
-      for (const headline of headlines) {
-        const candidates = extractActivityCandidates(headline, []);
-        const primary = extractActivityPlace(headline, []);
-        if (!candidates.length || !primary) continue;
-        pos += 1;
-        out.push({
-          dayIdx,
-          dayNumber: dayNum,
-          dayLabel: `Day ${dayNum}`,
-          positionInDay: pos,
-          name: primary,
-          candidates,
-        });
+      let pendingTransit: LegMode | null = null;
+      for (const line of entry.s.lines as string[]) {
+        if (/\*\*[^*]+\*\*/.test(line)) {
+          // Activity headline. The transit line we last saw applies to
+          // the previous activity's leg-to-this one — assign it back.
+          if (pendingTransit && out.length > 0) {
+            const prev = out[out.length - 1];
+            if (prev.dayIdx === dayIdx && prev.legModeToNext === null) {
+              prev.legModeToNext = pendingTransit;
+            }
+          }
+          pendingTransit = null;
+          const candidates = extractActivityCandidates(line, []);
+          const primary = extractActivityPlace(line, []);
+          if (!candidates.length || !primary) continue;
+          pos += 1;
+          out.push({
+            dayIdx,
+            dayNumber: dayNum,
+            dayLabel: `Day ${dayNum}`,
+            positionInDay: pos,
+            name: primary,
+            candidates,
+            isQuest: QUEST_RE.test(line),
+            legModeToNext: null,
+          });
+        } else {
+          const m = extractTransitMode(line);
+          if (m) pendingTransit = m;
+        }
       }
     });
     return out;
@@ -147,9 +180,11 @@ export default function UnifiedTripMap({
     if (!ready || !mapRef.current || !window.google?.maps) return;
     let cancelled = false;
 
-    // Clear existing markers.
+    // Clear existing markers + polylines.
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
+    polylinesRef.current.forEach((p) => p.setMap(null));
+    polylinesRef.current = [];
     infoWindowRef.current?.close();
 
     const visible = pins.filter((p) => activeFilter === 'all' || p.dayNumber === activeFilter);
@@ -229,7 +264,10 @@ export default function UnifiedTripMap({
         if (!p.resolved) continue;
         const dayCount = (perDayCounter.get(p.dayNumber) ?? 0) + 1;
         perDayCounter.set(p.dayNumber, dayCount);
-        const color = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
+        // Quest pins override the day color with gold so the
+        // monument-quest stops are unmistakable across the whole trip.
+        const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
+        const color = p.isQuest ? QUEST_COLOR : dayColor;
 
         const marker = new window.google!.maps!.Marker({
           position: p.resolved,
@@ -237,13 +275,14 @@ export default function UnifiedTripMap({
           label: { text: String(p.positionInDay), color: '#0a0a1f', fontSize: '12px', fontWeight: '700' },
           icon: {
             path: window.google!.maps!.SymbolPath.CIRCLE,
-            scale: 12,
+            scale: p.isQuest ? 14 : 12,
             fillColor: color,
-            fillOpacity: 0.9,
+            fillOpacity: 0.95,
             strokeColor: '#0a0a1f',
-            strokeWeight: 2,
+            strokeWeight: p.isQuest ? 3 : 2,
           },
-          title: `${p.dayLabel} · ${p.name}`,
+          title: `${p.dayLabel} · ${p.name}${p.isQuest ? ' · Monument Quest' : ''}`,
+          zIndex: p.isQuest ? 100 : 10,
         });
         marker.addListener('click', () => {
           // Open the place in Google Maps. Defers to the native app on
@@ -253,6 +292,61 @@ export default function UnifiedTripMap({
         });
         markersRef.current.push(marker);
         bounds.extend(p.resolved);
+      }
+
+      // ── Per-day route lines ─────────────────────────────────────────
+      // Walk the resolved pins by day, fetch a Mapbox Directions route
+      // per consecutive leg, and draw a polyline colored by the day.
+      // Skipped when activeFilter === a single day (we still draw lines
+      // for that day) or when consecutive pins are missing geo. All
+      // requests fan out in parallel so this doesn't block first paint.
+      const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (MAPBOX_TOKEN) {
+        const byDay = new Map<number, typeof resolved>();
+        for (const p of resolved) {
+          if (!p.resolved) continue;
+          if (!byDay.has(p.dayNumber)) byDay.set(p.dayNumber, []);
+          byDay.get(p.dayNumber)!.push(p);
+        }
+
+        const legPromises: Promise<void>[] = [];
+        for (const [dayNumber, dayPins] of byDay.entries()) {
+          const dayColor = DAY_COLORS[(dayNumber - 1) % DAY_COLORS.length];
+          for (let i = 0; i < dayPins.length - 1; i++) {
+            const from = dayPins[i].resolved!;
+            const to = dayPins[i + 1].resolved!;
+            const mode: LegMode = dayPins[i].legModeToNext ?? 'walking';
+            // Color the leg by mode within the day's hue: quest legs
+            // get a gold tint, otherwise use the day color.
+            const legColor = dayPins[i].isQuest || dayPins[i + 1].isQuest ? QUEST_COLOR : dayColor;
+            const url =
+              `https://api.mapbox.com/directions/v5/mapbox/${mode}/` +
+              `${from.lng},${from.lat};${to.lng},${to.lat}` +
+              `?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
+            legPromises.push(
+              fetch(url)
+                .then((r) => r.ok ? r.json() : null)
+                .then((d: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> } | null) => {
+                  if (cancelled || !d?.routes?.[0] || !mapRef.current || !window.google?.maps) return;
+                  const path = d.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+                  const line = new window.google.maps.Polyline({
+                    path,
+                    map: mapRef.current,
+                    strokeColor: legColor,
+                    strokeOpacity: 0.85,
+                    strokeWeight: 4,
+                    geodesic: false,
+                    zIndex: 5,
+                  });
+                  polylinesRef.current.push(line);
+                })
+                .catch(() => { /* swallow individual leg failures */ }),
+            );
+          }
+        }
+        // Don't await — let the bounds fit first, lines arrive over the next
+        // few hundred ms and just appear over the map.
+        Promise.all(legPromises);
       }
 
       if (!bounds.isEmpty()) {
