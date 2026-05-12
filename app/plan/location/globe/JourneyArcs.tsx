@@ -18,12 +18,16 @@ import * as THREE from 'three';
 import { MONUMENT_LATLON } from './skins';
 import { geoPos, R } from './geo';
 import { useCollectedMonumentOrder } from './landmark';
-import { currentIssueYear } from '@/lib/issue-year';
 
 const ARC_SEGMENTS = 64;
 const ARC_LIFT = 0.18; // peak bow as a fraction of R (R=10 → ~1.8 units)
-const COLOR_FROM = new THREE.Color('#fbbf24'); // gold
-const COLOR_TO = new THREE.Color('#a78bfa');   // purple
+// Brand palette — matches --brand-accent / --brand-accent-2 in globals.css.
+// Gold (#fbbf24) is reserved for "magic-moment highlights only" per the
+// brand notes, so we use the lavender → icy-blue spectrum instead. Older
+// arcs get the primary lavender (anchor), newer arcs fade to icy blue —
+// implying journey direction without arrowheads.
+const COLOR_FROM = new THREE.Color('#a78bfa'); // brand lavender (older)
+const COLOR_TO = new THREE.Color('#7dd3fc');   // brand icy blue (newer)
 
 /**
  * Sampled great-circle-ish arc between two surface points. We lerp along
@@ -44,21 +48,28 @@ function buildArc(a: THREE.Vector3, b: THREE.Vector3, lift: number): THREE.Vecto
 }
 
 interface JourneyArcsProps {
-  /** Override active issue year for previewing previous years. */
+  /**
+   * If provided, only show arcs between monuments collected in this year.
+   * If omitted, shows the full lifetime journey on the main globe — that's
+   * the default because the main globe is the user's permanent record, not
+   * a per-year view (year filtering lives on /wrapped instead).
+   */
   year?: number;
 }
 
 export function JourneyArcs({ year }: JourneyArcsProps) {
   const order = useCollectedMonumentOrder();
-  const activeYear = year ?? currentIssueYear();
 
-  // Build one BufferGeometry per arc — filter ordered list to active year
-  // first so arcs from prior years don't appear in the current passport.
+  // Build one BufferGeometry per arc. When `year` is given, restrict the
+  // ordered list to collections inside that calendar year first; otherwise
+  // use the full chronological history.
   const arcs = useMemo(() => {
-    const filtered = order.filter((e) => {
-      const t = new Date(e.collectedAt).getUTCFullYear();
-      return t === activeYear;
-    });
+    const filtered = year
+      ? order.filter((e) => {
+          const t = new Date(e.collectedAt).getUTCFullYear();
+          return t === year;
+        })
+      : order;
     if (filtered.length < 2) return [];
 
     const out: { geom: THREE.BufferGeometry; colorStart: THREE.Color; colorEnd: THREE.Color }[] = [];
@@ -87,7 +98,7 @@ export function JourneyArcs({ year }: JourneyArcsProps) {
       out.push({ geom, colorStart: COLOR_FROM, colorEnd: COLOR_TO });
     }
     return out;
-  }, [order, activeYear]);
+  }, [order, year]);
 
   // Dispose old geometries when the arcs list changes — long-running r3f
   // scenes leak GPU memory otherwise.

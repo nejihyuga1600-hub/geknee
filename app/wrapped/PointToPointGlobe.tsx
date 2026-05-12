@@ -260,9 +260,12 @@ export function PointToPointGlobe({ points, size = 380, className }: PointToPoin
         }}
       >
         <defs>
+          {/* Brand palette: lavender (--brand-accent) → icy blue (--brand-accent-2).
+              Older end of the journey starts lavender, newer end fades to icy
+              blue. Matches the JourneyArcs gradient on the main 3D globe. */}
           <linearGradient id="geknee-arc-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.95" />
+            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.95" />
           </linearGradient>
         </defs>
         {points.slice(0, -1).map((_, i) => (
