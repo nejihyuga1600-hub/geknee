@@ -34,13 +34,19 @@ interface VisionExtract {
   kind: "meal" | "sight" | "experience" | "coffee" | "shopping" | "activity";
   /** Suggested time in 24h "HH:MM", server chooses based on day's existing slots. */
   suggestedTime: string;
+  /**
+   * When the client requested "any day", the model picks which day this
+   * stop fits into best. Required iff caller sent day=0. Otherwise the
+   * server's specified day wins.
+   */
+  chosenDay?: number;
   /** Confidence 0..1. <0.55 → reject. */
   confidence: number;
 }
 
 const VISION_SYSTEM = `You are looking at a single photo a traveler just took (or a still frame from a video they shot).
 
-Identify what's in the photo and propose ONE itinerary activity that the traveler likely wants to add to Day N of their trip. The traveler's current Day N schedule is provided so you can pick a reasonable time slot that doesn't conflict.
+Identify what's in the photo and propose ONE itinerary activity that the traveler likely wants to add to the trip. You may be given a specific Day N's schedule, or the entire itinerary (any-day mode). In any-day mode pick the day that fits best based on what's in the photo (cuisine matching neighborhood, sights matching morning vs evening light, etc.) and return chosenDay as 1-indexed integer.
 
 Return ONLY a JSON object, no commentary, no fences:
 {
@@ -48,6 +54,7 @@ Return ONLY a JSON object, no commentary, no fences:
   "rationale": "1 sentence on why this should be added.",
   "kind": "meal | sight | experience | coffee | shopping | activity",
   "suggestedTime": "HH:MM in 24h, chosen so it doesn't overlap with the existing slots",
+  "chosenDay": 1-indexed integer — ONLY include in any-day mode,
   "confidence": 0..1
 }
 
@@ -80,10 +87,12 @@ export async function POST(req: Request) {
   catch { return Response.json({ error: "Expected multipart/form-data" }, { status: 400 }); }
 
   const tripId = String(form.get("tripId") ?? "");
+  // day === 0 (or missing) means "any day" — the vision model picks the
+  // best slot from the full itinerary. Specific 1..N targets a single day.
   const day = Number(form.get("day") ?? 0);
   const file = form.get("file");
-  if (!tripId || !day || !(file instanceof File)) {
-    return Response.json({ error: "tripId, day, file required" }, { status: 400 });
+  if (!tripId || !(file instanceof File)) {
+    return Response.json({ error: "tripId, file required" }, { status: 400 });
   }
   if (!file.type.startsWith("image/")) {
     return Response.json({ error: "Image file required (videos: submit a frame)" }, { status: 400 });
@@ -98,9 +107,16 @@ export async function POST(req: Request) {
   if (trip.userId !== userId) return Response.json({ error: "Forbidden" }, { status: 403 });
   if (!trip.itinerary) return Response.json({ error: "No itinerary to attach to" }, { status: 400 });
 
-  const dayBlock = extractDay(trip.itinerary, day);
-  if (!dayBlock) {
-    return Response.json({ error: `Day ${day} not found in itinerary` }, { status: 400 });
+  // Day context for the vision prompt. Specific day → just that block.
+  // Any-day → the entire itinerary so the model can pick the best slot.
+  let dayBlock: string | null;
+  if (day === 0) {
+    dayBlock = trip.itinerary;
+  } else {
+    dayBlock = extractDay(trip.itinerary, day);
+    if (!dayBlock) {
+      return Response.json({ error: `Day ${day} not found in itinerary` }, { status: 400 });
+    }
   }
 
   // Upload the photo to Blob — we keep the URL on record so the itinerary
@@ -148,7 +164,9 @@ export async function POST(req: Request) {
           },
           {
             type: "text",
-            text: `Trip destination: ${trip.location ?? "unknown"}\n\nCurrent Day ${day} schedule:\n${dayBlock.trim()}`,
+            text: day === 0
+              ? `Trip destination: ${trip.location ?? "unknown"}\n\nAny-day mode — pick the best day. Full itinerary:\n${dayBlock.trim()}`
+              : `Trip destination: ${trip.location ?? "unknown"}\n\nCurrent Day ${day} schedule:\n${dayBlock.trim()}`,
           },
         ],
       }],
@@ -186,12 +204,17 @@ export async function POST(req: Request) {
   // Reuse the existing /api/itinerary/adjust call internally. Same-server
   // fetch keeps a single source of truth on how itinerary mutation is
   // persisted, and we get the exact same "minimal markdown edit" behaviour.
+  //
+  // In any-day mode, the resolved day comes from Claude's chosenDay; in
+  // specific-day mode, the caller's day wins. effectiveDay clamps to 1
+  // so the meta string never reads "Day 0".
+  const effectiveDay = day === 0 ? Math.max(1, extracted.chosenDay ?? 1) : day;
   const adjustBody = {
     tripId,
     kind: "activity" as const,
     name: extracted.placeName,
     district: trip.location ?? undefined,
-    meta: `Day ${day} · ${formatTimeForDisplay(extracted.suggestedTime)} · ${extracted.kind}${photoUrl ? ` · photo: ${photoUrl}` : ""}`,
+    meta: `Day ${effectiveDay} · ${formatTimeForDisplay(extracted.suggestedTime)} · ${extracted.kind}${photoUrl ? ` · photo: ${photoUrl}` : ""}`,
   };
 
   // Internal fetch so we go through the same auth + persistence pipeline.

@@ -36,7 +36,10 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [day, setDay] = useState<number>(initialDay ?? 1);
+  // 0 = "Any day" — server picks the best slot via vision. initialDay
+  // overrides only when explicitly passed (e.g. in-trip use where we
+  // already know the current day).
+  const [day, setDay] = useState<number>(initialDay ?? 0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ name: string; time: string } | null>(null);
@@ -121,7 +124,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
             ✦ Attach a photo
           </div>
           <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
-            Drop an image, or pick one. Claude reads it and adds the stop to the day.
+            Drop an image, or pick one. geknee reads it and adds the stop to the day.
           </div>
         </div>
         <select
@@ -130,6 +133,10 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           onChange={(e) => setDay(Number(e.target.value))}
           style={selectStyle}
         >
+          {/* "Any day" sends day=0 to the server, which then lets the
+              vision model pick the best slot across the whole itinerary
+              based on what the photo shows. */}
+          <option value={0}>Any day</option>
           {Array.from({ length: dayCount }).map((_, i) => (
             <option key={i + 1} value={i + 1}>Day {i + 1}</option>
           ))}
@@ -140,7 +147,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           </button>
         ) : (
           <button onClick={submit} disabled={uploading} style={primaryBtnStyle}>
-            {uploading ? 'Reading photo…' : 'Add to Day ' + day}
+            {uploading ? 'Reading photo…' : day === 0 ? 'Add to best day' : `Add to Day ${day}`}
           </button>
         )}
         <input
@@ -188,17 +195,21 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           border: '1px solid rgba(124,255,151,0.30)',
           color: 'var(--brand-success)', fontSize: 13,
         }}>
-          ✓ Added <strong style={{ fontWeight: 600 }}>{success.name}</strong> at {success.time} to Day {day}. Your itinerary updated.
+          ✓ Added <strong style={{ fontWeight: 600 }}>{success.name}</strong> at {success.time}. Your itinerary updated.
         </div>
       )}
     </>
   );
 
   if (compact) {
-    return (
-      <>
+    // Inline expand instead of a modal — one click on the pill replaces
+    // it with the full controls in place. No second click required to get
+    // to the day picker / pick button. Click the × to collapse back.
+    if (!open) {
+      return (
         <button
           onClick={() => setOpen(true)}
+          aria-expanded={false}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '7px 14px', borderRadius: 999,
@@ -213,56 +224,51 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           <PaperclipIcon />
           <span>Attach photo</span>
         </button>
-
-        {open && (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => !uploading && setOpen(false)}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 1000,
-              background: 'rgba(5,5,15,0.72)',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 18,
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) pickFile(f);
-              }}
-              style={{
-                width: '100%', maxWidth: 520,
-                background: 'var(--brand-surface-solid, #0d0d24)',
-                border: `1px ${dragOver ? 'dashed var(--brand-accent)' : 'solid var(--brand-border-hi)'}`,
-                borderRadius: 18, padding: 22,
-                color: 'var(--brand-ink)',
-                transition: 'border-color 180ms ease',
-              }}
-            >
-              {body}
-              <div style={{
-                marginTop: 14, display: 'flex', justifyContent: 'flex-end',
-              }}>
-                <button
-                  onClick={() => !uploading && setOpen(false)}
-                  disabled={uploading}
-                  style={ghostBtnStyle}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
+      );
+    }
+    return (
+      <div
+        role="region"
+        aria-label="Attach a photo to your itinerary"
+        aria-expanded
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) pickFile(f);
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 12px', borderRadius: 14,
+          background: 'rgba(167,139,250,0.10)',
+          border: `1px ${dragOver ? 'dashed var(--brand-accent)' : 'solid rgba(167,139,250,0.32)'}`,
+          color: 'var(--brand-ink)',
+          transition: 'border-color 180ms ease',
+          maxWidth: '100%',
+        }}
+      >
+        <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+          {body}
+        </div>
+        <button
+          onClick={() => !uploading && setOpen(false)}
+          disabled={uploading}
+          aria-label="Collapse photo attach"
+          style={{
+            flexShrink: 0,
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'transparent', border: '1px solid var(--brand-border)',
+            color: 'var(--brand-ink-dim)',
+            fontFamily: 'inherit', fontSize: 16, lineHeight: 1,
+            cursor: uploading ? 'wait' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          ×
+        </button>
+      </div>
     );
   }
 
@@ -300,7 +306,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
             ✦ Attach a photo
           </div>
           <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
-            Drop an image, or pick one. Claude reads it and adds the stop to the day.
+            Drop an image, or pick one. geknee reads it and adds the stop to the day.
           </div>
         </div>
 
@@ -310,6 +316,10 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           onChange={(e) => setDay(Number(e.target.value))}
           style={selectStyle}
         >
+          {/* "Any day" sends day=0 to the server, which then lets the
+              vision model pick the best slot across the whole itinerary
+              based on what the photo shows. */}
+          <option value={0}>Any day</option>
           {Array.from({ length: dayCount }).map((_, i) => (
             <option key={i + 1} value={i + 1}>Day {i + 1}</option>
           ))}
@@ -321,7 +331,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           </button>
         ) : (
           <button onClick={submit} disabled={uploading} style={primaryBtnStyle}>
-            {uploading ? 'Reading photo…' : 'Add to Day ' + day}
+            {uploading ? 'Reading photo…' : day === 0 ? 'Add to best day' : `Add to Day ${day}`}
           </button>
         )}
 
@@ -374,7 +384,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
           border: '1px solid rgba(124,255,151,0.30)',
           color: 'var(--brand-success)', fontSize: 13,
         }}>
-          ✓ Added <strong style={{ fontWeight: 600 }}>{success.name}</strong> at {success.time} to Day {day}. Your itinerary updated.
+          ✓ Added <strong style={{ fontWeight: 600 }}>{success.name}</strong> at {success.time}. Your itinerary updated.
         </div>
       )}
     </section>
