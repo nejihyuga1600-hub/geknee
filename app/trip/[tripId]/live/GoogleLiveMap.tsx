@@ -29,6 +29,10 @@ interface GoogleLiveMapProps {
   /** Day number being shown — used as a remount key so each day's geocoding
       pass starts clean. */
   dayKey?: number;
+  /** Fired when the user clicks an empty spot on the map. Coords are passed
+      so the parent can open the add-stop modal pre-seeded with a reverse-
+      geocoded place suggestion. */
+  onMapClick?: (coords: { lat: number; lon: number }) => void;
 }
 
 // Dark map style — terse Google Maps Styled Map array tuned for the dark
@@ -63,11 +67,15 @@ function pinIcon(n: number): google.maps.Icon {
   };
 }
 
-export function GoogleLiveMap({ city, activities, dayKey }: GoogleLiveMapProps) {
+export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  // Ref the click callback so we don't have to re-init the map when the
+  // parent's onMapClick identity changes. The listener reads .current.
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
 
   // One-time map init. Centers on a generic default until the activity-
   // resolution effect below pans to the day's first stop.
@@ -87,6 +95,16 @@ export function GoogleLiveMap({ city, activities, dayKey }: GoogleLiveMapProps) 
           backgroundColor: '#0c0c1f',
         });
         mapRef.current = map;
+
+        // Surface map clicks to the parent so the add-stop modal can
+        // pre-seed with a reverse-geocoded label. Wrapped in a function
+        // declaration (not arrow) so the listener receives the LatLng.
+        map.addListener('click', (e: google.maps.MapMouseEvent) => {
+          const ll = e.latLng;
+          if (ll && onMapClickRef.current) {
+            onMapClickRef.current({ lat: ll.lat(), lon: ll.lng() });
+          }
+        });
       })
       .catch(() => {
         /* loader failure surfaces via empty map area — silent */

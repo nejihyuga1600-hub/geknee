@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import BudgetTracker from './BudgetTracker';
 import { GoogleLiveMap } from './GoogleLiveMap';
+import { AddStopModal } from './AddStopModal';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -191,6 +192,10 @@ export default function LiveTripPage() {
   // calendar-current day. Map + activity list both flip when this changes,
   // so the map centers on Day N's stops instead of the user's geolocation.
   const [selectedDay, setSelectedDay] = useState<number>(dayInfo.day);
+  // Add-stop modal state. coords are populated when the user clicks the
+  // map; null = launched from the "+ Add stop" button (no pre-seed).
+  const [addStopOpen, setAddStopOpen] = useState(false);
+  const [addStopCoords, setAddStopCoords] = useState<{ lat: number; lon: number } | null>(null);
   useEffect(() => {
     // When the calendar advances (new day on a running trip), follow along
     // — but don't override an explicit user choice. Heuristic: if the user
@@ -355,7 +360,33 @@ export default function LiveTripPage() {
           city={trip?.location ?? null}
           activities={activities}
           dayKey={selectedDay}
+          onMapClick={(coords) => {
+            setAddStopCoords(coords);
+            setAddStopOpen(true);
+          }}
         />
+        {/* Floating "+ Add stop" pill in the top-left of the map. Always
+            visible so users don't have to discover the click-to-add
+            interaction. */}
+        <button
+          onClick={() => { setAddStopCoords(null); setAddStopOpen(true); }}
+          style={{
+            position: 'absolute',
+            left: 36, top: 14,
+            background: 'rgba(167,139,250,0.92)',
+            color: 'var(--brand-bg)',
+            border: 'none',
+            borderRadius: 999,
+            padding: '8px 14px',
+            fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            boxShadow: '0 6px 18px rgba(167,139,250,0.45)',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          + Add stop
+        </button>
         {/* Save-for-offline CTA. Web/PWA can't programmatically download
             Google Maps tiles (Google TOS), so this deep-links into the
             Google Maps app on iOS/Android — once open, the user taps
@@ -426,6 +457,24 @@ export default function LiveTripPage() {
         <div style={{ padding: '24px 22px', color: 'var(--brand-ink-mute)', fontSize: 12 }}>
           Loading trip…
         </div>
+      )}
+
+      {/* AI re-plan modal. Single write to TripDraft.itinerary updates both
+          this live page and the /plan/[tripId]/itinerary page (both read
+          the same field). */}
+      {addStopOpen && tripId && (
+        <AddStopModal
+          tripId={tripId}
+          city={trip?.location ?? null}
+          day={selectedDay}
+          initialCoords={addStopCoords}
+          onSaved={(newItinerary) => {
+            setItinerary(newItinerary);
+            setAddStopOpen(false);
+            setAddStopCoords(null);
+          }}
+          onClose={() => { setAddStopOpen(false); setAddStopCoords(null); }}
+        />
       )}
 
       <style>{`
