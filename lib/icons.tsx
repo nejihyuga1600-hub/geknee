@@ -29,7 +29,8 @@ const base = ({ size = 16, ...rest }: IconProps) => ({
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.8,
+  // v2: bumped 1.8 → 2.0 for trading-card weight. Tested at 14-64px.
+  strokeWidth: 2.0,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   'aria-hidden': true,
@@ -234,13 +235,15 @@ export const Globe = (p: IconProps) => (
   </svg>
 );
 
-/** Monument (columned façade) — replaces 🏛 */
+/** Monument — claimable peak with a pennant flag on top (v2 game feel) */
 export const Monument = (p: IconProps) => (
   <svg {...base(p)}>
+    <path d="M12 1v3" />
+    <path d="M12 1l4 1.5-4 1.5" fill="currentColor" />
     <path d="M3 9l9-5 9 5" />
     <path d="M4 9v9M20 9v9" />
     <path d="M8 11v7M12 11v7M16 11v7" />
-    <path d="M3 20h18" />
+    <path d="M3 20h18" strokeWidth={2.4} />
   </svg>
 );
 
@@ -262,11 +265,12 @@ export const Map = (p: IconProps) => (
 
 // ── State + abstract ─────────────────────────────────────────────────
 
-/** Four-point sparkle — geknee "magic moment" / curated marker */
+/** Four-point sparkle — geknee signature mark · v2 glowing center */
 export const Sparkle = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M12 3v6M12 15v6M3 12h6M15 12h6" />
-    <path d="M7 7l3.5 3.5M13.5 13.5L17 17M17 7l-3.5 3.5M10.5 13.5L7 17" />
+    <path d="M7 7l3.5 3.5M13.5 13.5L17 17M17 7l-3.5 3.5M10.5 13.5L7 17" opacity="0.85" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" />
   </svg>
 );
 
@@ -278,11 +282,14 @@ export const Lock = (p: IconProps) => (
   </svg>
 );
 
-/** Unlock — collected */
+/** Unlock — collected · v2 sparkle burst */
 export const Unlock = (p: IconProps) => (
   <svg {...base(p)}>
     <rect x="5" y="11" width="14" height="9" rx="2" />
     <path d="M8 11V8a4 4 0 018 0" />
+    <circle cx="12" cy="15.5" r="1.4" fill="currentColor" />
+    {/* burst dashes around the shackle */}
+    <path d="M22 3l1 1.5M2 6l1.5 1M20 9l2 .5" opacity="0.85" />
   </svg>
 );
 
@@ -319,13 +326,15 @@ export const Dining = (p: IconProps) => (
   </svg>
 );
 
-/** Trophy — leaderboard / achievement */
+/** Trophy — leaderboard / achievement · v2 burst rays + filled cup */
 export const Trophy = (p: IconProps) => (
   <svg {...base(p)}>
+    {/* burst rays above the cup — reads as "winner" */}
+    <path d="M12 1v2M5 4l1 1.5M19 4l-1 1.5" opacity="0.85" />
     <path d="M7 3h10v4a5 5 0 01-10 0V3z" />
     <path d="M5 5H3v2a3 3 0 003 3M19 5h2v2a3 3 0 01-3 3" />
-    <path d="M9 14h6l1 4H8z" />
-    <path d="M7 21h10" />
+    <path d="M9 14h6l1 4H8z" fill="currentColor" />
+    <path d="M7 21h10" strokeWidth={2.4} />
   </svg>
 );
 
