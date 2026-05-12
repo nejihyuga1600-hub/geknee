@@ -6,6 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import BudgetTracker from './BudgetTracker';
+import { GoogleLiveMap } from './GoogleLiveMap';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -186,10 +187,23 @@ export default function LiveTripPage() {
   const cityName = (trip?.location ?? 'YOUR CITY').toUpperCase();
   const clockText = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-  // Today's activities, parsed from the saved itinerary.
+  // The user can toggle which day they're previewing — defaults to the
+  // calendar-current day. Map + activity list both flip when this changes,
+  // so the map centers on Day N's stops instead of the user's geolocation.
+  const [selectedDay, setSelectedDay] = useState<number>(dayInfo.day);
+  useEffect(() => {
+    // When the calendar advances (new day on a running trip), follow along
+    // — but don't override an explicit user choice. Heuristic: if the user
+    // hasn't deviated from the previous "today", track it.
+    setSelectedDay(dayInfo.day);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayInfo.day]);
+
+  // Selected-day activities. The map + day-on-rails copy + LEAVE-BY card
+  // all read off this list, so toggling re-renders the whole strip cleanly.
   const activities = useMemo(
-    () => parseTodayActivities(itinerary, dayInfo.day),
-    [itinerary, dayInfo.day],
+    () => parseTodayActivities(itinerary, selectedDay),
+    [itinerary, selectedDay],
   );
 
   // Next activity = first one whose time is later than now.
@@ -292,8 +306,88 @@ export default function LiveTripPage() {
         </div>
       </div>
 
-      {/* ── Map area ───────────────────────────────────────────────────── */}
-      <LiveMap city={trip?.location ?? null} geo={geo} weather={weather?.[0] ?? null} activities={activities} />
+      {/* ── Day toggle pills ───────────────────────────────────────────── */}
+      <div style={{
+        padding: '12px 22px 4px',
+        display: 'flex', alignItems: 'center', gap: 8,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+          color: 'var(--brand-ink-mute)', textTransform: 'uppercase',
+          marginRight: 4,
+        }}>
+          View day
+        </span>
+        {Array.from({ length: dayInfo.total }).map((_, i) => {
+          const d = i + 1;
+          const isActive = selectedDay === d;
+          const isToday = dayInfo.day === d;
+          return (
+            <button
+              key={d}
+              onClick={() => setSelectedDay(d)}
+              style={{
+                padding: '5px 12px', borderRadius: 999,
+                border: `1px solid ${isActive ? 'var(--brand-accent)' : 'var(--brand-border)'}`,
+                background: isActive ? 'rgba(167,139,250,0.18)' : 'transparent',
+                color: isActive ? 'var(--brand-ink)' : 'var(--brand-ink-dim)',
+                fontFamily: MONO, fontSize: 11, fontWeight: 600,
+                letterSpacing: '0.08em',
+                cursor: 'pointer',
+              }}
+            >
+              {d}{isToday && (
+                <span style={{
+                  marginLeft: 5,
+                  fontSize: 8, color: 'var(--brand-success)',
+                  letterSpacing: '0.12em',
+                }}>● TODAY</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Map area (2D Google Maps, centered on selected day) ─────────── */}
+      <div style={{ padding: '0 22px', position: 'relative' }}>
+        <GoogleLiveMap
+          city={trip?.location ?? null}
+          activities={activities}
+          dayKey={selectedDay}
+        />
+        {/* Save-for-offline CTA. Web/PWA can't programmatically download
+            Google Maps tiles (Google TOS), so this deep-links into the
+            Google Maps app on iOS/Android — once open, the user taps
+            "Download" on the area card to save offline. On desktop the
+            link opens maps.google.com with the destination preselected.
+            True automatic download triggered by a Gmail-detected flight
+            booking is queued for the native (Capacitor) build. */}
+        {trip?.location && (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trip.location)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              position: 'absolute',
+              right: 36, bottom: 14,
+              background: 'rgba(10, 10, 31, 0.92)',
+              color: 'var(--brand-ink)',
+              border: '1px solid var(--brand-border-hi)',
+              borderRadius: 10,
+              padding: '8px 12px',
+              fontFamily: MONO, fontSize: 10, fontWeight: 600,
+              letterSpacing: '0.12em', textTransform: 'uppercase',
+              textDecoration: 'none',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            ⤓ Save offline
+          </a>
+        )}
+      </div>
 
       {/* ── Hero LEAVE-BY card ─────────────────────────────────────────── */}
       <div style={{ padding: '24px 22px 0' }}>
