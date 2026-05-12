@@ -1,4 +1,5 @@
 import type { AgentTool } from '../tools';
+import { lookupCity } from '../cities';
 
 const GOOGLE_KEY =
   process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
@@ -34,8 +35,22 @@ export const geocodeTool: AgentTool = {
     required: ['query'],
   },
   handler: async (input) => {
-    if (!GOOGLE_KEY) return { error: 'GOOGLE_MAPS_API_KEY not configured on server' };
     const { query, near } = input as { query: string; near?: string };
+    // Hot-path: top travel cities short-circuit Google entirely. Only
+    // fires when there's no `near` qualifier — "Paris, Texas" must still
+    // hit Google because the cache only knows the canonical Paris.
+    if (!near) {
+      const cached = lookupCity(query);
+      if (cached) {
+        return {
+          best: { ...cached, place_id: 'cache' },
+          alternates: [],
+          query,
+          source: 'cache',
+        };
+      }
+    }
+    if (!GOOGLE_KEY) return { error: 'GOOGLE_MAPS_API_KEY not configured on server' };
     const q = near ? `${query}, ${near}` : query;
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${GOOGLE_KEY}`;
     try {
