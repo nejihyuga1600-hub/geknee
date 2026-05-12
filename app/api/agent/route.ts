@@ -23,7 +23,9 @@ Output rules:
 - Honor dietary tags strictly — if the user is vegetarian, every recommended restaurant must have vegetarian options.
 - Cite weather where it changes plans ("indoor backup: Day 2 rain expected").
 - When the user mentions budget or asks about flight prices, use flight_search (needs IATA codes) and currency_convert to ground numbers in current rates instead of guessing.
-- Never call the echo diagnostic tool during real planning.`;
+- Never call the echo diagnostic tool during real planning.
+
+EDIT MODE: when the user request includes "EXISTING ITINERARY:" you are in edit mode. Modify ONLY what the user asks to change. Keep every unchanged day verbatim. Do not regenerate the trip from scratch. Use the minimum number of tools necessary (often just one find_places or one route_between) to validate your change. Output the full updated markdown so the client can replace the saved itinerary.`;
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -35,10 +37,22 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Agent not enabled for this account' }, { status: 403 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { prompt?: string; tripId?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    prompt?: string;
+    tripId?: string;
+    existing_itinerary?: string;
+  };
   if (!body.prompt || typeof body.prompt !== 'string') {
     return Response.json({ error: 'prompt required' }, { status: 400 });
   }
+
+  // Edit mode: client passes the current itinerary so the agent makes
+  // a surgical change instead of regenerating the trip. Wrap it into
+  // the user prompt rather than the system prompt so the system prompt
+  // stays cacheable across both modes.
+  const userPrompt = body.existing_itinerary
+    ? `EXISTING ITINERARY (do not regenerate; modify only what is requested):\n---\n${body.existing_itinerary}\n---\n\nUSER REQUEST: ${body.prompt}`
+    : body.prompt;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const encoder = new TextEncoder();
@@ -52,7 +66,7 @@ export async function POST(req: Request) {
         await runAgent({
           client,
           systemPrompt: SYSTEM_PROMPT,
-          userPrompt: body.prompt!,
+          userPrompt,
           tools: getAgentTools(),
           ctx: { userId, tripId: body.tripId },
           onEvent: send,
