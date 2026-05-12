@@ -23,9 +23,15 @@ interface Props {
   initialDay?: number;
   /** Fires after successful add — parent should re-fetch the itinerary view. */
   onAdded?: (added: { name: string; time: string }) => void;
+  /**
+   * When true, renders as a single pill button that opens the full picker
+   * in a modal overlay. Use this for tight header rows where a full strip
+   * would crowd the layout (e.g. SummaryView's planning header).
+   */
+  compact?: boolean;
 }
 
-export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded }: Props) {
+export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compact }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -34,6 +40,9 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded }: Prop
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ name: string; time: string } | null>(null);
+  // Compact mode renders a single pill that opens the picker in a modal.
+  // `open` controls the modal; ignored when compact === false.
+  const [open, setOpen] = useState(false);
 
   // Create / revoke the object URL when file changes. Avoids leaking
   // blob: URLs across attempts.
@@ -90,6 +99,172 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded }: Prop
       setUploading(false);
     }
   };
+
+  // Compact pill — opens the full picker in a centered modal. Lives
+  // inline next to the trip title so the planning header row stays tidy.
+  // Shared picker body — rendered both inline (default mode) and inside
+  // the modal (compact mode). Drag-and-drop handlers live on the outer
+  // wrapper in each branch since they apply to the surrounding container.
+  const body = (
+    <>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      }}>
+        <PaperclipIcon />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontFamily: 'var(--font-mono-display), monospace',
+            fontSize: 10, letterSpacing: '0.18em',
+            color: 'var(--brand-accent)', textTransform: 'uppercase',
+            fontWeight: 700, marginBottom: 2,
+          }}>
+            ✦ Attach a photo
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
+            Drop an image, or pick one. Claude reads it and adds the stop to the day.
+          </div>
+        </div>
+        <select
+          aria-label="Day to add the stop to"
+          value={day}
+          onChange={(e) => setDay(Number(e.target.value))}
+          style={selectStyle}
+        >
+          {Array.from({ length: dayCount }).map((_, i) => (
+            <option key={i + 1} value={i + 1}>Day {i + 1}</option>
+          ))}
+        </select>
+        {!file ? (
+          <button onClick={() => inputRef.current?.click()} style={pickBtnStyle}>
+            Pick photo
+          </button>
+        ) : (
+          <button onClick={submit} disabled={uploading} style={primaryBtnStyle}>
+            {uploading ? 'Reading photo…' : 'Add to Day ' + day}
+          </button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pickFile(f);
+            e.target.value = '';
+          }}
+        />
+      </div>
+      {previewUrl && (
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt="Selected"
+            style={{
+              width: 72, height: 72, objectFit: 'cover',
+              borderRadius: 10, border: '1px solid var(--brand-border)',
+            }}
+          />
+          <button onClick={() => setFile(null)} style={ghostBtnStyle} disabled={uploading}>
+            Choose different
+          </button>
+        </div>
+      )}
+      {error && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px', borderRadius: 8,
+          background: 'rgba(248,113,113,0.10)',
+          border: '1px solid rgba(248,113,113,0.30)',
+          color: 'var(--brand-danger)', fontSize: 13,
+        }}>
+          {error}
+        </div>
+      )}
+      {success && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px', borderRadius: 8,
+          background: 'rgba(124,255,151,0.08)',
+          border: '1px solid rgba(124,255,151,0.30)',
+          color: 'var(--brand-success)', fontSize: 13,
+        }}>
+          ✓ Added <strong style={{ fontWeight: 600 }}>{success.name}</strong> at {success.time} to Day {day}. Your itinerary updated.
+        </div>
+      )}
+    </>
+  );
+
+  if (compact) {
+    return (
+      <>
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '7px 14px', borderRadius: 999,
+            background: 'rgba(167,139,250,0.10)',
+            border: '1px solid rgba(167,139,250,0.32)',
+            color: 'var(--brand-ink)',
+            fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+            letterSpacing: '0.02em',
+            cursor: 'pointer',
+          }}
+        >
+          <PaperclipIcon />
+          <span>Attach photo</span>
+        </button>
+
+        {open && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => !uploading && setOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(5,5,15,0.72)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 18,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) pickFile(f);
+              }}
+              style={{
+                width: '100%', maxWidth: 520,
+                background: 'var(--brand-surface-solid, #0d0d24)',
+                border: `1px ${dragOver ? 'dashed var(--brand-accent)' : 'solid var(--brand-border-hi)'}`,
+                borderRadius: 18, padding: 22,
+                color: 'var(--brand-ink)',
+                transition: 'border-color 180ms ease',
+              }}
+            >
+              {body}
+              <div style={{
+                marginTop: 14, display: 'flex', justifyContent: 'flex-end',
+              }}>
+                <button
+                  onClick={() => !uploading && setOpen(false)}
+                  disabled={uploading}
+                  style={ghostBtnStyle}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <section

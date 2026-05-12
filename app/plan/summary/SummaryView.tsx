@@ -23,6 +23,7 @@ import {
 import { extractPlace, fetchPlaceImage, imgCache } from './lib/places';
 import { RecPanel } from './RecPanel';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
+import { PhotoToItinerary } from '@/app/plan/[tripId]/(tabs)/itinerary/PhotoToItinerary';
 import { MarkdownLine, renderInline } from './components/MarkdownLine';
 import { WeatherBar, type DayWeather } from './components/WeatherBar';
 import { DayImages } from './components/DayImages';
@@ -1100,6 +1101,17 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {/* Compact photo attacher — sits in the empty space next to the
+                "plan your stops" title. Only renders on the planning tab,
+                only when an itinerary already exists (pre-generation, a
+                photo→activity has nowhere to land). Click → modal picker. */}
+            {mainTab === 'planning' && savedTripId && fullItinerary && nights && (
+              <PhotoToItinerary
+                tripId={savedTripId}
+                dayCount={(parseInt(nights, 10) || 0) + 1}
+                compact
+              />
+            )}
             {/* Map / Share / Book hidden on planning tab — that view's CTA is the
                 top-right "Generate itinerary →" button below. */}
             {mainTab !== 'planning' && savedTripId && (

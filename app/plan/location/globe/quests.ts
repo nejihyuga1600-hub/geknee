@@ -29,14 +29,20 @@ export interface QuestTemplate {
   companionBumpEligible: boolean;
 }
 
+// Verification kinds. Note the deliberate absence of "plaque-quiz" — we
+// retired trivia/quizzes as a verification path because they make the app
+// feel like an exam. Quests now favor movement (altitude, duration on
+// foot), shared experience (friend-photo, group-photo), and cultural
+// participation (local-cuisine, artisan purchase).
 export type VerificationKind =
   | "geofence"
   | "photo"
   | "photo+time"
+  | "photo+friends"     // photo containing 2+ recognizable faces / "with friend" tag
   | "duration"
   | "altitude"
-  | "plaque-quiz"
   | "receipt"
+  | "local-cuisine"     // receipt OR photo of a specific local dish from a nearby spot
   | "hidden-geofence";
 
 export interface Quest {
@@ -187,20 +193,21 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
     verify: "photo",
     companionBumpEligible: true,
   },
-  // Silver — read the history (primary) or buy something nearby (fallback).
+  // Silver — cultural participation. Quizzes were retired; movement +
+  // culture replace trivia.
   {
-    id: "plaque_quiz",
+    id: "local_taste",
     tier: "silver",
-    applies: m => m.hasPlaque,
-    render: m => `Photo a plaque at ${m.name} and answer 3 history questions.`,
-    verify: "plaque-quiz",
-    companionBumpEligible: false,
+    applies: m => m.isUrban || !m.isRemote, // any monument near a town gets the food quest
+    render: m => `Eat a local specialty within walking distance of ${m.name}. Bonus: order it in the local language.`,
+    verify: "local-cuisine",
+    companionBumpEligible: true,
   },
   {
-    id: "local_purchase",
+    id: "local_artisan",
     tier: "silver",
     applies: m => m.isUrban && !m.isReligious,
-    render: m => `Walk a loop around ${m.name} and buy something at a local café or shop along the way.`,
+    render: m => `Find a small local shop or market stall near ${m.name} — not a chain — and buy something handmade.`,
     verify: "receipt",
     companionBumpEligible: true,
   },
@@ -221,6 +228,18 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
     },
     verify: "photo+time",
     companionBumpEligible: true,
+  },
+  {
+    // Friend portraits work for any urban / iconic monument — anywhere
+    // you'd reasonably bring a travel companion. Listed BEFORE duration
+    // so the pick-first algorithm favors a social moment over a solo
+    // 30-min plaza loop.
+    id: "friend_portrait",
+    tier: "gold",
+    applies: m => m.isUrban || m.isIconic,
+    render: m => `Bring at least one friend or fellow traveler and take a portrait together with ${m.name} as the backdrop.`,
+    verify: "photo+friends",
+    companionBumpEligible: false,
   },
   {
     id: "duration",

@@ -428,8 +428,10 @@ const AUTO_MONUMENTS: CollectibleBase[] = (() => {
       id: q.id,
       label: q.label,
       skin: TIER_TO_SKIN[q.tier],
-      // photo + photo+time + plaque-quiz + receipt + altitude + hidden all
-      // need a captured image; geofence + duration are passive checks.
+      // photo + photo+time + photo+friends + receipt + local-cuisine +
+      // altitude + hidden-geofence all need a captured image; geofence +
+      // duration are passive checks. Quizzes/trivia were retired — the
+      // quest engine no longer emits plaque-quiz verifications.
       ...(q.verify === 'geofence' || q.verify === 'duration' ? {} : { verify: 'photo' as const }),
     }));
     out.push({
