@@ -36,7 +36,20 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
   const maxTokens = args.maxTokens ?? 4096;
 
   const toolByName = new Map(tools.map((t) => [t.name, t]));
-  const toolsForApi = tools.map(({ handler: _handler, ...t }) => t);
+
+  // cache_control on the last tool flags the entire tools array as a
+  // cacheable prefix (1.5–2× cost reduction across an agent loop because
+  // tool defs + system prompt are re-sent every turn). Same pattern for
+  // the system block. Anthropic charges full price on the first hit and
+  // 10% on subsequent reads within 5 minutes.
+  const toolsForApi = tools.map(({ handler: _handler, ...t }, i) =>
+    i === tools.length - 1
+      ? { ...t, cache_control: { type: 'ephemeral' as const } }
+      : t,
+  );
+  const systemForApi = [
+    { type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } },
+  ];
 
   const messages: Anthropic.MessageParam[] = [
     { role: 'user', content: userPrompt },
@@ -50,7 +63,7 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
     const stream = client.messages.stream({
       model: MODEL,
       max_tokens: maxTokens,
-      system: systemPrompt,
+      system: systemForApi,
       tools: toolsForApi,
       messages,
     });

@@ -6,6 +6,11 @@
 // the handler, so handlers can trust their input shape at runtime.
 
 import { echoTool } from './tools/echo';
+import { geocodeTool } from './tools/geocode';
+import { routeBetweenTool } from './tools/route_between';
+import { weatherForecastTool } from './tools/weather_forecast';
+import { findPlacesTool } from './tools/find_places';
+import { recallUserContextTool } from './tools/recall_user_context';
 
 export interface ToolContext {
   userId: string;
@@ -29,8 +34,15 @@ export interface AgentTool {
 }
 
 // Returns the tools currently exposed to the agent. New tools land here.
-// During Phase 1 (skeleton) only `echo` is wired so we can prove the
-// tool_use loop end-to-end without leaning on geocoding / mapbox keys.
+// Order is hint-only — Anthropic uses it for tie-breaking. Foundational
+// tools first (geocode → everything else needs lat/lon), then enrichment.
 export function getAgentTools(): AgentTool[] {
-  return [echoTool];
+  return [
+    geocodeTool,
+    routeBetweenTool,
+    findPlacesTool,
+    weatherForecastTool,
+    recallUserContextTool,
+    echoTool,
+  ];
 }
