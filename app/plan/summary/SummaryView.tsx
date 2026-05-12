@@ -21,6 +21,8 @@ import {
   type Section, type ActivityGroup,
 } from './lib/itinerary-parse';
 import { extractPlace, fetchPlaceImage, imgCache } from './lib/places';
+import { RecPanel } from './RecPanel';
+import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { MarkdownLine, renderInline } from './components/MarkdownLine';
 import { WeatherBar, type DayWeather } from './components/WeatherBar';
 import { DayImages } from './components/DayImages';
@@ -322,6 +324,10 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   );
   const [bookmarks, setBookmarks]     = useState<Bookmark[]>([]);
   const [planningFilter, setPlanningFilter] = useState<'all' | BookmarkCategory>('all');
+  // Pin-panel sub-tab toggle: Pins (existing) vs Recs (new). Recs no longer
+  // sit in a giant rail at the top of the page — they're a quieter sub-tab
+  // here, and clicking a rec opens it on the planning map via openPlace.
+  const [panelTab, setPanelTab] = useState<'pins' | 'recs'>('pins');
   const [optimizingItinerary, setOptimizingItinerary] = useState(false);
   const [lastOptimized, setLastOptimized] = useState<Date | null>(null);
   const mapControlRef = useRef<{ panTo: (coords: [number, number]) => void; openPlace: (placeId: string, coords: [number, number]) => void } | null>(null);
@@ -1482,19 +1488,93 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   </div>
                 </div>
 
+                {/* Panel sub-tab toggle — Pins vs Recs. Pins is the
+                    canonical curate-then-thread surface; Recs swaps in a
+                    Claude-curated list filtered by saved trip style. */}
+                <div role="tablist" aria-label="Planning panel" style={{
+                  display: 'flex', gap: 4,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 999, padding: 3,
+                  alignSelf: 'flex-start',
+                }}>
+                  {([
+                    { key: 'pins', label: 'Pins' },
+                    { key: 'recs', label: 'Recs' },
+                  ] as const).map(t => {
+                    const active = panelTab === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setPanelTab(t.key)}
+                        style={{
+                          padding: '5px 14px', borderRadius: 999,
+                          background: active ? 'var(--brand-accent)' : 'transparent',
+                          color: active ? 'var(--brand-bg)' : 'var(--brand-ink-dim)',
+                          border: 'none',
+                          fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                          letterSpacing: '0.02em', cursor: 'pointer',
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <p style={{
                   margin: 0,
                   fontFamily: 'var(--font-display), Georgia, serif',
-                  fontSize: 24, lineHeight: 1.15, fontWeight: 400,
+                  fontSize: 22, lineHeight: 1.15, fontWeight: 400,
                   letterSpacing: '-0.015em', color: 'var(--brand-ink)',
                 }}>
-                  Drop pins.{' '}
-                  <em style={{ fontStyle: 'italic', color: 'var(--brand-accent)' }}>
-                    We&apos;ll thread them together.
-                  </em>
+                  {panelTab === 'pins' ? (
+                    <>Drop pins.{' '}
+                      <em style={{ fontStyle: 'italic', color: 'var(--brand-accent)' }}>
+                        We&apos;ll thread them together.
+                      </em>
+                    </>
+                  ) : (
+                    <><em style={{ fontStyle: 'italic', color: 'var(--brand-accent)' }}>Curated</em> for your style.</>
+                  )}
                 </p>
 
-                {bookmarks.length > 0 && (
+                {panelTab === 'recs' && savedTripId && (
+                  <RecPanel
+                    tripId={savedTripId}
+                    onPick={async (rec) => {
+                      // Geocode the rec name (with destination context) and
+                      // open the resulting place on the planning map. Falls
+                      // back to a no-op when no match.
+                      try {
+                        await loadGoogleMaps();
+                        const tmpDiv = document.createElement('div');
+                        const tmpMap = new google.maps.Map(tmpDiv);
+                        const svc = new google.maps.places.PlacesService(tmpMap);
+                        const query = location ? `${rec.name}, ${location}` : rec.name;
+                        svc.findPlaceFromQuery(
+                          { query, fields: ['place_id', 'geometry'] },
+                          (results, status) => {
+                            if (
+                              status === google.maps.places.PlacesServiceStatus.OK &&
+                              results?.[0]?.place_id && results[0].geometry?.location
+                            ) {
+                              const loc = results[0].geometry.location;
+                              mapControlRef.current?.openPlace(
+                                results[0].place_id,
+                                [loc.lat(), loc.lng()],
+                              );
+                            }
+                          },
+                        );
+                      } catch { /* silent — falls back to no-op */ }
+                    }}
+                  />
+                )}
+
+                {panelTab === 'pins' && bookmarks.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {([{ key: 'all' as const, label: 'All', color: '#e2e8f0' }, ...counts.map(c => ({ key: c.key as 'all' | BookmarkCategory, label: c.label, color: c.color }))]).map(p => {
                       const active = planningFilter === p.key;
@@ -1520,7 +1600,8 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                 )}
 
                 <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6,
+                  display: panelTab === 'pins' ? 'flex' : 'none',
+                  flexDirection: 'column', gap: 6,
                   overflowY: 'auto', minHeight: 0, flex: '1 1 auto',
                 }}>
                   {filtered.length === 0 ? (
