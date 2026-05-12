@@ -40,8 +40,27 @@ export function RecPanel({ tripId, onPick }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRecs = useCallback(async () => {
+  const cacheKey = `geknee:recs:${tripId}`;
+
+  const fetchRecs = useCallback(async (opts?: { force?: boolean }) => {
     if (!tripId) return;
+    // SessionStorage cache — re-visits to the planning tab in the same
+    // session shouldn't re-spend the Anthropic call. Refresh button
+    // bypasses the cache by passing { force: true }.
+    if (!opts?.force && typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as { ts: number; recs: Rec[] };
+          // Treat cache as fresh for the session — the user's style + dest
+          // don't change mid-session in practice. Refresh re-curates.
+          if (Array.isArray(parsed.recs) && parsed.recs.length > 0) {
+            setRecs(parsed.recs);
+            return;
+          }
+        }
+      } catch { /* corrupted entry — fall through to network */ }
+    }
     setLoading(true);
     setError(null);
     try {
@@ -56,13 +75,20 @@ export function RecPanel({ tripId, onPick }: Props) {
       }
       const j = await r.json() as { recommendations: Rec[] };
       setRecs(j.recommendations);
+      if (typeof window !== 'undefined' && j.recommendations.length > 0) {
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({
+            ts: Date.now(), recs: j.recommendations,
+          }));
+        } catch { /* storage full / disabled — silent */ }
+      }
     } catch (e) {
       console.error('[recommendations] fetch failed', e);
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, cacheKey]);
 
   useEffect(() => { fetchRecs(); }, [fetchRecs]);
 
@@ -95,7 +121,7 @@ export function RecPanel({ tripId, onPick }: Props) {
           color: 'var(--brand-danger)', fontSize: 12,
         }}>
           {error}{' '}
-          <button onClick={fetchRecs} style={{
+          <button onClick={() => fetchRecs({ force: true })} style={{
             background: 'none', border: 'none',
             color: 'var(--brand-accent)',
             fontSize: 12, cursor: 'pointer', padding: 0,

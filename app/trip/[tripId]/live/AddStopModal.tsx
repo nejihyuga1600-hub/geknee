@@ -47,11 +47,58 @@ export function AddStopModal({
   // to the trip's city so suggestions stay relevant.
   useEffect(() => {
     let cancelled = false;
-    loadGoogleMaps().then(() => {
+    loadGoogleMaps().then(async () => {
       if (cancelled || !placeInputRef.current) return;
+
+      // Bias autocomplete to the trip destination (NOT the user's IP). If
+      // we don't, Places defaults to IP-based bias and a user planning
+      // Rome while sitting in NYC gets suggested NYC restaurants. We
+      // geocode the city once to derive a circular bias.
+      let biasBounds: google.maps.LatLngBoundsLiteral | undefined;
+      if (city) {
+        try {
+          const cacheKey = `geknee:destcenter:${city}`;
+          let center: google.maps.LatLng | null = null;
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const { lat, lng } = JSON.parse(cached) as { lat: number; lng: number };
+            center = new google.maps.LatLng(lat, lng);
+          }
+          if (!center) {
+            const geocoder = new google.maps.Geocoder();
+            await new Promise<void>((resolve) => {
+              geocoder.geocode({ address: city }, (results, status) => {
+                if (status === 'OK' && results?.[0]?.geometry?.location) {
+                  center = results[0].geometry.location;
+                  try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify({
+                      lat: center.lat(), lng: center.lng(),
+                    }));
+                  } catch { /* silent */ }
+                }
+                resolve();
+              });
+            });
+          }
+          if (center) {
+            // ~50km square around destination. Wide enough for outskirts
+            // restaurants/sights, tight enough to suppress IP-location pollution.
+            const lat = center.lat();
+            const lng = center.lng();
+            const dLat = 50 / 111; // ~50km in degrees lat
+            const dLng = 50 / (111 * Math.cos((lat * Math.PI) / 180));
+            biasBounds = {
+              south: lat - dLat, north: lat + dLat,
+              west: lng - dLng,  east: lng + dLng,
+            };
+          }
+        } catch { /* fall through to no bias */ }
+      }
+
       const ac = new google.maps.places.Autocomplete(placeInputRef.current, {
         fields: ['name', 'formatted_address', 'geometry'],
         types: ['establishment'],
+        ...(biasBounds ? { bounds: biasBounds } : {}),
       });
       autocompleteRef.current = ac;
       ac.addListener('place_changed', () => {
@@ -60,7 +107,7 @@ export function AddStopModal({
       });
     }).catch(() => { /* loader failure → fall back to plain text input */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [city]);
 
   const submit = async () => {
     setError(null);

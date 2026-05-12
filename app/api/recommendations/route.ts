@@ -75,8 +75,11 @@ Return 6 recommendations as a JSON array shaped like:
   let raw: string;
   try {
     const result = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
+      // Haiku is 3-4x faster than Sonnet for this kind of structured-JSON
+      // extraction-style task. Quality of curated recs is well within
+      // Haiku's envelope; users felt Sonnet was too slow on this surface.
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1400,
       system: SYSTEM,
       messages: [{ role: "user", content: userMessage }],
     });

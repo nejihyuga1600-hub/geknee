@@ -1545,30 +1545,75 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   <RecPanel
                     tripId={savedTripId}
                     onPick={async (rec) => {
-                      // Geocode the rec name (with destination context) and
-                      // open the resulting place on the planning map. Falls
-                      // back to a no-op when no match.
+                      // Resolve the rec name on the planning map, biased to
+                      // the trip destination — NOT the user's geolocation.
+                      // Without explicit locationBias, Google Places defaults
+                      // to IP-based bias which surfaces results near where
+                      // the user physically is, not where they're planning
+                      // to go. Geocode the destination city first to get a
+                      // bias center, then pass it through.
                       try {
                         await loadGoogleMaps();
                         const tmpDiv = document.createElement('div');
                         const tmpMap = new google.maps.Map(tmpDiv);
                         const svc = new google.maps.places.PlacesService(tmpMap);
                         const query = location ? `${rec.name}, ${location}` : rec.name;
-                        svc.findPlaceFromQuery(
-                          { query, fields: ['place_id', 'geometry'] },
-                          (results, status) => {
-                            if (
-                              status === google.maps.places.PlacesServiceStatus.OK &&
-                              results?.[0]?.place_id && results[0].geometry?.location
-                            ) {
-                              const loc = results[0].geometry.location;
-                              mapControlRef.current?.openPlace(
-                                results[0].place_id,
-                                [loc.lat(), loc.lng()],
-                              );
-                            }
-                          },
-                        );
+
+                        // Step 1: geocode destination → center for the bias.
+                        // Cached per-session so successive rec clicks don't
+                        // re-geocode the same city.
+                        const cacheKey = `geknee:destcenter:${location ?? ''}`;
+                        let center: google.maps.LatLng | null = null;
+                        const cached = location && typeof window !== 'undefined'
+                          ? sessionStorage.getItem(cacheKey)
+                          : null;
+                        if (cached) {
+                          try {
+                            const { lat, lng } = JSON.parse(cached) as { lat: number; lng: number };
+                            center = new google.maps.LatLng(lat, lng);
+                          } catch { /* fall through to live geocode */ }
+                        }
+                        if (!center && location) {
+                          const geocoder = new google.maps.Geocoder();
+                          await new Promise<void>((resolve) => {
+                            geocoder.geocode({ address: location }, (results, status) => {
+                              if (status === 'OK' && results?.[0]?.geometry?.location) {
+                                center = results[0].geometry.location;
+                                try {
+                                  sessionStorage.setItem(cacheKey, JSON.stringify({
+                                    lat: center.lat(), lng: center.lng(),
+                                  }));
+                                } catch { /* silent */ }
+                              }
+                              resolve();
+                            });
+                          });
+                        }
+
+                        // Step 2: findPlaceFromQuery WITH locationBias so
+                        // results stay anchored to the destination city.
+                        const req: google.maps.places.FindPlaceFromQueryRequest = {
+                          query,
+                          fields: ['place_id', 'geometry'],
+                        };
+                        if (center) {
+                          // 50km circle around destination covers most
+                          // intra-city queries without leaking to neighbours.
+                          req.locationBias = { center, radius: 50000 };
+                        }
+
+                        svc.findPlaceFromQuery(req, (results, status) => {
+                          if (
+                            status === google.maps.places.PlacesServiceStatus.OK &&
+                            results?.[0]?.place_id && results[0].geometry?.location
+                          ) {
+                            const loc = results[0].geometry.location;
+                            mapControlRef.current?.openPlace(
+                              results[0].place_id,
+                              [loc.lat(), loc.lng()],
+                            );
+                          }
+                        });
                       } catch { /* silent — falls back to no-op */ }
                     }}
                   />
