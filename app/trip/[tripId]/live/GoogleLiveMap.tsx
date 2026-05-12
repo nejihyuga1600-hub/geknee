@@ -16,6 +16,7 @@
 import { useEffect, useRef } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { useColorScheme } from '@/lib/useColorScheme';
+import { useOnlineStatus } from '@/lib/useOnlineStatus';
 
 interface Activity {
   time: string;
@@ -96,6 +97,11 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
   // Follow the user's color-scheme preference. Both the map's styled tiles
   // and the polyline color flip when this changes — see the effect below.
   const colorScheme = useColorScheme();
+  // When offline, swap the interactive Google Maps JS API for a static
+  // <img> map served from /api/map-tile. The Service Worker caches those
+  // responses (Phase 2) so users see the trip area instead of a broken
+  // map. Pinch-zoom + pan are lost, but the user gets their bearings.
+  const online = useOnlineStatus();
 
   // One-time map init. Centers on a generic default until the activity-
   // resolution effect below pans to the day's first stop.
@@ -280,6 +286,42 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
     }
     // Empty cleanup — markers/polyline cleared at the top of every run.
   }, [city, activities, dayKey]);
+
+  // Offline fallback: when the user has no network, render a static map
+  // image instead of trying to spin up the interactive JS API (which
+  // requires loading maps.googleapis.com — fails offline). The SW
+  // intercepts /api/map-tile and serves cached PNGs from Phase 2 prewarm.
+  if (!online && city) {
+    return (
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        height: 360,
+        background: 'var(--brand-bg2)',
+        borderRadius: 14,
+        overflow: 'hidden',
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/map-tile?center=${encodeURIComponent(city)}&zoom=13&size=640x400&scale=2`}
+          alt={`${city} map (cached, offline)`}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        <div style={{
+          position: 'absolute', left: 14, top: 14,
+          padding: '6px 10px', borderRadius: 999,
+          background: 'rgba(5,5,15,0.78)',
+          color: 'var(--brand-warn)',
+          border: '1px solid rgba(251,146,60,0.35)',
+          fontFamily: 'var(--font-mono-display, monospace)',
+          fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+          fontWeight: 700,
+        }}>
+          Offline · cached
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

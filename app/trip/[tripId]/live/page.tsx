@@ -8,7 +8,7 @@ import Link from 'next/link';
 import BudgetTracker from './BudgetTracker';
 import { GoogleLiveMap } from './GoogleLiveMap';
 import { AddStopModal } from './AddStopModal';
-import { useTilePrewarm } from '@/lib/useTilePrewarm';
+import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
@@ -29,6 +29,10 @@ interface TripData {
   // scan — kicks the tile-prewarm hook so the SW caches static maps for
   // the trip city ahead of any network loss.
   flightBookingDetectedAt?: string | null;
+  // Phase 3: flipped true after the offline tile prewarm has completed
+  // for this trip (either auto on flight detection or explicit via the
+  // "Download offline" CTA). UI suppresses the CTA when this is set.
+  offlineMapPrefetched?: boolean;
 }
 
 interface DayWeather {
@@ -174,6 +178,7 @@ export default function LiveTripPage() {
           endDate: d.trip.endDate ?? null,
           nights: d.trip.nights ?? null,
           flightBookingDetectedAt: d.trip.flightBookingDetectedAt ?? null,
+          offlineMapPrefetched: !!d.trip.offlineMapPrefetched,
         });
         if (typeof d.trip.itinerary === 'string') setItinerary(d.trip.itinerary);
       })
@@ -214,6 +219,12 @@ export default function LiveTripPage() {
   });
 
   const online = useOnlineStatus();
+
+  // Explicit "Download offline" — wider grid than the automatic prewarm.
+  // Surfaces as a button; user gets a progress fraction while it runs.
+  const explicitDownload = useExplicitOfflineDownload();
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [downloadDone, setDownloadDone] = useState(false);
   useEffect(() => {
     // When the calendar advances (new day on a running trip), follow along
     // — but don't override an explicit user choice. Heuristic: if the user
@@ -388,6 +399,58 @@ export default function LiveTripPage() {
             </button>
           );
         })}
+
+        {/* Offline-download status pill. Three states:
+            (a) flight detected + not yet cached + not downloading → CTA
+            (b) downloading → progress text
+            (c) cached → green "Saved offline" stamp */}
+        {trip?.flightBookingDetectedAt && !trip.offlineMapPrefetched && !downloadDone && !downloadProgress && (
+          <button
+            onClick={async () => {
+              if (!trip?.location || !tripId) return;
+              setDownloadProgress({ done: 0, total: 1 });
+              await explicitDownload(trip.location, tripId, {
+                onProgress: (done, total) => setDownloadProgress({ done, total }),
+              });
+              setDownloadProgress(null);
+              setDownloadDone(true);
+            }}
+            style={{
+              marginLeft: 'auto',
+              padding: '5px 12px', borderRadius: 999,
+              border: '1px solid var(--brand-accent)',
+              background: 'rgba(167,139,250,0.18)',
+              color: 'var(--brand-ink)',
+              fontFamily: MONO, fontSize: 11, fontWeight: 600,
+              letterSpacing: '0.08em', cursor: 'pointer',
+            }}
+          >
+            ⤓ Save offline
+          </button>
+        )}
+        {downloadProgress && (
+          <span style={{
+            marginLeft: 'auto',
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em',
+            color: 'var(--brand-accent)',
+          }}>
+            ⤓ Caching {downloadProgress.done}/{downloadProgress.total}…
+          </span>
+        )}
+        {(downloadDone || trip?.offlineMapPrefetched) && (
+          <span style={{
+            marginLeft: 'auto',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 999,
+            border: '1px solid var(--brand-success)',
+            background: 'rgba(124,255,151,0.12)',
+            color: 'var(--brand-success)',
+            fontFamily: MONO, fontSize: 11, fontWeight: 600,
+            letterSpacing: '0.08em',
+          }}>
+            ✓ Saved offline
+          </span>
+        )}
       </div>
 
       {/* ── Map area (2D Google Maps, centered on selected day) ─────────── */}
