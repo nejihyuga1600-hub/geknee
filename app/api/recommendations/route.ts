@@ -12,6 +12,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { geocodeTool } from "@/lib/agent/tools/geocode";
+import { findPlacesTool } from "@/lib/agent/tools/find_places";
+import { captureError } from "@/lib/sentry";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -60,12 +63,45 @@ export async function POST(req: Request) {
     try { stylePrefs = JSON.parse(trip.style); } catch { /* malformed style — skip */ }
   }
 
+  // Ground recommendations in real Google Places hits so Haiku doesn't
+  // hallucinate restaurant names. Geocode the city (often free via the
+  // top-cities cache), fan out to find_places for the two categories
+  // most likely to be invented (restaurants + sights), then hand the
+  // real candidates to Haiku to curate. Best-effort: if any of these
+  // calls fail we fall through to the legacy unguarded prompt.
+  let candidatesBlock = "";
+  try {
+    const geo = (await geocodeTool.handler({ query: trip.location }, { userId })) as {
+      best?: { lat: number; lon: number };
+    };
+    if (geo.best) {
+      const near = { lat: geo.best.lat, lon: geo.best.lon };
+      const [restaurants, sights] = await Promise.all([
+        findPlacesTool.handler({ query: "well-rated restaurants", near, radius_m: 4000 }, { userId }),
+        findPlacesTool.handler({ query: "iconic sights and museums", near, radius_m: 6000 }, { userId }),
+      ]) as Array<{ places?: Array<{ name: string; rating?: number; price_level?: number; address?: string }> }>;
+      const fmt = (label: string, list?: Array<{ name: string; rating?: number; price_level?: number; address?: string }>) =>
+        list?.length
+          ? `${label}:\n${list
+              .slice(0, 8)
+              .map((p) => `  - ${p.name}${p.rating ? ` (★${p.rating})` : ""}${p.price_level ? ` ${"$".repeat(p.price_level)}` : ""}${p.address ? ` — ${p.address}` : ""}`)
+              .join("\n")}`
+          : "";
+      const blocks = [fmt("REAL RESTAURANTS NEARBY", restaurants.places), fmt("REAL SIGHTS NEARBY", sights.places)].filter(Boolean);
+      if (blocks.length) {
+        candidatesBlock = `\n\nGROUND TRUTH — pick names ONLY from these lists, never invent. If something doesn't fit any candidate, omit that category rather than fabricate:\n${blocks.join("\n\n")}\n`;
+      }
+    }
+  } catch (err) {
+    captureError(err, { route: "/api/recommendations", phase: "grounding", userId, tripId });
+  }
+
   const userMessage = `Destination: ${trip.location}
 Length: ${trip.nights ?? 3} nights
 
 Traveler's style preferences (JSON):
 ${JSON.stringify(stylePrefs, null, 2)}
-
+${candidatesBlock}
 Return 6 recommendations as a JSON array shaped like:
 [
   { "id": "trattoria-da-enzo", "name": "...", "category": "restaurant", "blurb": "...", "whyItFits": "...", "duration": "...", "priceTier": 2 },
