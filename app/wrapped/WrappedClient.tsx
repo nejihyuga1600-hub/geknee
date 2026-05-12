@@ -188,7 +188,13 @@ export function WrappedClient({ year, userName, timeline, stats }: WrappedClient
               </TextShimmerWave>
             </h1>
             <PointToPointGlobe
-              points={timeline.map(({ mk, lat, lon }) => ({ mk, lat, lon }))}
+              points={timeline.map(({ mk, lat, lon, location }) => ({
+                mk,
+                lat,
+                lon,
+                // City name only (location is "City, Country") for shorter pills
+                name: location.split(',')[0].trim(),
+              }))}
               size={340}
             />
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', maxWidth: 320, margin: 0 }}>
