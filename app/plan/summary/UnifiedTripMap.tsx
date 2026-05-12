@@ -38,6 +38,7 @@ interface Props {
   height?: number;
   sticky?: boolean;
   topOffset?: number;      // px from top when sticky
+  fillHeight?: boolean;    // when true, map fills its parent's height (split layout)
 }
 
 declare global {
@@ -48,15 +49,52 @@ declare global {
         Map: new (el: HTMLElement, opts: Record<string, unknown>) => GoogleMap;
         Marker: new (opts: Record<string, unknown>) => GoogleMarker;
         Polyline: new (opts: Record<string, unknown>) => GooglePolyline;
-        InfoWindow: new (opts?: Record<string, unknown>) => { open: (opts: Record<string, unknown>) => void; close: () => void; setContent: (s: string) => void };
+        InfoWindow: new (opts?: Record<string, unknown>) => GoogleInfoWindow;
         LatLngBounds: new () => { extend: (p: { lat: number; lng: number }) => void; isEmpty: () => boolean };
         Size: new (w: number, h: number) => unknown;
         Point: new (x: number, y: number) => unknown;
         SymbolPath: { CIRCLE: number };
         event: { clearInstanceListeners: (i: unknown) => void };
+        places?: {
+          PlacesService: new (m: GoogleMap | HTMLElement) => PlacesService;
+          PlacesServiceStatus: { OK: string };
+        };
       };
     };
   }
+}
+
+interface GoogleInfoWindow {
+  open: (opts: Record<string, unknown>) => void;
+  close: () => void;
+  setContent: (s: string | HTMLElement) => void;
+  setPosition: (p: { lat: number; lng: number }) => void;
+}
+
+interface PlacePhoto {
+  getUrl: (opts: { maxWidth?: number; maxHeight?: number }) => string;
+}
+
+interface PlaceDetails {
+  name?: string;
+  rating?: number;
+  user_ratings_total?: number;
+  price_level?: number;
+  formatted_address?: string;
+  photos?: PlacePhoto[];
+  opening_hours?: { isOpen?: () => boolean };
+  url?: string; // canonical Google Maps URL
+}
+
+interface PlacesService {
+  findPlaceFromQuery: (
+    req: { query: string; fields: string[]; locationBias?: unknown },
+    cb: (results: Array<{ place_id?: string }> | null, status: string) => void,
+  ) => void;
+  getDetails: (
+    req: { placeId: string; fields: string[] },
+    cb: (place: PlaceDetails | null, status: string) => void,
+  ) => void;
 }
 
 interface GooglePolyline {
@@ -87,22 +125,27 @@ export default function UnifiedTripMap({
   height = 360,
   sticky = true,
   topOffset = 16,
+  fillHeight = false,
 }: Props) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markersRef = useRef<GoogleMarker[]>([]);
   const polylinesRef = useRef<GooglePolyline[]>([]);
-  const infoWindowRef = useRef<{ open: (opts: Record<string, unknown>) => void; close: () => void; setContent: (s: string) => void } | null>(null);
+  const infoWindowRef = useRef<GoogleInfoWindow | null>(null);
+  const placesServiceRef = useRef<PlacesService | null>(null);
   const [ready, setReady] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | number>('all');
 
   // Pull day sections only — Overview / Practical Tips don't get pins.
+  // Strict: must start with "Day <n>" then a separator (": " / " — " / " - ").
+  // The looser /^Day\s*\d+/ used to match wrap-up headings like "Day 4
+  // highlights" on a 3-day trip, producing a phantom Day 4 chip.
   const daySections = useMemo(() => {
     return sections
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => /^Day\s*\d+/i.test(s.heading ?? ''));
+      .filter(({ s }) => /^Day\s*\d+\s*[:\-–—]/i.test(s.heading ?? ''));
   }, [sections]);
 
   // Build the candidate place list per day, in chronological order.
@@ -168,7 +211,10 @@ export default function UnifiedTripMap({
           styles: DARK_MAP_STYLE,
         });
         mapRef.current = map;
-        infoWindowRef.current = new window.google.maps.InfoWindow();
+        infoWindowRef.current = new window.google.maps.InfoWindow({ maxWidth: 320 });
+        if (window.google.maps.places?.PlacesService) {
+          placesServiceRef.current = new window.google.maps.places.PlacesService(map);
+        }
         setReady(true);
       })
       .catch((e: Error) => setError(e.message ?? 'Failed to load Google Maps'));
@@ -260,6 +306,63 @@ export default function UnifiedTripMap({
       const bounds = new window.google!.maps!.LatLngBounds();
       let perDayCounter = new Map<number, number>();
 
+      // Render a Google-Maps-style place card inside the InfoWindow.
+      // Uses Google Places API (already loaded via libraries=places) to
+      // hydrate the marker's text-only entry into a real place: photo,
+      // rating, price tier, address, opening status, "Open in Google
+      // Maps" button. Falls back to a minimal card if Places lookup
+      // fails (e.g. no match, quota exhausted).
+      const openPlaceCard = (p: PlacePin) => {
+        if (!p.resolved || !mapRef.current || !infoWindowRef.current) return;
+        const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
+        const accent = p.isQuest ? QUEST_COLOR : dayColor;
+        const minimalCard = renderCard({
+          name: p.name,
+          dayLabel: p.dayLabel,
+          isQuest: p.isQuest,
+          accent,
+          mapsQuery: `${p.name}, ${location}`,
+        });
+        infoWindowRef.current.setContent(minimalCard);
+        infoWindowRef.current.setPosition(p.resolved);
+        infoWindowRef.current.open({ map: mapRef.current });
+
+        // Hydrate with Places data when available.
+        const svc = placesServiceRef.current;
+        if (!svc || !window.google?.maps?.places) return;
+        svc.findPlaceFromQuery(
+          { query: `${p.name}, ${location}`, fields: ['place_id'] },
+          (results, status) => {
+            if (status !== 'OK' || !results?.[0]?.place_id) return;
+            svc.getDetails(
+              {
+                placeId: results[0].place_id,
+                fields: ['name', 'rating', 'user_ratings_total', 'price_level', 'formatted_address', 'photos', 'opening_hours', 'url'],
+              },
+              (details, st2) => {
+                if (st2 !== 'OK' || !details || !infoWindowRef.current) return;
+                const photoUrl = details.photos?.[0]?.getUrl({ maxWidth: 320, maxHeight: 200 });
+                const rich = renderCard({
+                  name: details.name ?? p.name,
+                  dayLabel: p.dayLabel,
+                  isQuest: p.isQuest,
+                  accent,
+                  mapsQuery: `${p.name}, ${location}`,
+                  rating: details.rating,
+                  reviewCount: details.user_ratings_total,
+                  priceLevel: details.price_level,
+                  address: details.formatted_address,
+                  photoUrl,
+                  openNow: details.opening_hours?.isOpen?.(),
+                  canonicalUrl: details.url,
+                });
+                infoWindowRef.current.setContent(rich);
+              },
+            );
+          },
+        );
+      };
+
       for (const p of resolved) {
         if (!p.resolved) continue;
         const dayCount = (perDayCounter.get(p.dayNumber) ?? 0) + 1;
@@ -285,10 +388,7 @@ export default function UnifiedTripMap({
           zIndex: p.isQuest ? 100 : 10,
         });
         marker.addListener('click', () => {
-          // Open the place in Google Maps. Defers to the native app on
-          // mobile if installed; opens maps.google.com on desktop.
-          const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name}, ${location}`)}`;
-          window.open(url, '_blank', 'noopener,noreferrer');
+          openPlaceCard(p);
         });
         markersRef.current.push(marker);
         bounds.extend(p.resolved);
@@ -378,14 +478,20 @@ export default function UnifiedTripMap({
         position: sticky ? 'sticky' : 'static',
         top: sticky ? topOffset : undefined,
         zIndex: 5,
-        marginBottom: 18,
+        marginBottom: fillHeight ? 0 : 18,
+        display: 'flex',
+        flexDirection: 'column',
+        height: fillHeight ? '100%' : 'auto',
+        minHeight: 0,
       }}
     >
       <div
         ref={divRef}
         style={{
           width: '100%',
-          height,
+          height: fillHeight ? 'auto' : height,
+          flex: fillHeight ? 1 : 'none',
+          minHeight: fillHeight ? 0 : undefined,
           borderRadius: 12,
           overflow: 'hidden',
           border: '1px solid var(--brand-border)',
@@ -451,6 +557,75 @@ function chipStyle(active: boolean, color: string | null): React.CSSProperties {
     display: 'inline-flex',
     alignItems: 'center',
   };
+}
+
+// Google-Maps-style place card rendered inside the InfoWindow. Plain
+// HTML string (InfoWindow expects markup, not React). Initial render
+// uses just the name + day badge; once Places lookup completes we
+// re-render with photo / rating / price / address / open-now / a real
+// "Open in Google Maps" link to the canonical place URL.
+function renderCard(opts: {
+  name: string;
+  dayLabel: string;
+  isQuest: boolean;
+  accent: string;
+  mapsQuery: string;
+  rating?: number;
+  reviewCount?: number;
+  priceLevel?: number;
+  address?: string;
+  photoUrl?: string;
+  openNow?: boolean;
+  canonicalUrl?: string;
+}): string {
+  const {
+    name, dayLabel, isQuest, accent, mapsQuery,
+    rating, reviewCount, priceLevel, address, photoUrl, openNow, canonicalUrl,
+  } = opts;
+  const url = canonicalUrl ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+  const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsQuery)}`;
+  const stars = typeof rating === 'number'
+    ? `<span style="color:#fbbf24;font-weight:700">${rating.toFixed(1)} ★</span>${reviewCount ? `<span style="color:#94a3b8"> · ${reviewCount.toLocaleString()} reviews</span>` : ''}`
+    : '';
+  const price = typeof priceLevel === 'number' ? `<span style="color:#94a3b8"> · ${'$'.repeat(priceLevel)}</span>` : '';
+  const openChip = openNow === true
+    ? '<span style="background:#0f5132;color:#a7f3d0;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.04em">OPEN NOW</span>'
+    : openNow === false
+      ? '<span style="background:#7f1d1d;color:#fecaca;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.04em">CLOSED</span>'
+      : '';
+  const photo = photoUrl
+    ? `<img src="${photoUrl}" alt="${escapeHtml(name)}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:8px" />`
+    : '';
+  const addr = address ? `<div style="color:#94a3b8;font-size:11px;margin-top:4px">${escapeHtml(address)}</div>` : '';
+  const questBadge = isQuest
+    ? `<span style="background:${QUEST_COLOR};color:#0a0a1f;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.04em;margin-left:6px">QUEST</span>`
+    : '';
+  return `
+    <div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;background:#0a0a1f;padding:12px;border-radius:8px;min-width:260px;max-width:300px">
+      ${photo}
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:${accent};letter-spacing:0.1em;font-weight:700;text-transform:uppercase;margin-bottom:4px">
+        <span style="width:6px;height:6px;border-radius:50%;background:${accent};display:inline-block"></span>
+        ${escapeHtml(dayLabel)} ${questBadge}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;line-height:1.3">${escapeHtml(name)}</div>
+      <div style="font-size:12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px">${stars}${price} ${openChip}</div>
+      ${addr}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <a href="${url}" target="_blank" rel="noopener noreferrer"
+           style="flex:1;text-align:center;background:linear-gradient(135deg,#a78bfa,#7dd3fc);color:#0a0a1f;font-weight:700;font-size:11px;padding:7px 10px;border-radius:8px;text-decoration:none">
+          Open in Google Maps
+        </a>
+        <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
+           style="text-align:center;background:rgba(255,255,255,0.08);color:#cbd5e1;font-weight:600;font-size:11px;padding:7px 10px;border-radius:8px;text-decoration:none">
+          Directions
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 }
 
 // Dark Mapbox-equivalent style for Google Maps. Pulled from Google's

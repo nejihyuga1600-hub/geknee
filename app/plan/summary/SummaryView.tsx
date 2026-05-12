@@ -2128,45 +2128,70 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                 Click any line to edit &nbsp;&middot;&nbsp; Hover for {STAR} genie suggestions
               </div>
             )}
-            {/* One sticky Google Map for the whole trip with day-filter
-                chips. Replaces the per-day Mapbox DayMap that used to
-                live inside each SectionCard. Lets the user see cross-
-                day geography at a glance. */}
-            {sections.length > 0 && (
-              <UnifiedTripMap sections={sections} location={location} />
-            )}
-            {sections.map((section, sectionIdx) => {
-              // Match section to a weather city. Day sections → use first stop; city sections → match by name.
-              const isDay  = /day\s*\d/i.test(section.heading);
-              const isCity = !isDay && allStops.some(s => section.heading.toLowerCase().includes(s.city.toLowerCase()));
-              let weatherDays: DayWeather[] | undefined;
-              if (isDay) {
-                weatherDays = weatherByCity.get(allStops[0]?.city ?? location);
-              } else if (isCity) {
-                const matchedStop = allStops.find(s => section.heading.toLowerCase().includes(s.city.toLowerCase()));
-                if (matchedStop) weatherDays = weatherByCity.get(matchedStop.city);
-              }
-              return (
-                <SectionCard
-                  key={section.id}
-                  section={section}
-                  sectionIdx={sectionIdx}
-                  editTarget={editTarget}
-                  editValue={editValue}
-                  onStartEdit={handleStartEdit}
-                  onEditChange={setEditValue}
-                  onCommit={handleCommit}
-                  onCancel={handleCancel}
-                  onAskGenie={handleAskGenie}
-                  location={location}
-                  allStops={allStops}
-                  weatherDays={weatherDays}
-                  weatherUnit={weatherUnit}
-                  replanning={replanningSection === sectionIdx}
-                  onReplan={() => handleReplan(sectionIdx)}
-                />
-              );
-            })}
+            {/* Split layout: itinerary list scrolls on the left, the
+                unified Google Map stays put on the right. Map is sticky
+                so as the user scrolls through day cards it remains
+                visible. Stacks vertically on mobile. */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 380px',
+                gap: 20,
+                alignItems: 'start',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                {sections.map((section, sectionIdx) => {
+                  const isDay  = /day\s*\d/i.test(section.heading);
+                  const isCity = !isDay && allStops.some(s => section.heading.toLowerCase().includes(s.city.toLowerCase()));
+                  let weatherDays: DayWeather[] | undefined;
+                  if (isDay) {
+                    weatherDays = weatherByCity.get(allStops[0]?.city ?? location);
+                  } else if (isCity) {
+                    const matchedStop = allStops.find(s => section.heading.toLowerCase().includes(s.city.toLowerCase()));
+                    if (matchedStop) weatherDays = weatherByCity.get(matchedStop.city);
+                  }
+                  return (
+                    <SectionCard
+                      key={section.id}
+                      section={section}
+                      sectionIdx={sectionIdx}
+                      editTarget={editTarget}
+                      editValue={editValue}
+                      onStartEdit={handleStartEdit}
+                      onEditChange={setEditValue}
+                      onCommit={handleCommit}
+                      onCancel={handleCancel}
+                      onAskGenie={handleAskGenie}
+                      location={location}
+                      allStops={allStops}
+                      weatherDays={weatherDays}
+                      weatherUnit={weatherUnit}
+                      replanning={replanningSection === sectionIdx}
+                      onReplan={() => handleReplan(sectionIdx)}
+                    />
+                  );
+                })}
+              </div>
+              {sections.length > 0 && (
+                <div
+                  style={{
+                    position: isMobile ? 'static' : 'sticky',
+                    top: isMobile ? undefined : 16,
+                    alignSelf: 'start',
+                    height: isMobile ? 'auto' : 'calc(100vh - 32px)',
+                  }}
+                >
+                  <UnifiedTripMap
+                    sections={sections}
+                    location={location}
+                    sticky={false}
+                    height={isMobile ? 320 : undefined}
+                    fillHeight={!isMobile}
+                  />
+                </div>
+              )}
+            </div>
           </>
         )}
 
