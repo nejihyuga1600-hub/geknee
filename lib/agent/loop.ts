@@ -3,7 +3,13 @@ import type { AgentTool, ToolContext } from './tools';
 import { addTokenUsage } from '@/lib/tokenTracking';
 import { breadcrumb, captureError } from '@/lib/sentry';
 
-const MODEL = 'claude-sonnet-4-6';
+// Two-model split. Haiku 4.5 drives the tool-calling phase (deciding
+// "geocode then weather then find_places" doesn't need Sonnet's
+// reasoning, and Haiku is ~3x cheaper input / 3x cheaper output).
+// Sonnet 4.6 takes over for the final synthesis turn where the
+// markdown itinerary is actually written — quality matters most here.
+const PLANNER_MODEL = 'claude-haiku-4-5-20251001';
+const SYNTH_MODEL = 'claude-sonnet-4-6';
 
 // Production guardrails. A misbehaving prompt could in principle make
 // the model demand 50 geocodes in one turn or chain 30 turns of tools.
@@ -13,13 +19,16 @@ const MAX_TOOL_CALLS_PER_TURN = 8;
 const MAX_TOTAL_TOOL_CALLS = 30;
 const MAX_TOTAL_INPUT_TOKENS = 100_000;
 const MAX_TOTAL_OUTPUT_TOKENS = 30_000;
+const MAX_PLANNER_ITERATIONS = 10;
+const MAX_SYNTH_ITERATIONS = 3; // synthesis usually 1, allow 2 if Sonnet asks for more tools
 
 export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_call'; name: string; input: unknown }
   | { type: 'tool_result'; name: string; result: unknown; durationMs: number }
   | { type: 'tool_error'; name: string; error: string }
-  | { type: 'usage'; inputTokens: number; outputTokens: number }
+  | { type: 'usage'; model: string; inputTokens: number; outputTokens: number }
+  | { type: 'phase'; phase: 'planning' | 'synthesis'; model: string }
   | { type: 'done'; reason: string };
 
 export interface AgentLoopArgs {
@@ -28,21 +37,26 @@ export interface AgentLoopArgs {
   userPrompt: string;
   tools: AgentTool[];
   ctx: ToolContext;
-  maxIterations?: number;
   maxTokens?: number;
   onEvent: (e: AgentEvent) => void | Promise<void>;
 }
 
-// Tool-use loop. Each iteration sends the conversation to Claude,
-// streams text deltas back to onEvent, then if the model requested
-// tools we run them, append the results, and loop again. Stops when
-// the model returns end_turn or we hit maxIterations.
+interface BudgetState {
+  totalIn: number;
+  totalOut: number;
+  totalToolCalls: number;
+}
+
+// Two-phase agent loop. Phase 1 runs the planner model in a non-
+// streaming tool-use loop, gathering facts. Phase 2 runs the synthesis
+// model in a streaming pass that produces the user-visible markdown.
 //
-// Token usage is summed across iterations and persisted once at the
-// end via addTokenUsage so we don't hammer Prisma per-turn.
+// Token usage from both models is summed and persisted once at the end
+// via addTokenUsage (we don't break out by model — calcCostUsd already
+// uses Sonnet rates, so this overestimates for the Haiku portion,
+// which is the conservative direction).
 export async function runAgent(args: AgentLoopArgs): Promise<void> {
   const { client, systemPrompt, userPrompt, tools, ctx, onEvent } = args;
-  const maxIter = args.maxIterations ?? 12;
   const maxTokens = args.maxTokens ?? 4096;
 
   const toolByName = new Map(tools.map((t) => [t.name, t]));
@@ -65,16 +79,86 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
     { role: 'user', content: userPrompt },
   ];
 
-  let totalIn = 0;
-  let totalOut = 0;
-  let totalToolCalls = 0;
-  let stopReason: string = 'unknown';
+  const budget: BudgetState = { totalIn: 0, totalOut: 0, totalToolCalls: 0 };
+  let stopReason = 'unknown';
 
-  breadcrumb('agent', 'loop start', { userId: ctx.userId, tripId: ctx.tripId, toolCount: tools.length });
+  breadcrumb('agent', 'loop start', {
+    userId: ctx.userId,
+    tripId: ctx.tripId,
+    toolCount: tools.length,
+  });
 
-  for (let iter = 0; iter < maxIter; iter++) {
+  // ── Phase 1: planner (Haiku) ──────────────────────────────────────────────
+  await onEvent({ type: 'phase', phase: 'planning', model: PLANNER_MODEL });
+
+  let exitReason: 'ready_to_synthesize' | 'guardrail' | 'planner_exhausted' = 'planner_exhausted';
+
+  for (let iter = 0; iter < MAX_PLANNER_ITERATIONS; iter++) {
+    const resp = await client.messages.create({
+      model: PLANNER_MODEL,
+      max_tokens: 1024, // planner outputs are small (tool_use blocks)
+      system: systemForApi,
+      tools: toolsForApi,
+      messages,
+    });
+
+    if (resp.usage) {
+      budget.totalIn += resp.usage.input_tokens;
+      budget.totalOut += resp.usage.output_tokens;
+      await onEvent({
+        type: 'usage',
+        model: PLANNER_MODEL,
+        inputTokens: resp.usage.input_tokens,
+        outputTokens: resp.usage.output_tokens,
+      });
+    }
+
+    if (await checkBudget(budget, onEvent)) {
+      stopReason = 'budget_exhausted';
+      exitReason = 'guardrail';
+      break;
+    }
+
+    const toolCalls = resp.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+
+    if (toolCalls.length === 0) {
+      // Planner is done gathering facts → hand off to synthesis.
+      exitReason = 'ready_to_synthesize';
+      break;
+    }
+
+    if (await checkToolCallCaps(toolCalls.length, budget, onEvent)) {
+      stopReason = toolCalls.length > MAX_TOOL_CALLS_PER_TURN ? 'per_turn_cap' : 'total_cap';
+      exitReason = 'guardrail';
+      break;
+    }
+    budget.totalToolCalls += toolCalls.length;
+
+    messages.push({ role: 'assistant', content: resp.content });
+    messages.push({
+      role: 'user',
+      content: await runTools(toolCalls, toolByName, ctx, onEvent),
+    });
+  }
+
+  if (exitReason === 'guardrail') {
+    await finish(stopReason, budget, ctx, onEvent);
+    return;
+  }
+  if (exitReason === 'planner_exhausted') {
+    breadcrumb('agent', 'planner exhausted iterations', { iterations: MAX_PLANNER_ITERATIONS });
+    // Fall through to synthesis anyway — Sonnet will produce something
+    // from whatever facts the planner gathered.
+  }
+
+  // ── Phase 2: synthesis (Sonnet) ───────────────────────────────────────────
+  await onEvent({ type: 'phase', phase: 'synthesis', model: SYNTH_MODEL });
+
+  for (let iter = 0; iter < MAX_SYNTH_ITERATIONS; iter++) {
     const stream = client.messages.stream({
-      model: MODEL,
+      model: SYNTH_MODEL,
       max_tokens: maxTokens,
       system: systemForApi,
       tools: toolsForApi,
@@ -89,19 +173,19 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
 
     const final = await stream.finalMessage();
     if (final.usage) {
-      totalIn += final.usage.input_tokens;
-      totalOut += final.usage.output_tokens;
+      budget.totalIn += final.usage.input_tokens;
+      budget.totalOut += final.usage.output_tokens;
       await onEvent({
         type: 'usage',
+        model: SYNTH_MODEL,
         inputTokens: final.usage.input_tokens,
         outputTokens: final.usage.output_tokens,
       });
     }
 
-    if (totalIn > MAX_TOTAL_INPUT_TOKENS || totalOut > MAX_TOTAL_OUTPUT_TOKENS) {
-      const reason = `token budget exceeded (in=${totalIn}/${MAX_TOTAL_INPUT_TOKENS}, out=${totalOut}/${MAX_TOTAL_OUTPUT_TOKENS})`;
-      breadcrumb('agent', 'aborted: token budget', { totalIn, totalOut });
-      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+    stopReason = final.stop_reason ?? 'unknown';
+
+    if (await checkBudget(budget, onEvent)) {
       stopReason = 'budget_exhausted';
       break;
     }
@@ -110,82 +194,128 @@ export async function runAgent(args: AgentLoopArgs): Promise<void> {
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
 
-    stopReason = final.stop_reason ?? 'unknown';
-
     if (toolCalls.length === 0 || stopReason === 'end_turn') {
       break;
     }
 
-    if (toolCalls.length > MAX_TOOL_CALLS_PER_TURN) {
-      const reason = `model requested ${toolCalls.length} tools in one turn (cap ${MAX_TOOL_CALLS_PER_TURN})`;
-      breadcrumb('agent', 'aborted: per-turn tool cap', { requested: toolCalls.length });
-      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
-      stopReason = 'per_turn_cap';
+    // Sonnet asked for more tools — usually because the planner missed
+    // something. Run them and let Sonnet try synthesis again.
+    if (await checkToolCallCaps(toolCalls.length, budget, onEvent)) {
+      stopReason = toolCalls.length > MAX_TOOL_CALLS_PER_TURN ? 'per_turn_cap' : 'total_cap';
       break;
     }
-
-    if (totalToolCalls + toolCalls.length > MAX_TOTAL_TOOL_CALLS) {
-      const reason = `total tool calls would exceed cap ${MAX_TOTAL_TOOL_CALLS} (so far ${totalToolCalls}, this turn ${toolCalls.length})`;
-      breadcrumb('agent', 'aborted: total tool cap', { totalToolCalls, requested: toolCalls.length });
-      await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
-      stopReason = 'total_cap';
-      break;
-    }
-    totalToolCalls += toolCalls.length;
+    budget.totalToolCalls += toolCalls.length;
 
     messages.push({ role: 'assistant', content: final.content });
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const call of toolCalls) {
-      await onEvent({ type: 'tool_call', name: call.name, input: call.input });
-      const tool = toolByName.get(call.name);
-      if (!tool) {
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: `Unknown tool: ${call.name}`,
-          is_error: true,
-        });
-        await onEvent({ type: 'tool_error', name: call.name, error: 'unknown tool' });
-        continue;
-      }
-      const t0 = Date.now();
-      breadcrumb('agent.tool', `call ${call.name}`, { input: call.input });
-      try {
-        const result = await tool.handler(call.input as Record<string, unknown>, ctx);
-        const durationMs = Date.now() - t0;
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: JSON.stringify(result),
-        });
-        await onEvent({ type: 'tool_result', name: call.name, result, durationMs });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        captureError(err, { tool: call.name, input: call.input, userId: ctx.userId, tripId: ctx.tripId });
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: msg,
-          is_error: true,
-        });
-        await onEvent({ type: 'tool_error', name: call.name, error: msg });
-      }
-    }
-
-    messages.push({ role: 'user', content: toolResults });
+    messages.push({
+      role: 'user',
+      content: await runTools(toolCalls, toolByName, ctx, onEvent),
+    });
   }
 
+  await finish(stopReason, budget, ctx, onEvent);
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+async function runTools(
+  toolCalls: Anthropic.ToolUseBlock[],
+  toolByName: Map<string, AgentTool>,
+  ctx: ToolContext,
+  onEvent: AgentLoopArgs['onEvent'],
+): Promise<Anthropic.ToolResultBlockParam[]> {
+  const results: Anthropic.ToolResultBlockParam[] = [];
+  for (const call of toolCalls) {
+    await onEvent({ type: 'tool_call', name: call.name, input: call.input });
+    const tool = toolByName.get(call.name);
+    if (!tool) {
+      results.push({
+        type: 'tool_result',
+        tool_use_id: call.id,
+        content: `Unknown tool: ${call.name}`,
+        is_error: true,
+      });
+      await onEvent({ type: 'tool_error', name: call.name, error: 'unknown tool' });
+      continue;
+    }
+    const t0 = Date.now();
+    breadcrumb('agent.tool', `call ${call.name}`, { input: call.input });
+    try {
+      const result = await tool.handler(call.input as Record<string, unknown>, ctx);
+      const durationMs = Date.now() - t0;
+      results.push({
+        type: 'tool_result',
+        tool_use_id: call.id,
+        content: JSON.stringify(result),
+      });
+      await onEvent({ type: 'tool_result', name: call.name, result, durationMs });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      captureError(err, {
+        tool: call.name,
+        input: call.input,
+        userId: ctx.userId,
+        tripId: ctx.tripId,
+      });
+      results.push({
+        type: 'tool_result',
+        tool_use_id: call.id,
+        content: msg,
+        is_error: true,
+      });
+      await onEvent({ type: 'tool_error', name: call.name, error: msg });
+    }
+  }
+  return results;
+}
+
+async function checkBudget(b: BudgetState, onEvent: AgentLoopArgs['onEvent']): Promise<boolean> {
+  if (b.totalIn > MAX_TOTAL_INPUT_TOKENS || b.totalOut > MAX_TOTAL_OUTPUT_TOKENS) {
+    const reason = `token budget exceeded (in=${b.totalIn}/${MAX_TOTAL_INPUT_TOKENS}, out=${b.totalOut}/${MAX_TOTAL_OUTPUT_TOKENS})`;
+    breadcrumb('agent', 'aborted: token budget', { totalIn: b.totalIn, totalOut: b.totalOut });
+    await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+    return true;
+  }
+  return false;
+}
+
+async function checkToolCallCaps(
+  thisTurnCalls: number,
+  b: BudgetState,
+  onEvent: AgentLoopArgs['onEvent'],
+): Promise<boolean> {
+  if (thisTurnCalls > MAX_TOOL_CALLS_PER_TURN) {
+    const reason = `model requested ${thisTurnCalls} tools in one turn (cap ${MAX_TOOL_CALLS_PER_TURN})`;
+    breadcrumb('agent', 'aborted: per-turn tool cap', { requested: thisTurnCalls });
+    await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+    return true;
+  }
+  if (b.totalToolCalls + thisTurnCalls > MAX_TOTAL_TOOL_CALLS) {
+    const reason = `total tool calls would exceed cap ${MAX_TOTAL_TOOL_CALLS} (so far ${b.totalToolCalls}, this turn ${thisTurnCalls})`;
+    breadcrumb('agent', 'aborted: total tool cap', {
+      totalToolCalls: b.totalToolCalls,
+      requested: thisTurnCalls,
+    });
+    await onEvent({ type: 'tool_error', name: '__guardrail__', error: reason });
+    return true;
+  }
+  return false;
+}
+
+async function finish(
+  stopReason: string,
+  b: BudgetState,
+  ctx: ToolContext,
+  onEvent: AgentLoopArgs['onEvent'],
+): Promise<void> {
   await onEvent({ type: 'done', reason: stopReason });
   breadcrumb('agent', 'loop end', {
     stopReason,
-    totalIn,
-    totalOut,
-    totalToolCalls,
+    totalIn: b.totalIn,
+    totalOut: b.totalOut,
+    totalToolCalls: b.totalToolCalls,
   });
-
-  if (ctx.userId && (totalIn || totalOut)) {
-    // Best-effort: don't let DB hiccups bubble up and abort the response.
-    await addTokenUsage(ctx.userId, totalIn, totalOut).catch(() => undefined);
+  if (ctx.userId && (b.totalIn || b.totalOut)) {
+    await addTokenUsage(ctx.userId, b.totalIn, b.totalOut).catch(() => undefined);
   }
 }
