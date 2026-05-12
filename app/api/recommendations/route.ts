@@ -1,104 +1,117 @@
+// AI-curated trip recommendations endpoint.
+//
+// Reads the user's saved travel style (TripDraft.style JSON: pace, dietary,
+// traveler type, budget) + destination, asks Claude to return a small set
+// of editorial picks. NOT a TripAdvisor scrape — these are curated like a
+// travel-magazine "If you only have 3 days in Rome…" feature.
+//
+// Returns typed Rec[] with categorisation so the client can color-code the
+// rail by type. Each rec carries a one-line "why it fits" reference to the
+// user's stated preferences — the personalisation surface.
+
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+
+export const runtime = "nodejs";
+export const maxDuration = 30;
+export const dynamic = "force-dynamic";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-interface RecommendationsBody {
-  location: string;
-  purpose: string;
-  style: string;
-  budget: string;
-  interests: string;
-  startDate: string;
-  endDate: string;
-  nights: string;
-  itinerary: string;
+export interface Rec {
+  id: string;
+  name: string;
+  category: "restaurant" | "sight" | "experience" | "off-beat" | "neighborhood";
+  blurb: string;
+  whyItFits: string;
+  duration?: string;
+  priceTier?: 1 | 2 | 3;
 }
+
+const SYSTEM = `You are an editorial travel writer producing curated recommendations for a single traveler's trip. Tone: confident, specific, like a friend who lives in the city — NOT a generic listicle.
+
+Rules:
+- Return 6 recommendations balanced across categories: restaurant (2), sight (1), experience (1), off-beat (1), neighborhood (1)
+- Each "whyItFits" must reference 1-2 specific items from the user's style preferences
+- "blurb" is 2-3 sentences, specific (name a dish, an angle, a time of day)
+- Avoid obvious tourist traps unless the user's style says "classic must-sees"
+- Use stable IDs: lowercase + dashes derived from the name
+- Output ONLY a JSON array. No commentary, no code fences.`;
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+  const userId = (session?.user as { id?: string })?.id;
+  if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: RecommendationsBody;
-  try {
-    body = await req.json();
-  } catch {
-    return new Response("Invalid request body", { status: 400 });
+  const { tripId } = (await req.json().catch(() => ({}))) as { tripId?: string };
+  if (!tripId) return Response.json({ error: "tripId required" }, { status: 400 });
+
+  const trip = await prisma.tripDraft.findUnique({
+    where: { id: tripId },
+    select: { id: true, userId: true, location: true, nights: true, style: true },
+  });
+  if (!trip) return Response.json({ error: "Not found" }, { status: 404 });
+  if (trip.userId !== userId) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!trip.location) return Response.json({ error: "Trip missing destination" }, { status: 400 });
+
+  let stylePrefs: Record<string, unknown> = {};
+  if (trip.style) {
+    try { stylePrefs = JSON.parse(trip.style); } catch { /* malformed style — skip */ }
   }
 
-  const { location, purpose, style, budget, interests, startDate, endDate, nights, itinerary } = body;
+  const userMessage = `Destination: ${trip.location}
+Length: ${trip.nights ?? 3} nights
 
-  const prompt = `You are a travel expert. Based on the itinerary below and trip details, extract and expand on hotels, restaurants, and activities for ${location}.
+Traveler's style preferences (JSON):
+${JSON.stringify(stylePrefs, null, 2)}
 
-Trip: ${nights} nights in ${location} (${startDate} to ${endDate})
-Purpose: ${purpose} | Style: ${style} | Budget: ${budget}
-Interests: ${interests}
+Return 6 recommendations as a JSON array shaped like:
+[
+  { "id": "trattoria-da-enzo", "name": "...", "category": "restaurant", "blurb": "...", "whyItFits": "...", "duration": "...", "priceTier": 2 },
+  ...
+]`;
 
-Itinerary (extract any mentioned hotels, restaurants, activities and mark them fromItinerary: true):
-${itinerary.slice(0, 5000)}
-
-Return ONLY a raw JSON object (no markdown, no code fences) with exactly this structure:
-{
-  "hotels": [
-    {
-      "name": "Hotel Name",
-      "neighborhood": "Area/District",
-      "description": "1-2 sentence description",
-      "priceRange": "$100-200/night",
-      "pros": ["pro1", "pro2", "pro3"],
-      "cons": ["con1", "con2"],
-      "fromItinerary": true
-    }
-  ],
-  "restaurants": [
-    {
-      "name": "Restaurant Name",
-      "cuisine": "Cuisine Type",
-      "neighborhood": "Area",
-      "description": "1 sentence description",
-      "priceRange": "$$",
-      "reservationNote": "Tip about reservations or walk-in",
-      "fromItinerary": true
-    }
-  ],
-  "activities": [
-    {
-      "name": "Activity Name",
-      "description": "1-2 sentence description",
-      "duration": "2-3 hours",
-      "priceEstimate": "$25/person",
-      "tip": "Practical tip",
-      "fromItinerary": true
-    }
-  ]
-}
-
-Rules:
-- Include 3-5 hotels, 6-8 restaurants, 6-8 activities
-- Items mentioned in the itinerary get fromItinerary: true and must appear FIRST in each array
-- All other items get fromItinerary: false
-- Match the traveler's style and budget
-- Use real, specific names — no generic placeholders`;
-
+  let raw: string;
   try {
-    const response = await client.messages.create({
+    const result = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
+      max_tokens: 2000,
+      system: SYSTEM,
+      messages: [{ role: "user", content: userMessage }],
     });
-
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return Response.json({ error: "No response from AI" }, { status: 500 });
-    }
-
-    // Strip any accidental markdown fences
-    const raw = textBlock.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const data = JSON.parse(raw);
-    return Response.json(data);
+    raw = result.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as { type: "text"; text: string }).text)
+      .join("")
+      .trim();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("Recommendations error:", msg);
-    return Response.json({ error: "Failed to generate recommendations" }, { status: 500 });
+    console.error("[recommendations] Anthropic error:", err);
+    return Response.json({ error: "Generation failed" }, { status: 502 });
   }
+
+  const cleaned = raw
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(cleaned); }
+  catch { return Response.json({ error: "Invalid model output" }, { status: 502 }); }
+
+  if (!Array.isArray(parsed)) {
+    return Response.json({ error: "Expected JSON array" }, { status: 502 });
+  }
+
+  const recs: Rec[] = parsed.filter((p): p is Rec => {
+    if (typeof p !== "object" || p === null) return false;
+    const r = p as Record<string, unknown>;
+    return typeof r.id === "string"
+      && typeof r.name === "string"
+      && typeof r.category === "string"
+      && typeof r.blurb === "string"
+      && typeof r.whyItFits === "string";
+  });
+
+  return Response.json({ recommendations: recs });
 }
