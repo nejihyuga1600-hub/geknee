@@ -1,0 +1,280 @@
+// geknee icon set — custom line-art glyphs tuned to the cosmic-editorial
+// voice. Replaces generic Unicode emojis (🚶 🚕 🏛 etc.) across the app
+// with a single coherent visual language.
+//
+// Design rules (per ui-design / ui-ux-pro-max):
+//   - 24×24 viewBox
+//   - stroke-width 1.6, currentColor — tints from CSS context
+//   - stroke-linecap / linejoin round
+//   - Pure line art (no fills) — keeps mass low so the icons read on
+//     both dark + light surfaces equally
+//   - Geometric primitives only — no swooshes, no fake gradients
+//   - Each icon is one named export → consumers import { Walk } from '@/lib/icons'
+
+import type { ReactElement, SVGProps } from 'react';
+
+type IconProps = SVGProps<SVGSVGElement> & { size?: number };
+
+const base = ({ size = 16, ...rest }: IconProps) => ({
+  width: size,
+  height: size,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.6,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+  ...rest,
+});
+
+// ── Transit ───────────────────────────────────────────────────────────
+
+/** Walking person — replaces 🚶 · motion lines behind for momentum */
+export const Walk = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="13" cy="4.5" r="1.8" />
+    <path d="M11 8l-2 5 3 1 1 5" />
+    <path d="M14 10l3 1-1 3" />
+    <path d="M11 13l-3 3" />
+    {/* motion swoosh — minimal, suggests stride */}
+    <path d="M3 11h2M2 14h3" opacity="0.55" />
+  </svg>
+);
+
+/** Subway / metro — replaces 🚇 */
+export const Subway = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="3" width="14" height="14" rx="2.5" />
+    <path d="M5 11h14" />
+    <circle cx="9" cy="14" r="0.6" fill="currentColor" />
+    <circle cx="15" cy="14" r="0.6" fill="currentColor" />
+    <path d="M9 17l-2 4M15 17l2 4" />
+  </svg>
+);
+
+/** Bus — replaces 🚌 */
+export const Bus = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M5 5h14v11a1 1 0 01-1 1H6a1 1 0 01-1-1V5z" />
+    <path d="M5 10h14" />
+    <circle cx="9" cy="13.5" r="0.7" fill="currentColor" />
+    <circle cx="15" cy="13.5" r="0.7" fill="currentColor" />
+    <path d="M7 17v2M17 17v2" />
+  </svg>
+);
+
+/** Taxi / car — replaces 🚕 */
+export const Taxi = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 14l1.5-4.5A2 2 0 016.4 8h11.2a2 2 0 011.9 1.5L21 14" />
+    <rect x="3" y="14" width="18" height="4" rx="1" />
+    <circle cx="7" cy="18" r="1.3" />
+    <circle cx="17" cy="18" r="1.3" />
+    <path d="M9 6h6v2" />
+  </svg>
+);
+
+/** Train — replaces 🚂 */
+export const Train = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="3" width="14" height="13" rx="3" />
+    <path d="M5 10h14" />
+    <circle cx="9" cy="13" r="0.7" fill="currentColor" />
+    <circle cx="15" cy="13" r="0.7" fill="currentColor" />
+    <path d="M8 16l-2 5M16 16l2 5" />
+    <path d="M9 6h6" />
+  </svg>
+);
+
+/** Bike — replaces 🚴 · two speed marks behind the wheel for momentum */
+export const Bike = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="6" cy="16" r="3.5" />
+    <circle cx="18" cy="16" r="3.5" />
+    <path d="M6 16l4-7h5l3 7" />
+    <circle cx="14" cy="6" r="1" fill="currentColor" />
+    <path d="M10 9l4-3" />
+    <path d="M2 13h1.5M2.5 16h1" opacity="0.55" />
+  </svg>
+);
+
+/** Ferry / boat — replaces ⛵ */
+export const Ferry = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 15c2 2 4 2 6 0s4-2 6 0 4 2 6 0" />
+    <path d="M4 12l2-3h12l2 3" />
+    <path d="M12 3v9" />
+    <path d="M12 4l6 5" />
+  </svg>
+);
+
+/** Flight / plane · contrail trail behind for travel-vibe motion */
+export const Plane = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M21 12l-7 7-2-5-5-2 7-7 7 7z" />
+    <path d="M14 19l-1-4M5 12l4-1" />
+    <path d="M2 4l3 1M2 7l4 1" opacity="0.55" />
+  </svg>
+);
+
+// ── Locations + monuments ────────────────────────────────────────────
+
+/** Map pin — replaces 📍 */
+export const Pin = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 21s-7-7.5-7-12a7 7 0 0114 0c0 4.5-7 12-7 12z" />
+    <circle cx="12" cy="9" r="2.5" />
+  </svg>
+);
+
+/** Globe — replaces 🌍 / 🌐 · two tiny stars in orbit space */
+export const Globe = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M3.5 12h17" />
+    <path d="M12 3.5c2.5 2.5 4 5.5 4 8.5s-1.5 6-4 8.5c-2.5-2.5-4-5.5-4-8.5s1.5-6 4-8.5z" />
+    <circle cx="22" cy="4" r="0.8" fill="currentColor" />
+    <circle cx="2.5" cy="20" r="0.6" fill="currentColor" opacity="0.7" />
+  </svg>
+);
+
+/** Monument (columned façade) — replaces 🏛 */
+export const Monument = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 9l9-5 9 5" />
+    <path d="M4 9v9M20 9v9" />
+    <path d="M8 11v7M12 11v7M16 11v7" />
+    <path d="M3 20h18" />
+  </svg>
+);
+
+/** Compass — for navigation / exploration */
+export const Compass = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M15 9l-1.5 4.5L9 15l1.5-4.5L15 9z" />
+  </svg>
+);
+
+/** Map (folded) */
+export const Map = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z" />
+    <path d="M9 4v16M15 6v16" />
+  </svg>
+);
+
+// ── State + abstract ─────────────────────────────────────────────────
+
+/** Four-point sparkle — geknee "magic moment" / curated marker */
+export const Sparkle = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 3v6M12 15v6M3 12h6M15 12h6" />
+    <path d="M7 7l3.5 3.5M13.5 13.5L17 17M17 7l-3.5 3.5M10.5 13.5L7 17" />
+  </svg>
+);
+
+/** Lock — collection locked */
+export const Lock = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 018 0v3" />
+  </svg>
+);
+
+/** Unlock — collected */
+export const Unlock = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 018 0" />
+  </svg>
+);
+
+/** Camera — replaces 📷 */
+export const Camera = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" />
+    <circle cx="12" cy="13.5" r="3.2" />
+  </svg>
+);
+
+/** Paperclip — attach */
+export const Paperclip = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="m21 12-9.5 9.5a5.5 5.5 0 1 1-7.78-7.78L13.22 4.22a3.5 3.5 0 1 1 4.95 4.95L8.66 18.68a1.5 1.5 0 1 1-2.12-2.12L15.07 8" />
+  </svg>
+);
+
+/** Bed / stays */
+export const Bed = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 9v11M21 14v6" />
+    <path d="M3 14h18" />
+    <path d="M3 9h11a4 4 0 014 4v1" />
+    <circle cx="8" cy="11.5" r="1.5" />
+  </svg>
+);
+
+/** Fork & spoon — food/dining */
+export const Dining = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M7 3v18M5 3v6a2 2 0 002 2 2 2 0 002-2V3" />
+    <path d="M16 3a4 4 0 014 4v4h-2v10" />
+  </svg>
+);
+
+/** Trophy — leaderboard / achievement */
+export const Trophy = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M7 3h10v4a5 5 0 01-10 0V3z" />
+    <path d="M5 5H3v2a3 3 0 003 3M19 5h2v2a3 3 0 01-3 3" />
+    <path d="M9 14h6l1 4H8z" />
+    <path d="M7 21h10" />
+  </svg>
+);
+
+/** Heart — favorite */
+export const Heart = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z" />
+  </svg>
+);
+
+/** Calendar */
+export const Calendar = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="5" width="17" height="15" rx="2" />
+    <path d="M3.5 10h17" />
+    <path d="M8 3v4M16 3v4" />
+  </svg>
+);
+
+// Ordered registry for the contact-sheet renderer. Each entry maps to
+// the named export so the SVG sheet can be regenerated from this single
+// source. Update when adding a new icon.
+export const ICON_REGISTRY: Array<{ name: string; Cmp: (p: IconProps) => ReactElement; emoji?: string }> = [
+  { name: 'Walk',      Cmp: Walk,      emoji: '🚶' },
+  { name: 'Subway',    Cmp: Subway,    emoji: '🚇' },
+  { name: 'Bus',       Cmp: Bus,       emoji: '🚌' },
+  { name: 'Taxi',      Cmp: Taxi,      emoji: '🚕' },
+  { name: 'Train',     Cmp: Train,     emoji: '🚂' },
+  { name: 'Bike',      Cmp: Bike,      emoji: '🚴' },
+  { name: 'Ferry',     Cmp: Ferry,     emoji: '⛵' },
+  { name: 'Plane',     Cmp: Plane,     emoji: '✈️' },
+  { name: 'Pin',       Cmp: Pin,       emoji: '📍' },
+  { name: 'Globe',     Cmp: Globe,     emoji: '🌍' },
+  { name: 'Monument',  Cmp: Monument,  emoji: '🏛️' },
+  { name: 'Compass',   Cmp: Compass,   emoji: '🧭' },
+  { name: 'Map',       Cmp: Map,       emoji: '🗺️' },
+  { name: 'Sparkle',   Cmp: Sparkle,   emoji: '✨' },
+  { name: 'Lock',      Cmp: Lock,      emoji: '🔒' },
+  { name: 'Unlock',    Cmp: Unlock,    emoji: '🔓' },
+  { name: 'Camera',    Cmp: Camera,    emoji: '📷' },
+  { name: 'Paperclip', Cmp: Paperclip, emoji: '📎' },
+  { name: 'Bed',       Cmp: Bed,       emoji: '🛏️' },
+  { name: 'Dining',    Cmp: Dining,    emoji: '🍴' },
+  { name: 'Trophy',    Cmp: Trophy,    emoji: '🏆' },
+  { name: 'Heart',     Cmp: Heart,     emoji: '❤️' },
+  { name: 'Calendar',  Cmp: Calendar,  emoji: '📅' },
+];
