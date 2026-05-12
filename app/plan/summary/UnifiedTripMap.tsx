@@ -82,8 +82,31 @@ interface PlaceDetails {
   price_level?: number;
   formatted_address?: string;
   photos?: PlacePhoto[];
-  opening_hours?: { isOpen?: () => boolean };
-  url?: string; // canonical Google Maps URL
+  opening_hours?: { isOpen?: () => boolean; weekday_text?: string[] };
+  url?: string;
+  website?: string;
+  formatted_phone_number?: string;
+  editorial_summary?: { overview?: string };
+  reviews?: Array<{ author_name?: string; rating?: number; text?: string }>;
+}
+
+interface PlacePanelData {
+  pin: PlacePin;
+  loading: boolean;
+  details?: {
+    name: string;
+    address?: string;
+    rating?: number;
+    reviewCount?: number;
+    priceLevel?: number;
+    photos: string[];
+    openingHours?: string[];
+    phone?: string;
+    website?: string;
+    summary?: string;
+    reviews: Array<{ author: string; rating: number; text: string }>;
+    canonicalUrl?: string;
+  };
 }
 
 interface PlacesService {
@@ -141,6 +164,9 @@ export default function UnifiedTripMap({
   const [keyMissing, setKeyMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | number>('all');
+  const [panel, setPanel] = useState<PlacePanelData | null>(null);
+  const [activePhoto, setActivePhoto] = useState(0);
+  const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
 
   // Pull day sections only — Overview / Practical Tips don't get pins.
   // Strict: must start with "Day <n>" then a separator (": " / " — " / " - ").
@@ -331,57 +357,67 @@ export default function UnifiedTripMap({
       const bounds = new window.google!.maps!.LatLngBounds();
       let perDayCounter = new Map<number, number>();
 
-      // Render a Google-Maps-style place card inside the InfoWindow.
-      // Uses Google Places API (already loaded via libraries=places) to
-      // hydrate the marker's text-only entry into a real place: photo,
-      // rating, price tier, address, opening status, "Open in Google
-      // Maps" button. Falls back to a minimal card if Places lookup
-      // fails (e.g. no match, quota exhausted).
+      // Open the rich React side panel for a pin. Mirrors the planning
+      // map's place panel: photo carousel, rating + price + address,
+      // tabs for info/reviews, hours, phone, website, "Open in Google
+      // Maps" + "Directions" buttons. Loads progressively — minimal
+      // shell shown immediately, hydrated by Places.getDetails.
       const openPlaceCard = (p: PlacePin) => {
-        if (!p.resolved || !mapRef.current || !infoWindowRef.current) return;
-        const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
-        const accent = p.isQuest ? QUEST_COLOR : dayColor;
-        const minimalCard = renderCard({
-          name: p.name,
-          dayLabel: p.dayLabel,
-          isQuest: p.isQuest,
-          accent,
-          mapsQuery: `${p.name}, ${location}`,
-        });
-        infoWindowRef.current.setContent(minimalCard);
-        infoWindowRef.current.setPosition(p.resolved);
-        infoWindowRef.current.open({ map: mapRef.current });
+        if (!p.resolved || !mapRef.current) return;
+        mapRef.current.panTo(p.resolved);
+        setActivePhoto(0);
+        setActiveTab('info');
+        setPanel({ pin: p, loading: true });
 
-        // Hydrate with Places data when available.
         const svc = placesServiceRef.current;
-        if (!svc || !window.google?.maps?.places) return;
+        if (!svc || !window.google?.maps?.places) {
+          setPanel({ pin: p, loading: false });
+          return;
+        }
         svc.findPlaceFromQuery(
           { query: `${p.name}, ${location}`, fields: ['place_id'] },
           (results, status) => {
-            if (status !== 'OK' || !results?.[0]?.place_id) return;
+            if (status !== 'OK' || !results?.[0]?.place_id) {
+              setPanel({ pin: p, loading: false });
+              return;
+            }
             svc.getDetails(
               {
                 placeId: results[0].place_id,
-                fields: ['name', 'rating', 'user_ratings_total', 'price_level', 'formatted_address', 'photos', 'opening_hours', 'url'],
+                fields: [
+                  'name', 'rating', 'user_ratings_total', 'price_level',
+                  'formatted_address', 'photos', 'opening_hours',
+                  'website', 'formatted_phone_number', 'editorial_summary',
+                  'reviews', 'url',
+                ],
               },
-              (details, st2) => {
-                if (st2 !== 'OK' || !details || !infoWindowRef.current) return;
-                const photoUrl = details.photos?.[0]?.getUrl({ maxWidth: 320, maxHeight: 200 });
-                const rich = renderCard({
-                  name: details.name ?? p.name,
-                  dayLabel: p.dayLabel,
-                  isQuest: p.isQuest,
-                  accent,
-                  mapsQuery: `${p.name}, ${location}`,
-                  rating: details.rating,
-                  reviewCount: details.user_ratings_total,
-                  priceLevel: details.price_level,
-                  address: details.formatted_address,
-                  photoUrl,
-                  openNow: details.opening_hours?.isOpen?.(),
-                  canonicalUrl: details.url,
+              (d, st2) => {
+                if (st2 !== 'OK' || !d) {
+                  setPanel({ pin: p, loading: false });
+                  return;
+                }
+                setPanel({
+                  pin: p,
+                  loading: false,
+                  details: {
+                    name: d.name ?? p.name,
+                    address: d.formatted_address,
+                    rating: d.rating,
+                    reviewCount: d.user_ratings_total,
+                    priceLevel: d.price_level,
+                    photos: (d.photos ?? []).slice(0, 8).map((ph) => ph.getUrl({ maxWidth: 800, maxHeight: 600 })),
+                    openingHours: d.opening_hours?.weekday_text,
+                    phone: d.formatted_phone_number,
+                    website: d.website,
+                    summary: d.editorial_summary?.overview,
+                    reviews: (d.reviews ?? []).slice(0, 5).map((r) => ({
+                      author: r.author_name ?? 'Anonymous',
+                      rating: r.rating ?? 0,
+                      text: r.text ?? '',
+                    })),
+                    canonicalUrl: d.url,
+                  },
                 });
-                infoWindowRef.current.setContent(rich);
               },
             );
           },
@@ -518,18 +554,36 @@ export default function UnifiedTripMap({
       }}
     >
       <div
-        ref={divRef}
         style={{
+          position: 'relative',
           width: '100%',
           height: fillHeight ? 'auto' : height,
           flex: fillHeight ? 1 : 'none',
           minHeight: fillHeight ? 0 : undefined,
-          borderRadius: 12,
-          overflow: 'hidden',
-          border: '1px solid var(--brand-border)',
-          background: '#0a0a1f',
         }}
-      />
+      >
+        <div
+          ref={divRef}
+          style={{
+            position: 'absolute', inset: 0,
+            borderRadius: 12,
+            overflow: 'hidden',
+            border: '1px solid var(--brand-border)',
+            background: '#0a0a1f',
+          }}
+        />
+        {panel && (
+          <PlacePanelOverlay
+            data={panel}
+            location={location}
+            activePhoto={activePhoto}
+            setActivePhoto={setActivePhoto}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onClose={() => setPanel(null)}
+          />
+        )}
+      </div>
       {error && (
         <div style={{ marginTop: 6, fontSize: 11, color: '#fbbf24' }}>
           Map error: {error}
@@ -572,6 +626,240 @@ export default function UnifiedTripMap({
       )}
     </div>
   );
+}
+
+// Place detail panel that slides over the left edge of the map when a
+// pin (or in-itinerary number circle) is clicked. Mirrors the planning
+// map's panel — photo carousel, name + rating + price + address,
+// info/reviews tabs, hours, contact, "Open in Google Maps" + Directions.
+function PlacePanelOverlay(props: {
+  data: PlacePanelData;
+  location: string;
+  activePhoto: number;
+  setActivePhoto: (n: number | ((p: number) => number)) => void;
+  activeTab: 'info' | 'reviews';
+  setActiveTab: (t: 'info' | 'reviews') => void;
+  onClose: () => void;
+}) {
+  const { data, location, activePhoto, setActivePhoto, activeTab, setActiveTab, onClose } = props;
+  const { pin, loading, details } = data;
+  const dayColor = DAY_COLORS[(pin.dayNumber - 1) % DAY_COLORS.length];
+  const accent = pin.isQuest ? QUEST_COLOR : dayColor;
+  const mapsQuery = `${pin.name}, ${location}`;
+  const url = details?.canonicalUrl ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+  const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsQuery)}`;
+  const photos = details?.photos ?? [];
+  const photoIdx = photos.length ? activePhoto % photos.length : 0;
+
+  return (
+    <div
+      style={{
+        position: 'absolute', top: 8, left: 8, bottom: 8,
+        width: 320, maxWidth: 'calc(100% - 16px)',
+        background: '#0d1117',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+        zIndex: 50,
+        fontFamily: 'var(--font-ui), Inter, system-ui, sans-serif',
+        color: '#e2e8f0',
+      }}
+    >
+      {/* Hero image + close + photo nav */}
+      <div style={{ position: 'relative', height: 200, background: '#000', flexShrink: 0 }}>
+        {photos.length > 0 ? (
+          <img
+            src={photos[photoIdx]} alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>
+            {loading ? 'Loading photos…' : 'No photos'}
+          </div>
+        )}
+        {photos.length > 1 && (
+          <>
+            <button
+              onClick={() => setActivePhoto((p) => (p - 1 + photos.length) % photos.length)}
+              aria-label="Previous photo"
+              style={navArrowStyle('left')}
+            >‹</button>
+            <button
+              onClick={() => setActivePhoto((p) => (p + 1) % photos.length)}
+              aria-label="Next photo"
+              style={navArrowStyle('right')}
+            >›</button>
+            <div style={{
+              position: 'absolute', bottom: 8, right: 8,
+              background: 'rgba(0,0,0,0.6)', borderRadius: 999,
+              padding: '2px 8px', color: '#fff', fontSize: 10, fontWeight: 600,
+            }}>{photoIdx + 1} / {photos.length}</div>
+          </>
+        )}
+        <button
+          onClick={onClose} aria-label="Close panel"
+          style={{
+            position: 'absolute', top: 8, right: 8,
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.65)', border: 'none',
+            color: '#fff', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >×</button>
+      </div>
+
+      {/* Body — scrollable */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: '14px 16px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: accent, letterSpacing: '0.1em', fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: accent, display: 'inline-block' }} />
+            {pin.dayLabel}
+            {pin.isQuest && (
+              <span style={{ background: QUEST_COLOR, color: '#0a0a1f', padding: '2px 6px', borderRadius: 6, fontSize: 9, fontWeight: 700, marginLeft: 6 }}>QUEST</span>
+            )}
+          </div>
+          <h3 style={{
+            margin: '0 0 6px', fontFamily: 'var(--font-display, Georgia, serif)',
+            fontSize: 20, fontWeight: 400, lineHeight: 1.2, color: '#fff',
+          }}>{details?.name ?? pin.name}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, fontSize: 12 }}>
+            {typeof details?.rating === 'number' && (
+              <>
+                <span style={{ color: '#fbbf24', fontWeight: 700 }}>{details.rating.toFixed(1)} ★</span>
+                {details.reviewCount && <span style={{ color: 'rgba(255,255,255,0.4)' }}>({details.reviewCount.toLocaleString()})</span>}
+              </>
+            )}
+            {typeof details?.priceLevel === 'number' && (
+              <span style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '1px 7px', color: '#a3e635', fontWeight: 600 }}>
+                {'$'.repeat(details.priceLevel)}
+              </span>
+            )}
+          </div>
+          {details?.address && (
+            <p style={{ margin: '0 0 12px', color: 'rgba(255,255,255,0.45)', fontSize: 11, lineHeight: 1.4 }}>{details.address}</p>
+          )}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={ctaPrimary()}>Open in Google Maps</a>
+            <a href={dirUrl} target="_blank" rel="noopener noreferrer" style={ctaSecondary()}>Directions</a>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          {(['info', 'reviews'] as const).map((t) => {
+            const label = t === 'reviews'
+              ? `Reviews${details?.reviews.length ? ` (${details.reviews.length})` : ''}`
+              : 'Info';
+            return (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                style={{
+                  padding: '9px 14px',
+                  fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: `2px solid ${activeTab === t ? accent : 'transparent'}`,
+                  color: activeTab === t ? accent : 'rgba(255,255,255,0.45)',
+                  cursor: 'pointer',
+                  marginBottom: -1,
+                }}
+              >{label}</button>
+            );
+          })}
+        </div>
+
+        {activeTab === 'info' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {loading && <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Loading details…</p>}
+            {details?.summary && (
+              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>{details.summary}</p>
+            )}
+            {details?.openingHours && details.openingHours.length > 0 && (
+              <PanelGroup label="Hours">
+                {details.openingHours.map((h, i) => (
+                  <p key={i} style={{ margin: '0 0 3px', fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>{h}</p>
+                ))}
+              </PanelGroup>
+            )}
+            {details?.phone && (
+              <PanelGroup label="Phone">
+                <a href={`tel:${details.phone}`} style={{ fontSize: 12, color: '#7dd3fc', textDecoration: 'none' }}>{details.phone}</a>
+              </PanelGroup>
+            )}
+            {details?.website && (
+              <PanelGroup label="Website">
+                <a href={details.website} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#38bdf8', wordBreak: 'break-all', textDecoration: 'none' }}>
+                  {details.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </a>
+              </PanelGroup>
+            )}
+            {!loading && !details?.summary && !details?.openingHours && !details?.phone && !details?.website && (
+              <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>No additional details available.</p>
+            )}
+          </div>
+        ) : (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {!details?.reviews.length && (
+              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.3)', textAlign: 'center', paddingTop: 8 }}>
+                {loading ? 'Loading reviews…' : 'No reviews available.'}
+              </p>
+            )}
+            {details?.reviews.map((r, i) => (
+              <div key={i} style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none', paddingTop: i > 0 ? 12 : 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{r.author}</span>
+                  <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700 }}>{r.rating.toFixed(1)} ★</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>{r.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PanelGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p style={{
+        margin: '0 0 4px', fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+        fontSize: 10, fontWeight: 700, color: 'rgba(167,139,250,0.85)',
+        letterSpacing: '0.18em', textTransform: 'uppercase',
+      }}>{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function navArrowStyle(side: 'left' | 'right'): React.CSSProperties {
+  return {
+    position: 'absolute', top: '50%', [side]: 8, transform: 'translateY(-50%)',
+    width: 28, height: 28, borderRadius: '50%',
+    background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.18)',
+    color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+}
+
+function ctaPrimary(): React.CSSProperties {
+  return {
+    flex: 1, textAlign: 'center', padding: '8px 10px', borderRadius: 8,
+    background: 'linear-gradient(135deg,#a78bfa,#7dd3fc)',
+    color: '#0a0a1f', fontWeight: 700, fontSize: 11, textDecoration: 'none',
+  };
+}
+function ctaSecondary(): React.CSSProperties {
+  return {
+    textAlign: 'center', padding: '8px 12px', borderRadius: 8,
+    background: 'rgba(255,255,255,0.08)', color: '#cbd5e1',
+    fontWeight: 600, fontSize: 11, textDecoration: 'none',
+  };
 }
 
 function chipStyle(active: boolean, color: string | null): React.CSSProperties {
