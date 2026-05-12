@@ -526,6 +526,39 @@ function DetailView({
         </div>
       </div>
 
+      {/* Cohesion: "Plan a trip here" deep-link. When the user hasn't yet
+          visited this monument, the natural next-action is to plan a trip
+          to its city. Routes to /plan/location with ?location= prefilled
+          so the globe opens centered on that destination. */}
+      {!unlocked && item.location && (
+        <Link
+          href={`/plan/location?location=${encodeURIComponent(item.location)}`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, marginBottom: 18,
+            padding: '12px 14px', borderRadius: 12,
+            background: 'rgba(125,211,252,0.08)',
+            border: '1px solid rgba(125,211,252,0.28)',
+            color: 'var(--brand-ink)', textDecoration: 'none',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontFamily: 'var(--font-mono-display), monospace',
+              fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+              color: 'var(--brand-accent-2, #7dd3fc)',
+              fontWeight: 700, marginBottom: 2,
+            }}>
+              ✦ Want to go?
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.4 }}>
+              Plan a trip to <strong style={{ color: 'var(--brand-ink)', fontWeight: 600 }}>{item.location}</strong>
+            </div>
+          </div>
+          <span aria-hidden style={{ fontSize: 18, color: 'var(--brand-accent-2, #7dd3fc)' }}>→</span>
+        </Link>
+      )}
+
       {/* Missions */}
       <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.07em', marginBottom: 10 }}>
         {String.fromCodePoint(0x1F3AF)} EXCLUSIVE SKIN MISSIONS

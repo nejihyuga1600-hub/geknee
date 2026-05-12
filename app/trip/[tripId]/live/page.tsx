@@ -357,6 +357,15 @@ export default function LiveTripPage() {
             }}>
             ITINERARY {String.fromCodePoint(0x2197)}
           </Link>
+          <Link href={`/plan/${tripId}/booking`}
+            style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+              color: 'var(--brand-ink-dim)', textDecoration: 'none',
+              padding: '4px 10px', borderRadius: 999,
+              border: '1px solid var(--brand-border)',
+            }}>
+            BOOK {String.fromCodePoint(0x2197)}
+          </Link>
           <Link href={`/plan/${tripId}/vault`}
             style={{
               fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
