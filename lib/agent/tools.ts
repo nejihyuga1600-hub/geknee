@@ -11,6 +11,8 @@ import { routeBetweenTool } from './tools/route_between';
 import { weatherForecastTool } from './tools/weather_forecast';
 import { findPlacesTool } from './tools/find_places';
 import { recallUserContextTool } from './tools/recall_user_context';
+import { flightSearchTool } from './tools/flight_search';
+import { currencyConvertTool } from './tools/currency_convert';
 
 export interface ToolContext {
   userId: string;
@@ -42,6 +44,8 @@ export function getAgentTools(): AgentTool[] {
     routeBetweenTool,
     findPlacesTool,
     weatherForecastTool,
+    flightSearchTool,
+    currencyConvertTool,
     recallUserContextTool,
     echoTool,
   ];
