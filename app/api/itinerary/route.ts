@@ -152,7 +152,7 @@ Include:
 4. Top highlights across the whole trip
 5. Practical tips and budget breakdown per city that align with the traveler's budget level and style
 
-CRITICAL: Every activity must have a start time (e.g. **9:00 AM**), a duration *(~X hrs)*, and the travel segment to the next activity must show mode emoji + minutes + route name. Do not skip transit segments.
+CRITICAL: Every activity must have a start time (e.g. **9:00 AM**), a duration *(~X hrs)*, and the travel segment to the next activity must show a mode token + minutes + route name. Do not skip transit segments.
 ${p.mustVisit && p.mustVisit.length > 0 ? "CRITICAL: Every place listed in MUST-INCLUDE PLACES above must appear in the itinerary. Schedule them on appropriate days and integrate them naturally.\n" : ""}
 Write in an engaging, friendly tone. Be specific — real place names, dish names, neighborhoods.`;
   }
@@ -172,15 +172,15 @@ HEADING FORMAT (critical): Use "## " (double hash + space) for every section hea
 2. A full day-by-day schedule, each day as its own ## Day N: [Title] heading (Day 1 through Day ${p.nights}), where EVERY activity has:
    - A precise start time (e.g. **9:00 AM**)
    - The activity name in bold with approximate duration *(~X hrs)*
-   - A transit segment immediately after showing how to reach the next stop: mode emoji + travel time + route/line name
-     Examples: 🚶 8 min walk | 🚇 12 min subway (Line 1 → Central Station) | 🚕 15 min taxi | 🚌 20 min bus (Route 38)
+   - A transit segment immediately after showing how to reach the next stop: mode token + travel time + route/line name
+     Examples: [walk] 8 min | [subway] 12 min (Line 1 → Central Station) | [taxi] 15 min | [bus] 20 min (Route 38)
    - Lunch and dinner with restaurant name, cuisine, and price per person that fit the budget level (${p.budget})
 3. Top 5 must-see/must-do highlights chosen to match the traveler's interests (${interestList})
 4. Practical tips tailored to their travel style (${p.style}) and budget (${p.budget})
 5. A rough daily budget breakdown in USD matching the ${p.budget} budget level
 ${p.mustVisit && p.mustVisit.length > 0 ? "\nCRITICAL: Every place listed in MUST-INCLUDE PLACES above must appear in the itinerary on an appropriate day. Do not omit any of them.\n" : ""}
 CRITICAL: Do not skip transit segments. Every activity must flow into the next with real travel info.
-CRITICAL TRANSIT FORMAT: Every transit segment MUST start with one of these emoji as the very first character of the line, with no markdown around it: 🚶 (walk), 🚴 (bike), 🚇 (subway/metro), 🚌 (bus), 🚂 or 🚆 (train), 🚕 or 🚖 (taxi/rideshare), ✈️ (flight), ⛵ (ferry). The day-map UI parses this emoji to choose between walking, cycling, and driving routing — without it, the route renders as a straight line.
+CRITICAL TRANSIT FORMAT: Every transit segment MUST start with one of these bracket tokens as the very first characters of the line, with no markdown around it: [walk], [bike], [subway], [bus], [train], [taxi], [flight], [ferry]. The day-map UI parses this token to choose between walking, cycling, and driving routing — without it, the route renders as a straight line. Do not use emoji for transit modes; tokens only.
 Write in an engaging, friendly tone. Be specific — use real place names, dish names, and neighborhood names.`;
 }
 
@@ -198,11 +198,11 @@ FORMATTING RULES:
 
 2. TIME & TRANSPORT FORMAT: For every day plan, format each activity block like this:
    **9:00 AM** — Activity description at **Place Name** *(~1.5 hrs)*
-   🚶 12 min walk / 🚇 8 min subway (Ginza Line → Shinjuku) / 🚌 15 min bus / 🚕 10 min taxi / 🚂 45 min train
+   [walk] 12 min / [subway] 8 min (Ginza Line → Shinjuku) / [bus] 15 min / [taxi] 10 min / [train] 45 min
    **11:00 AM** — Next activity...
 
    - Always specify a realistic clock time for each activity
-   - Always show how to get from one activity to the next — include the mode of transport emoji (🚶 walk, 🚇 subway/metro, 🚌 bus, 🚕 taxi/rideshare, 🚂 train, 🚴 bike, ⛵ ferry), the travel time in minutes, and the specific line or route name where relevant
+   - Always show how to get from one activity to the next — include the mode token ([walk], [subway], [bus], [taxi], [train], [bike], [ferry], [flight]), the travel time in minutes, and the specific line or route name where relevant
    - Include approximate duration for each activity in parentheses e.g. *(~2 hrs)*
    - Lunch and dinner entries should specify the restaurant, cuisine type, and approximate cost per person
    - Factor in realistic travel times between locations — don't pack in activities that are geographically too spread out

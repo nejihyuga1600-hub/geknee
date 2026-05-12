@@ -132,13 +132,39 @@ function PlaceThumb({ place, city }: { place: string; city?: string }) {
 // no prompt change required. Each helper returns `null` when the data
 // isn't there so chips degrade gracefully.
 
-// Any line that begins with a transit-mode emoji is a "transit line".
-// Broad on purpose — catches "🚶 12 min walk", "🚶 short walk / 🚕 5 min",
-// "🚇 8 min subway (Ginza Line)", and the AI's occasional emoji-only
-// flourishes. We always promote these to a chip and hide the prose line
-// so the user reads the info once.
+// Any line that begins with a transit-mode marker is a "transit line".
+// Two formats are recognised:
+//   1. Legacy emoji — "🚶 12 min walk", "🚇 8 min subway (Ginza Line)".
+//      In-flight itineraries from before the token switch still parse.
+//   2. Bracket tokens — "[walk] 12 min", "[subway] 8 min (Ginza Line)".
+//      The format new prompts emit. Bracket form is robust to the AI
+//      mis-rendering emoji (zero-width joiners, narrow no-break spaces)
+//      and gives the renderer a clean mode key for SVG icon swap.
 const TRANSIT_EMOJI = '[🚶🚇🚌🚕🚂🚆🚴⛵✈️🛩🛬🚁🚖🛺🚊🚋]';
-const TRANSIT_LINE_RE = new RegExp(`^\\s*${TRANSIT_EMOJI}`, 'u');
+const TRANSIT_TOKEN = '\\[(?:walk|subway|bus|taxi|train|bike|ferry|flight)\\]';
+const TRANSIT_MARKER = `(?:${TRANSIT_EMOJI}|${TRANSIT_TOKEN})`;
+const TRANSIT_LINE_RE = new RegExp(`^\\s*${TRANSIT_MARKER}`, 'u');
+
+// Emoji → canonical mode key. Multiple emoji can map to the same mode
+// (🚖 🛺 are both 'taxi'; 🚊 🚋 are both 'subway' for chip purposes).
+const EMOJI_TO_MODE: Record<string, string> = {
+  '🚶': 'walk', '🚴': 'bike',
+  '🚇': 'subway', '🚊': 'subway', '🚋': 'subway',
+  '🚌': 'bus',
+  '🚕': 'taxi', '🚖': 'taxi', '🛺': 'taxi',
+  '🚂': 'train', '🚆': 'train',
+  '⛵': 'ferry',
+  '✈️': 'flight', '🛩': 'flight', '🛬': 'flight', '🚁': 'flight',
+};
+// Canonical mode → emoji used for chip display until the SVG swap lands.
+const MODE_TO_EMOJI: Record<string, string> = {
+  walk: '🚶', bike: '🚴', subway: '🚇', bus: '🚌',
+  taxi: '🚕', train: '🚂', ferry: '⛵', flight: '✈️',
+};
+function markerToMode(marker: string): string {
+  if (marker.startsWith('[') && marker.endsWith(']')) return marker.slice(1, -1);
+  return EMOJI_TO_MODE[marker] ?? 'walk';
+}
 
 function parseDuration(headline: string): string | null {
   const m = headline.match(/\(\s*~?\s*(\d+(?:\.\d+)?)\s*(hrs?|hours?|mins?|minutes?)\s*\)/i);
@@ -163,28 +189,29 @@ function parseCost(details: { line: string }[], headline: string): string | null
 //   "🚶 short walk / 🚕 5 min"     → picks the segment with explicit
 //                                    minutes (5 min) and uses that emoji
 //                                    so we never lose actionable info.
-const SEG_RE = new RegExp(`(${TRANSIT_EMOJI})\\s*([^/|]+)`, 'gu');
+const SEG_RE = new RegExp(`(${TRANSIT_MARKER})\\s*([^/|]+)`, 'gu');
 
 function parseTransit(
   details: { line: string }[],
   nextActivityNumber?: number,
-): { icon: string; label: string } | null {
+): { icon: string; mode: string; label: string } | null {
   for (const { line } of details) {
     if (!TRANSIT_LINE_RE.test(line)) continue;
-    type Seg = { icon: string; text: string; hasMinutes: boolean };
+    type Seg = { marker: string; text: string; hasMinutes: boolean };
     const segs: Seg[] = [];
     SEG_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = SEG_RE.exec(line))) {
       const text = m[2].replace(/[.,;!?]+\s*$/g, '').trim();
       if (!text) continue;
-      segs.push({ icon: m[1], text, hasMinutes: /\d+\s*(min|hr|hour)/i.test(text) });
+      segs.push({ marker: m[1], text, hasMinutes: /\d+\s*(min|hr|hour)/i.test(text) });
     }
     if (segs.length === 0) continue;
     // Prefer a segment with explicit minutes; fall back to the first.
     const pick = segs.find(s => s.hasMinutes) ?? segs[0];
     const target = nextActivityNumber !== undefined ? ` → step ${nextActivityNumber}` : '';
-    return { icon: pick.icon, label: pick.text + target };
+    const mode = markerToMode(pick.marker);
+    return { icon: MODE_TO_EMOJI[mode] ?? pick.marker, mode, label: pick.text + target };
   }
   return null;
 }
