@@ -55,6 +55,34 @@
   }
 }
 
+/* Light-mode override for the brand-* tokens. The default :root values
+   above are dark-first (the site's editorial voice). When the OS / browser
+   reports light preference, we flip the tokens so 2D maps + UI chrome
+   render against a paper / parchment palette. Accent colors stay the same
+   (lavender + icy blue read on both light and dark). The 3D main globe
+   intentionally stays dark — see app/plan/location/LocationClient.tsx
+   where the canvas background is set to a fixed dark color regardless
+   of color-scheme, because space is always dark. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --brand-bg: #f7f5ee;              /* warm paper, faint cream */
+    --brand-bg2: #efece2;
+    --brand-surface: rgba(255, 255, 255, 0.72);
+    --brand-surface-solid: #ffffff;
+    --brand-border: rgba(20, 24, 48, 0.10);
+    --brand-border-hi: rgba(124, 92, 240, 0.35);
+    --brand-ink: #15152a;             /* near-black, faint violet undertone */
+    --brand-ink-dim: #4a4a66;
+    --brand-ink-mute: #7a7a8e;
+    --brand-accent: #7c5cf0;          /* lavender tuned slightly darker for contrast on paper */
+    --brand-accent-2: #2e92c4;        /* icy blue, contrast-bumped on paper */
+    --brand-gold: #d97706;            /* keep "magic moment" warm, less neon */
+    --brand-success: #1a8f5e;
+    --brand-warn: #c2410c;
+    --brand-danger: #b91c1c;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

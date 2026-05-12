@@ -15,6 +15,7 @@
 
 import { useEffect, useRef } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
+import { useColorScheme } from '@/lib/useColorScheme';
 
 interface Activity {
   time: string;
@@ -51,6 +52,22 @@ const DARK_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#15152a' }] },
 ];
 
+// Light-mode counterpart — paper / parchment palette matching the
+// --brand-bg light token. Same POI/transit suppression as dark so the
+// activity pins are the only visual emphasis on the surface.
+const LIGHT_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#efece2' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#4a4a66' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f7f5ee' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6b6b85' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c4dcef' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#2e92c4' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#e8e5d9' }] },
+];
+
 // Branded numbered pin — small SVG data URL so each marker can have a
 // per-stop number on a lavender disc with a white border. Faster than
 // drawing custom DivIcon overlays.
@@ -76,6 +93,9 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
   // parent's onMapClick identity changes. The listener reads .current.
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  // Follow the user's color-scheme preference. Both the map's styled tiles
+  // and the polyline color flip when this changes — see the effect below.
+  const colorScheme = useColorScheme();
 
   // One-time map init. Centers on a generic default until the activity-
   // resolution effect below pans to the day's first stop.
@@ -91,8 +111,8 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
           zoomControl: true,
           gestureHandling: 'greedy',
           clickableIcons: false,
-          styles: DARK_STYLE,
-          backgroundColor: '#0c0c1f',
+          styles: colorScheme === 'light' ? LIGHT_STYLE : DARK_STYLE,
+          backgroundColor: colorScheme === 'light' ? '#efece2' : '#0c0c1f',
         });
         mapRef.current = map;
 
@@ -118,6 +138,22 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
       mapRef.current = null;
     };
   }, []);
+
+  // Re-style the map when the user's OS color-scheme flips mid-session.
+  // setOptions on an existing map avoids the destroy/recreate cost (the
+  // init effect runs once on mount).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setOptions({
+      styles: colorScheme === 'light' ? LIGHT_STYLE : DARK_STYLE,
+      backgroundColor: colorScheme === 'light' ? '#efece2' : '#0c0c1f',
+    });
+    // Re-tint the active polyline too so the route line matches.
+    polylineRef.current?.setOptions({
+      strokeColor: colorScheme === 'light' ? '#7c5cf0' : '#a78bfa',
+    });
+  }, [colorScheme]);
 
   // Re-geocode + re-render markers whenever the day or activities list
   // changes. Each iteration clears the previous markers/polyline first so
@@ -234,7 +270,8 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
         polylineRef.current = new google.maps.Polyline({
           path: cleaned,
           geodesic: false,
-          strokeColor: '#a78bfa',
+          // Lavender — slightly darkened on light backgrounds for contrast.
+          strokeColor: colorScheme === 'light' ? '#7c5cf0' : '#a78bfa',
           strokeOpacity: 0.95,
           strokeWeight: 4,
           map,
@@ -250,7 +287,9 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
       style={{
         width: '100%',
         height: 360,
-        background: '#0c0c1f',
+        // Matches the styled-map backgroundColor so the wrapper doesn't
+        // flash a dark band before tiles load when the user is in light mode.
+        background: 'var(--brand-bg2)',
         borderRadius: 14,
         overflow: 'hidden',
       }}
