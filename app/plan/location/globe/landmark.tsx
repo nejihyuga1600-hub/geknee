@@ -532,13 +532,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     `${BLOB_BASE}/${MONUMENT_FILE_PREFIX[mk!] ?? mk}_${effectiveSkin}.glb` : undefined;
   const model   = mk ? MODELS[mk] : undefined;
   const density = LM_DENSITY.get(p) ?? 1;
-  // Global landmark size multiplier — every monument rendered at 2.34x its
-  // declared `s` (was 1.875; bumped another 25% per user request) so the
-  // Meshy GLBs read clearly inside the city ring instead of looking like
-  // a dot. Keeps per-monument proportions intact (Eiffel s=0.9 stays taller
-  // than Liberty s=0.4) — just scales all up together.
+  // Global landmark size multiplier — every monument rendered at 2.34x the
+  // uniform `s` so the Meshy GLBs read clearly. Per-monument size overrides
+  // were removed at user request — Eiffel/Stonehenge/Pyramid no longer
+  // override their declared `s`. All monuments render at the Colosseum's
+  // effective size (s=0.4 baseline) so the globe reads uniformly.
+  // The `s` prop on Lm is now ignored visually; it remains in the API for
+  // backwards compatibility with callers but doesn't affect rendering.
   const LANDMARK_BOOST = 2.34;
-  const effS    = s * density * LANDMARK_BOOST;
+  const UNIFORM_S = 0.4;
+  void s; // declared override intentionally ignored
+  const effS = UNIFORM_S * density * LANDMARK_BOOST;
 
   // ─── Animation state refs ───────────────────────────────────────────────────
   const prevCollectedRef = useRef(isCollected);
@@ -896,19 +900,11 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
           />
         </group>
 
-        {/* Ring is now always visible — uncollected monuments get a faint
-            white outline so they read as "spots to find" instead of being
-            invisible until unlocked. Collected monuments keep their rarity
-            colour at full opacity. */}
-        <mesh ref={ringRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.6, 0.8, 32]} />
-          <meshBasicMaterial
-            ref={ringMatRef}
-            color={isCollected ? ringColor : "#ffffff"}
-            transparent
-            opacity={isCollected ? 0.7 : 0.28}
-          />
-        </mesh>
+        {/* Persistent monument ring removed at user request — the rarity-
+            tinted ring + the white "find me" outline were reading as visual
+            noise on the globe. ringRef/ringMatRef remain declared with null
+            current values; the unlock-animation per-frame loop short-circuits
+            on the null check. */}
 
         <mesh
           position={[0, 0.5, 0]}
