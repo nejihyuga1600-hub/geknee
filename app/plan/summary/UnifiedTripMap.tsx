@@ -199,14 +199,16 @@ export default function UnifiedTripMap({
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
 
-  // Pull day sections only — Overview / Practical Tips don't get pins.
-  // Strict: must start with "Day <n>" then a separator (": " / " — " / " - ").
-  // The looser /^Day\s*\d+/ used to match wrap-up headings like "Day 4
-  // highlights" on a 3-day trip, producing a phantom Day 4 chip.
+  // Pull day sections only. /^Day\s*\d+\b/ accepts "Day 4: Title",
+  // "Day 4 - Title", and "Day 4 Title" while rejecting "Day 41". The
+  // tighter "must have separator" version was dropping legit sections
+  // where the AI omitted the colon/dash. Phantom days (sections that
+  // open with "Day N" but have no content) are filtered out at the
+  // chip step because dayChips derives from pins, not sections.
   const daySections = useMemo(() => {
     return sections
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => /^Day\s*\d+\s*[:\-–—]/i.test(s.heading ?? ''));
+      .filter(({ s }) => /^Day\s*\d+\b/i.test(s.heading ?? ''));
   }, [sections]);
 
   // Build the candidate place list per day, in chronological order.

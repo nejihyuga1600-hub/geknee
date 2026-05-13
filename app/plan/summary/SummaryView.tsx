@@ -1555,6 +1555,43 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
         </div>
         )}
 
+        {/* Compact Planning ⇄ Itinerary mode toggle. Sits inside the
+            merged tab so users can flip between curating pins and
+            viewing the day plan without leaving the page. Shown
+            whenever both modes have something to render — sections
+            present (itinerary exists) or bookmarks present (user has
+            been pinning). */}
+        {(sections.length > 0 || bookmarks.length > 0) && mainTab !== 'book' && (
+          <div role="tablist" aria-label="Trip view mode" style={{
+            display: 'inline-flex', gap: 4,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 999, padding: 3,
+            marginBottom: 16,
+          }}>
+            {(['planning', 'itinerary'] as const).map((m) => {
+              const active = mainTab === m;
+              const label = m === 'planning' ? '📍 Pin destinations' : '🗺 View itinerary';
+              return (
+                <button
+                  key={m}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setMainTab(m)}
+                  style={{
+                    padding: '6px 16px', borderRadius: 999,
+                    background: active ? 'var(--brand-accent)' : 'transparent',
+                    color: active ? 'var(--brand-bg)' : 'rgba(255,255,255,0.65)',
+                    border: 'none',
+                    fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >{label}</button>
+              );
+            })}
+          </div>
+        )}
+
         {/* ── Main tab switcher (legacy — hidden during the design pass) ─── */}
         {false && (
         <div style={{
