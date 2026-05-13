@@ -138,6 +138,10 @@ interface PlacesService {
     req: { placeId: string; fields: string[] },
     cb: (place: PlaceDetails | null, status: string) => void,
   ) => void;
+  textSearch: (
+    req: { query: string; bounds?: unknown; location?: unknown; radius?: number },
+    cb: (results: Array<{ place_id?: string; geometry?: { location?: { lat: () => number; lng: () => number } }; name?: string }> | null, status: string) => void,
+  ) => void;
 }
 
 interface GooglePolyline {
@@ -192,6 +196,8 @@ export default function UnifiedTripMap({
   const [panel, setPanel] = useState<PlacePanelData | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
   const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
 
   // Pull day sections only — Overview / Practical Tips don't get pins.
   // Strict: must start with "Day <n>" then a separator (": " / " — " / " - ").
@@ -712,6 +718,59 @@ export default function UnifiedTripMap({
             background: '#0a0a1f',
           }}
         />
+        {planningEnabled && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = searchQuery.trim();
+              const svc = placesServiceRef.current;
+              if (!q || !svc || !mapRef.current) return;
+              setSearching(true);
+              svc.textSearch({ query: q }, (results, status) => {
+                setSearching(false);
+                if (status !== 'OK' || !results?.length) return;
+                const first = results[0];
+                if (!first.place_id || !first.geometry?.location) return;
+                openPlaceFromPlaceId(first.place_id, first.name, {
+                  lat: first.geometry.location.lat(),
+                  lng: first.geometry.location.lng(),
+                });
+              });
+            }}
+            style={{
+              position: 'absolute', top: 8, right: 8, zIndex: 40,
+              display: 'flex', gap: 6,
+              background: 'rgba(13,17,23,0.92)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 10, padding: 4,
+              backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+              maxWidth: 'min(320px, calc(100% - 16px))',
+            }}
+          >
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search places, restaurants, sights…"
+              style={{
+                flex: 1, minWidth: 0,
+                background: 'transparent', border: 'none', outline: 'none',
+                color: '#e2e8f0', fontSize: 12, padding: '6px 8px',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={searching || !searchQuery.trim()}
+              style={{
+                padding: '6px 12px', borderRadius: 6,
+                background: searchQuery.trim() ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(255,255,255,0.06)',
+                color: searchQuery.trim() ? '#0a0a1f' : 'rgba(255,255,255,0.4)',
+                border: 'none', fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >{searching ? '…' : 'Search'}</button>
+          </form>
+        )}
         {panel && (
           <PlacePanelOverlay
             data={panel}

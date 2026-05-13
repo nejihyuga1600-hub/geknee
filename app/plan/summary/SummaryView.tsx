@@ -1652,26 +1652,13 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
           const handleGenerate = requestGeneration;
           return (
             <div style={{
+              // 40% sidebar (bookmarks list) / 60% map. Same proportion
+              // as the itinerary view so the merged tab feels consistent.
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 360px',
-              gap: 0,
-              alignItems: 'stretch',
-              borderRadius: 16,
-              overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(255,255,255,0.02)',
+              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 2fr) minmax(0, 3fr)',
+              gap: 20,
+              alignItems: 'start',
             }}>
-              {/* ── Map column ─────────────────────────────────────────────── */}
-              <div style={{ minWidth: 0, display: 'flex' }}>
-              <PlanningMapDynamic
-                bookmarks={bookmarks}
-                onAddBookmark={b => setBookmarks(prev => [...prev, b])}
-                onRemoveBookmark={id => setBookmarks(prev => prev.filter(bm => bm.id !== id))}
-                location={location}
-                extraStops={parsedStops.map(s => s.city)}
-                mapControlRef={mapControlRef}
-              />
-              </div>
               {/* ── Sidebar column ─────────────────────────────────────────── */}
               <aside style={{
                 background: 'transparent',
@@ -1996,6 +1983,34 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   </button>
                 </div>
               </aside>
+              {/* ── Map column (right) ─────────────────────────────────── */}
+              <div
+                style={{
+                  position: isMobile ? 'static' : 'sticky',
+                  top: isMobile ? undefined : 16,
+                  alignSelf: 'start',
+                  height: isMobile ? 320 : 'calc(100vh - 32px)',
+                }}
+              >
+                <UnifiedTripMap
+                  sections={[]}
+                  location={location}
+                  sticky={false}
+                  height={isMobile ? 320 : undefined}
+                  fillHeight={!isMobile}
+                  bookmarks={bookmarks}
+                  onAddBookmark={(b) => setBookmarks((prev) => [...prev, {
+                    id: b.id,
+                    name: b.name,
+                    coords: b.coords,
+                    placeId: b.placeId,
+                    category: (b.category && PLANNING_CATS.some(c => c.key === b.category)
+                      ? b.category
+                      : 'other') as BookmarkCategory,
+                  }])}
+                  onRemoveBookmark={(id) => setBookmarks((prev) => prev.filter((bm) => bm.id !== id))}
+                />
+              </div>
             </div>
           );
         })()}
