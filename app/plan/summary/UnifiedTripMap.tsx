@@ -38,6 +38,11 @@ interface Bookmark {
   coords: [number, number]; // [lng, lat]
   category?: string;
   placeId?: string;
+  // When the pin was dropped while a specific day chip was active, the
+  // day number the user wants this stop assigned to. Null = "any day"
+  // (AI picks the most convenient day during update). Undefined = a
+  // legacy bookmark from before this field existed; treated as null.
+  dayAssignment?: number | null;
 }
 
 interface Props {
@@ -784,6 +789,7 @@ export default function UnifiedTripMap({
             onClose={() => setPanel(null)}
             bookmarks={bookmarks}
             onAddBookmark={onAddBookmark}
+            dayAssignment={activeFilter === 'all' ? null : activeFilter}
           />
         )}
       </div>
@@ -845,8 +851,11 @@ function PlacePanelOverlay(props: {
   onClose: () => void;
   bookmarks?: Bookmark[];
   onAddBookmark?: (b: Bookmark) => void;
+  // Day to attach to the new bookmark when the user pins. Comes from
+  // the parent's active day-filter chip. Null = "any day" (AI picks).
+  dayAssignment: number | null;
 }) {
-  const { data, location, activePhoto, setActivePhoto, activeTab, setActiveTab, onClose, bookmarks, onAddBookmark } = props;
+  const { data, location, activePhoto, setActivePhoto, activeTab, setActiveTab, onClose, bookmarks, onAddBookmark, dayAssignment } = props;
   const { pin, loading, details, poi } = data;
   const isFromPOI = !!poi;
   const placeName = details?.name ?? pin.name;
@@ -869,6 +878,9 @@ function PlacePanelOverlay(props: {
       coords,
       category: 'other',
       placeId: poi.placeId,
+      // dayAssignment passed in via prop so the panel doesn't have to
+      // know about the parent's filter state.
+      dayAssignment: dayAssignment ?? null,
     });
   };
   const dayColor = DAY_COLORS[(pin.dayNumber - 1) % DAY_COLORS.length];
@@ -991,7 +1003,9 @@ function PlacePanelOverlay(props: {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               }}
             >
-              {isAlreadyPinned ? '✓ Pinned' : '📍 Pin destination'}
+              {isAlreadyPinned
+                ? '✓ Pinned'
+                : `📍 Pin to ${dayAssignment ? `Day ${dayAssignment}` : 'best-fit day'}`}
             </button>
           )}
         </div>

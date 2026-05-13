@@ -63,6 +63,10 @@ interface Bookmark {
   coords: [number, number]; // [lng, lat]
   category: BookmarkCategory;
   placeId?: string;
+  // Day number the user picked for this pin (via the active day-filter
+  // chip on the map) when adding it. Null = "best-fit day" (the agent
+  // picks during the next itinerary update).
+  dayAssignment?: number | null;
 }
 
 // Category palette used by the planning sidebar + map pin renderer.
@@ -257,6 +261,14 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // channel "STATUS:..." lines as it geocodes, fetches weather, calls
   // tools, etc. Cleared between generation runs by startGeneration.
   const [currentStatus, setCurrentStatus] = useState<string | null>(null);
+
+  // Tracks bookmarks the user dropped on the unified map AFTER the
+  // current itinerary was generated. Surfaces an "Update itinerary"
+  // CTA so the user can confirm and let the agent fold the new pins
+  // into the existing plan (with day-assignment hints from the map's
+  // active day-filter chip at pin time).
+  const [pendingBookmarkIds, setPendingBookmarkIds] = useState<Set<string>>(new Set());
+  const [updatingFromPins, setUpdatingFromPins] = useState(false);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editValue, setEditValue]   = useState('');
 
@@ -1065,6 +1077,53 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     requestStartRef.current = Date.now();
   }
 
+  // Drop-pin from the unified map. Adds to bookmarks AND marks pending
+  // so the "Update itinerary" CTA appears. Coerces UnifiedTripMap's
+  // looser Bookmark type to our local strict BookmarkCategory union.
+  function handlePinFromMap(b: { id: string; name: string; coords: [number, number]; category?: string; placeId?: string; dayAssignment?: number | null }) {
+    const cat: BookmarkCategory = (b.category && PLANNING_CATS.some((c) => c.key === b.category)
+      ? b.category
+      : 'other') as BookmarkCategory;
+    const next: Bookmark = {
+      id: b.id,
+      name: b.name,
+      coords: b.coords,
+      placeId: b.placeId,
+      category: cat,
+      dayAssignment: b.dayAssignment ?? null,
+    };
+    setBookmarks((prev) => [...prev, next]);
+    // Only flag as "pending agent edit" if there's an existing
+    // itinerary to update against. Pre-generation pins go through
+    // the normal "Generate itinerary" path instead.
+    if (sections.length > 0) {
+      setPendingBookmarkIds((prev) => new Set(prev).add(b.id));
+    }
+  }
+
+  async function updateItineraryFromPins() {
+    if (!savedTripId || pendingBookmarkIds.size === 0 || updatingFromPins) return;
+    const pending = bookmarks.filter((b) => pendingBookmarkIds.has(b.id));
+    if (pending.length === 0) return;
+    setUpdatingFromPins(true);
+    const lines = pending.map((b) => {
+      const where = b.dayAssignment
+        ? `on Day ${b.dayAssignment}`
+        : 'on whichever day fits best (use route_between to pick the most convenient day with available time)';
+      return `- ${b.name} ${where}`;
+    });
+    const prompt = `The user has dropped ${pending.length} new pin${pending.length === 1 ? '' : 's'} on the trip map. Add ${pending.length === 1 ? 'it' : 'them'} to the itinerary:
+${lines.join('\n')}
+
+For places marked "on Day N", insert them at a sensible time slot on that day. For places marked "on whichever day fits best", evaluate the existing day plans and insert each on the day with the most convenience and available time. Adjust adjacent activity times only if needed to make room. Output the full updated markdown itinerary.`;
+    try {
+      await applySmartEdit(prompt);
+      setPendingBookmarkIds(new Set());
+    } finally {
+      setUpdatingFromPins(false);
+    }
+  }
+
   function requestGeneration() {
     // If an itinerary already exists, ask whether the user wants a
     // surgical edit (cheap, fast) or a full regen (expensive, throws
@@ -1555,6 +1614,46 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
         </div>
         )}
 
+        {/* "Update itinerary" CTA — appears when user has dropped pins
+            on the unified map after generation. Click rolls them into
+            the existing itinerary via the agent's edit mode, honoring
+            day-assignment hints from the day-filter chip selected at
+            pin time. */}
+        {pendingBookmarkIds.size > 0 && sections.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(125,211,252,0.18))',
+            border: '1px solid rgba(167,139,250,0.45)',
+            borderRadius: 12, padding: '10px 14px',
+            marginBottom: 14,
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 11, color: 'rgba(255,255,255,0.55)',
+                letterSpacing: '0.1em', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2,
+              }}>
+                Pending pins
+              </div>
+              <div style={{ fontSize: 13, color: '#e2e8f0' }}>
+                {pendingBookmarkIds.size} new {pendingBookmarkIds.size === 1 ? 'pin' : 'pins'} ready to fold into the itinerary
+              </div>
+            </div>
+            <button
+              onClick={updateItineraryFromPins}
+              disabled={updatingFromPins || smartEditing}
+              style={{
+                padding: '9px 16px', borderRadius: 10,
+                background: 'linear-gradient(135deg,#a78bfa,#7dd3fc)',
+                color: '#0a0a1f', border: 'none', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {updatingFromPins || smartEditing ? 'Updating…' : 'Update itinerary →'}
+            </button>
+          </div>
+        )}
+
         {/* Compact Planning ⇄ Itinerary mode toggle. Sits inside the
             merged tab so users can flip between curating pins and
             viewing the day plan without leaving the page. Shown
@@ -2036,16 +2135,14 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                   height={isMobile ? 320 : undefined}
                   fillHeight={!isMobile}
                   bookmarks={bookmarks}
-                  onAddBookmark={(b) => setBookmarks((prev) => [...prev, {
-                    id: b.id,
-                    name: b.name,
-                    coords: b.coords,
-                    placeId: b.placeId,
-                    category: (b.category && PLANNING_CATS.some(c => c.key === b.category)
-                      ? b.category
-                      : 'other') as BookmarkCategory,
-                  }])}
-                  onRemoveBookmark={(id) => setBookmarks((prev) => prev.filter((bm) => bm.id !== id))}
+                  onAddBookmark={handlePinFromMap}
+                  onRemoveBookmark={(id) => {
+                    setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                    setPendingBookmarkIds((prev) => {
+                      if (!prev.has(id)) return prev;
+                      const next = new Set(prev); next.delete(id); return next;
+                    });
+                  }}
                 />
               </div>
             </div>
@@ -2242,6 +2339,15 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
                     sticky={false}
                     height={isMobile ? 320 : undefined}
                     fillHeight={!isMobile}
+                    bookmarks={bookmarks}
+                    onAddBookmark={handlePinFromMap}
+                    onRemoveBookmark={(id) => {
+                      setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                      setPendingBookmarkIds((prev) => {
+                        if (!prev.has(id)) return prev;
+                        const next = new Set(prev); next.delete(id); return next;
+                      });
+                    }}
                   />
                 </div>
               )}
