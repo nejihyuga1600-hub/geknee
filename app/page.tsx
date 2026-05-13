@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import StepPillNav from './components/StepPillNav';
+import LandingTour from './components/landing/LandingTour';
 import Link from 'next/link';
 
 // ─── Landing · Passport-zine concept ─────────────────────────────────────────
@@ -42,7 +43,9 @@ export default function Home() {
       color: INK,
       fontFamily: 'var(--font-ui), system-ui, -apple-system, sans-serif',
       position: 'relative',
-      overflow: 'hidden',
+      // overflow-clip clips overflow without creating a scroll container,
+      // so position:sticky in descendants still works against the viewport.
+      overflowX: 'clip',
     }}>
       {/* Hot-orange sunburst wash, top right */}
       <div style={{
@@ -224,6 +227,9 @@ export default function Home() {
           <SpecimenCard />
         </div>
       </section>
+
+      {/* ── 5-section product tour (polarsteps template) ─────────────────── */}
+      <LandingTour />
 
       {/* ── Passport stamp strip ──────────────────────────────────────────── */}
       <section style={{
