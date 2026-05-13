@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import StepPillNav from './components/StepPillNav';
 import Link from 'next/link';
 
 // ─── Landing · Passport-zine concept ─────────────────────────────────────────
@@ -191,6 +192,26 @@ export default function Home() {
             }}>
               {String.fromCodePoint(0x2191)} takes 40 seconds
             </span>
+          </div>
+
+          {/* Stat-credibility chip — borrowed from polarsteps' "4.8 ★ 370K
+              RATINGS" social-proof shape, recast in geknee's zine voice.
+              Says what the product IS (the rules of the game), not what
+              other people think of it. */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 14,
+            marginTop: 28, padding: '10px 18px',
+            background: PAPER, color: INK,
+            border: `2px solid ${INK}`,
+            boxShadow: `3px 3px 0 ${ACCENT2}`,
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em',
+            textTransform: 'uppercase', fontWeight: 700,
+          }}>
+            <span><strong style={{ color: ACCENT }}>60</strong> monuments</span>
+            <span style={{ opacity: 0.3 }}>·</span>
+            <span><strong style={{ color: ACCENT }}>7</strong> tiers</span>
+            <span style={{ opacity: 0.3 }}>·</span>
+            <span><strong style={{ color: ACCENT3 }}>0</strong> grind</span>
           </div>
         </div>
 
@@ -430,33 +451,75 @@ export default function Home() {
       </section>
 
       {/* ── Mechanic narrative · 01 / 02 / 03 ─────────────────────────────── */}
-      <section id="how" style={{
-        maxWidth: 1280, margin: '0 auto', padding: '40px 32px 80px',
-        position: 'relative', zIndex: 4,
-      }}>
+      {/* Dark-section rhythm break — borrowed from polarsteps, which alternates
+          cream and deep teal between sections. Inverting to ink + cream here
+          makes the "rules of the game" feel like a specimen page cut from
+          the rest of the zine. Sticky pill nav at the top mirrors polarsteps'
+          PLAN / TRACK / RELIVE bottom-of-phone pill — geknee voice. */}
+      <section
+        id="how"
+        style={{
+          background: INK, color: PAPER,
+          position: 'relative', zIndex: 4,
+          padding: '60px 0 100px',
+          marginTop: 20,
+        }}
+      >
+        {/* Faint accent washes so it doesn't feel like a flat black slab. */}
         <div style={{
-          fontFamily: MONO, fontSize: 11, letterSpacing: '0.22em',
-          color: '#3a3a30', textTransform: 'uppercase', fontWeight: 700,
-          marginBottom: 14,
-        }}>
-          {String.fromCodePoint(0x00A7)} How it works · in three moves
-        </div>
-        <h2 style={{
-          fontFamily: DISPLAY, fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 400,
-          letterSpacing: '-0.025em', lineHeight: 1.05, margin: '0 0 36px',
-          maxWidth: 720,
-        }}>
-          You don&apos;t <em style={{ color: ACCENT }}>collect</em> from your couch. You earn it on foot.
-        </h2>
+          position: 'absolute', top: 0, left: 0, right: 0, height: 240,
+          background: 'radial-gradient(ellipse at 20% 0%, rgba(167,139,250,0.18), transparent 60%)',
+          pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: 0, right: 0, width: '50%', height: 200,
+          background: 'radial-gradient(ellipse at 80% 100%, rgba(125,211,252,0.12), transparent 65%)',
+          pointerEvents: 'none',
+        }} />
 
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-          gap: 18,
+          maxWidth: 1280, margin: '0 auto', padding: '0 32px',
+          position: 'relative',
         }}>
-          <Step n="01" title="Plan it" body="Spin the globe, pick a destination, drop pins on a real map. Or let the genie draft an itinerary in 20 seconds." />
-          <Step n="02" title="Go there" body="Your phone confirms you're actually there — geo + a photo. No couch-unlocks. No grinding. No loot boxes." />
-          <Step n="03" title="Prove it"  body="Each visit drops a monument card. Stone is easy; Aurora and Celestial are hard. The board ranks the rare ones." />
+          <StepPillNav
+            steps={[
+              { id: 'step-01', n: '01', label: 'Plan' },
+              { id: 'step-02', n: '02', label: 'Go' },
+              { id: 'step-03', n: '03', label: 'Prove' },
+            ]}
+          />
+
+          <div style={{
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.22em',
+            color: ACCENT, textTransform: 'uppercase', fontWeight: 700,
+            marginBottom: 14,
+          }}>
+            {String.fromCodePoint(0x00A7)} How it works · in three moves
+          </div>
+          <h2 style={{
+            fontFamily: DISPLAY, fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 400,
+            letterSpacing: '-0.025em', lineHeight: 1.05, margin: '0 0 36px',
+            maxWidth: 720,
+            color: PAPER,
+          }}>
+            You don&apos;t <em style={{ color: ACCENT }}>collect</em> from your couch. You earn it on foot.
+          </h2>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 18,
+          }}>
+            <div id="step-01" style={{ scrollMarginTop: 80 }}>
+              <Step n="01" title="Plan it" body="Spin the globe, pick a destination, drop pins on a real map. Or let the genie draft an itinerary in 20 seconds." invert />
+            </div>
+            <div id="step-02" style={{ scrollMarginTop: 80 }}>
+              <Step n="02" title="Go there" body="Your phone confirms you're actually there — geo + a photo. No couch-unlocks. No grinding. No loot boxes." invert />
+            </div>
+            <div id="step-03" style={{ scrollMarginTop: 80 }}>
+              <Step n="03" title="Prove it" body="Each visit drops a monument card. Stone is easy; Aurora and Celestial are hard. The board ranks the rare ones." invert />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -559,12 +622,21 @@ const navLink = {
 
 // ─── Step card ──────────────────────────────────────────────────────────────
 
-function Step({ n, title, body }: { n: string; title: string; body: string }) {
+function Step({
+  n, title, body, invert = false,
+}: { n: string; title: string; body: string; invert?: boolean }) {
+  // Dark variant for the inverted "How it works" section — keeps the same
+  // shape but reads on the ink background. Title stays cream, body softens.
+  const cardBg = invert ? 'rgba(255,255,255,0.04)' : PAPER;
+  const cardBorder = invert ? 'rgba(167,139,250,0.4)' : INK;
+  const titleColor = invert ? PAPER : INK;
+  const bodyColor = invert ? 'rgba(245,241,232,0.7)' : '#3a3a30';
   return (
     <div style={{
       padding: '28px 24px',
-      background: PAPER, border: `2px solid ${INK}`,
+      background: cardBg, border: `2px solid ${cardBorder}`,
       boxShadow: `4px 4px 0 ${ACCENT}`,
+      height: '100%',
     }}>
       <div style={{
         fontFamily: 'var(--font-ui), system-ui, sans-serif', fontWeight: 900,
@@ -573,9 +645,9 @@ function Step({ n, title, body }: { n: string; title: string; body: string }) {
       }}>{n}</div>
       <div style={{
         fontFamily: DISPLAY, fontSize: 24, fontWeight: 400, letterSpacing: '-0.01em',
-        marginBottom: 8,
+        marginBottom: 8, color: titleColor,
       }}>{title}</div>
-      <p style={{ fontSize: 13, lineHeight: 1.5, color: '#3a3a30', margin: 0 }}>{body}</p>
+      <p style={{ fontSize: 13, lineHeight: 1.5, color: bodyColor, margin: 0 }}>{body}</p>
     </div>
   );
 }
