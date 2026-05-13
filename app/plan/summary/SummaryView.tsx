@@ -354,6 +354,11 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   );
   const [bookmarks, setBookmarks]     = useState<Bookmark[]>([]);
   const [planningFilter, setPlanningFilter] = useState<'all' | BookmarkCategory>('all');
+  // Snapshot of bookmark IDs the AI saw on the last successful generation.
+  // Compared against current bookmarks to drive the master-map regenerate
+  // CTA. Persisted alongside bookmarks so a refresh doesn't lose the
+  // baseline. Empty array = no baseline yet (treat all pins as un-synced).
+  const [baselineBookmarkIds, setBaselineBookmarkIds] = useState<string[]>([]);
   // Pin-panel sub-tab toggle: Pins (existing) vs Recs (new). Recs no longer
   // sit in a giant rail at the top of the page — they're a quieter sub-tab
   // here, and clicking a rec opens it on the planning map via openPlace.
@@ -366,6 +371,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // own pin set. Hydrate on mount / when location changes; save on every
   // bookmarks change (after hydration has run for the current key).
   const bookmarksKey = `geknee:bookmarks:${location || 'default'}`;
+  const baselineKey  = `geknee:bookmark-baseline:${location || 'default'}`;
   // Pin-draft handoff: the globe → city Mapbox view writes to
   // geknee:pin-draft:<cityname-lowercase>. Pull those in as bookmarks the
   // first time the user lands on the planner for that city. Each draft
@@ -406,7 +412,15 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
       setBookmarks([]);
     }
     hydratedKeyRef.current = bookmarksKey;
-  }, [bookmarksKey, draftKey]);
+    // Hydrate the bookmark baseline (snapshot from last successful gen).
+    try {
+      const raw = window.localStorage.getItem(baselineKey);
+      const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+      setBaselineBookmarkIds(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setBaselineBookmarkIds([]);
+    }
+  }, [bookmarksKey, draftKey, baselineKey]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (hydratedKeyRef.current !== bookmarksKey) return;
@@ -416,6 +430,27 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
       // Quota exceeded or storage disabled — fail silently rather than crash.
     }
   }, [bookmarks, bookmarksKey]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(baselineKey, JSON.stringify(baselineBookmarkIds));
+    } catch {
+      // ignore
+    }
+  }, [baselineBookmarkIds, baselineKey]);
+
+  // Pin-change count for the master-map bottom action bar. Adds + removes
+  // both count; if there's no baseline yet (user hasn't generated once),
+  // unsynced pins count toward the diff so the CTA reflects "you have
+  // un-applied pins". Memo so we don't re-derive each render.
+  const pinChangeCount = useMemo(() => {
+    const cur = new Set(bookmarks.map(b => b.id));
+    const base = new Set(baselineBookmarkIds);
+    let diff = 0;
+    cur.forEach(id => { if (!base.has(id)) diff += 1; });
+    base.forEach(id => { if (!cur.has(id)) diff += 1; });
+    return diff;
+  }, [bookmarks, baselineBookmarkIds]);
 
   // ── Auto-retry safety net ───────────────────────────────────────────────────
   // If the page sits in a load/generate state for 90 s without any chunks
@@ -1075,6 +1110,10 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     setMainTab('itinerary');
     setLoadingStage('requesting');
     requestStartRef.current = Date.now();
+    // Snapshot the bookmark set we're handing to the AI so the master
+    // map's bottom action bar can later report "X new pins since last
+    // generated" and offer the regenerate CTA.
+    setBaselineBookmarkIds(bookmarks.map(b => b.id));
   }
 
   // Drop-pin from the unified map. Adds to bookmarks AND marks pending
@@ -1654,42 +1693,11 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
           </div>
         )}
 
-        {/* Compact Planning ⇄ Itinerary mode toggle. Sits inside the
-            merged tab so users can flip between curating pins and
-            viewing the day plan without leaving the page. Shown
-            whenever both modes have something to render — sections
-            present (itinerary exists) or bookmarks present (user has
-            been pinning). */}
-        {(sections.length > 0 || bookmarks.length > 0) && mainTab !== 'book' && (
-          <div role="tablist" aria-label="Trip view mode" style={{
-            display: 'inline-flex', gap: 4,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 999, padding: 3,
-            marginBottom: 16,
-          }}>
-            {(['planning', 'itinerary'] as const).map((m) => {
-              const active = mainTab === m;
-              const label = m === 'planning' ? '📍 Pin destinations' : '🗺 View itinerary';
-              return (
-                <button
-                  key={m}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setMainTab(m)}
-                  style={{
-                    padding: '6px 16px', borderRadius: 999,
-                    background: active ? 'var(--brand-accent)' : 'transparent',
-                    color: active ? 'var(--brand-bg)' : 'rgba(255,255,255,0.65)',
-                    border: 'none',
-                    fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                    cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >{label}</button>
-              );
-            })}
-          </div>
-        )}
+        {/* Planning ⇄ Itinerary toggle removed — too easy for users to
+            land on the wrong map. The master map (UnifiedTripMap, with
+            day-routes + pin support) is the single canonical surface.
+            Users still drop pins, see day routes, and trigger regenerate
+            from the master map itself via its bottom action bar. */}
 
         {/* ── Main tab switcher (legacy — hidden during the design pass) ─── */}
         {false && (
@@ -2143,6 +2151,8 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                       const next = new Set(prev); next.delete(id); return next;
                     });
                   }}
+                  pinChangeCount={pinChangeCount}
+                  onRegenerate={requestGeneration}
                 />
               </div>
             </div>
@@ -2348,6 +2358,8 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                         const next = new Set(prev); next.delete(id); return next;
                       });
                     }}
+                    pinChangeCount={pinChangeCount}
+                    onRegenerate={requestGeneration}
                   />
                 </div>
               )}

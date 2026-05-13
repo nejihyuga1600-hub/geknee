@@ -60,6 +60,12 @@ interface Props {
   bookmarks?: Bookmark[];
   onAddBookmark?: (b: Bookmark) => void;
   onRemoveBookmark?: (id: string) => void;
+  // Pin-change tracker for the footer regenerate button. The parent
+  // computes the diff between current bookmarks and the snapshot taken
+  // when the itinerary was last generated; when non-zero, the footer
+  // button lights up "X new pins · Regenerate itinerary".
+  pinChangeCount?: number;
+  onRegenerate?: () => void;
 }
 
 declare global {
@@ -181,6 +187,8 @@ export default function UnifiedTripMap({
   bookmarks,
   onAddBookmark,
   onRemoveBookmark,
+  pinChangeCount = 0,
+  onRegenerate,
 }: Props) {
   const planningEnabled = !!bookmarks && !!onAddBookmark;
   const bookmarkMarkersRef = useRef<GoogleMarker[]>([]);
@@ -832,6 +840,82 @@ export default function UnifiedTripMap({
             );
           })}
         </div>
+      )}
+      {/* Bottom action bar — dim when no pin changes vs. the last-
+          generated baseline, lights up when the diff is non-zero. Gives
+          the user one obvious place to "confirm changes → regenerate
+          itinerary". The AI handles day-assignment for new pins not
+          dropped under an active day filter. */}
+      {onRegenerate && (
+        <button
+          type="button"
+          onClick={pinChangeCount > 0 ? onRegenerate : undefined}
+          disabled={pinChangeCount === 0}
+          aria-label={pinChangeCount > 0
+            ? `Regenerate itinerary — ${pinChangeCount} pin change${pinChangeCount === 1 ? '' : 's'} pending`
+            : 'Itinerary in sync with pins'
+          }
+          style={{
+            marginTop: 10, width: '100%',
+            padding: '14px 18px', borderRadius: 12,
+            border: '1px solid',
+            borderColor: pinChangeCount > 0 ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.08)',
+            background: pinChangeCount > 0
+              ? 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(125,211,252,0.10))'
+              : 'rgba(255,255,255,0.03)',
+            color: pinChangeCount > 0 ? 'var(--brand-ink)' : 'rgba(255,255,255,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12,
+            cursor: pinChangeCount > 0 ? 'pointer' : 'default',
+            fontFamily: 'inherit',
+            transition: 'background 200ms ease, border-color 200ms ease',
+          }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 24, height: 24, borderRadius: '50%',
+              background: pinChangeCount > 0 ? 'var(--brand-accent)' : 'rgba(255,255,255,0.06)',
+              color: pinChangeCount > 0 ? 'var(--brand-bg)' : 'rgba(255,255,255,0.45)',
+              fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+              fontSize: 11, fontWeight: 800,
+            }}>
+              {pinChangeCount > 0 ? pinChangeCount : '✓'}
+            </span>
+            <span style={{ textAlign: 'left' }}>
+              <span style={{
+                display: 'block',
+                fontSize: 11, fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 700,
+                color: pinChangeCount > 0 ? 'var(--brand-accent)' : 'rgba(255,255,255,0.4)',
+                marginBottom: 1,
+              }}>
+                {pinChangeCount > 0 ? '§ Pin changes detected' : '§ Itinerary in sync'}
+              </span>
+              <span style={{
+                display: 'block',
+                fontFamily: 'var(--font-display), Georgia, serif',
+                fontSize: 15, fontWeight: 400, letterSpacing: '-0.01em',
+                color: pinChangeCount > 0 ? 'var(--brand-ink)' : 'rgba(255,255,255,0.55)',
+              }}>
+                {pinChangeCount > 0
+                  ? `Confirm and regenerate the itinerary`
+                  : `Drop a pin to update your trip`}
+              </span>
+            </span>
+          </span>
+          {pinChangeCount > 0 && (
+            <span style={{
+              fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.18em',
+              color: 'var(--brand-accent)',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+            }}>
+              Regenerate →
+            </span>
+          )}
+        </button>
       )}
     </div>
   );
