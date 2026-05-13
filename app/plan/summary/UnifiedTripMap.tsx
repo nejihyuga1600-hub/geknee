@@ -16,6 +16,30 @@ import { extractActivityCandidates, extractActivityPlace, extractTransitMode } f
 
 const QUEST_RE = /\[\s*MONUMENT\s*QUEST\s*\]/i;
 
+// Map a rec's editorial category to the planner's saved bookmark
+// taxonomy. SummaryView keeps a strict 5-bucket union for filters; recs
+// have 5 different buckets — collapse the rec set into the nearest match.
+function recCategoryToBookmarkCategory(c: MapRec['category']): string {
+  switch (c) {
+    case 'restaurant':   return 'food';
+    case 'sight':        return 'activities';
+    case 'experience':   return 'activities';
+    case 'off-beat':     return 'activities';
+    case 'neighborhood': return 'other';
+  }
+}
+
+// Per-category tint for rec cards in the on-map panel. Mirrors the
+// RecPanel sidebar palette so users get the same colour-coding whether
+// they see recs in the sidebar (legacy) or on the master map.
+const REC_TINT: Record<MapRec['category'], { fg: string; bg: string }> = {
+  restaurant:   { fg: '#f87171', bg: 'rgba(248,113,113,0.10)' },
+  sight:        { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)' },
+  experience:   { fg: '#34d399', bg: 'rgba(52,211,153,0.10)' },
+  'off-beat':   { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)' },
+  neighborhood: { fg: '#7dd3fc', bg: 'rgba(125,211,252,0.10)' },
+};
+
 type LegMode = 'walking' | 'cycling' | 'driving';
 
 interface PlacePin {
@@ -66,6 +90,19 @@ interface Props {
   // button lights up "X new pins · Regenerate itinerary".
   pinChangeCount?: number;
   onRegenerate?: () => void;
+  // When a tripId is provided AND planning is enabled (bookmarks +
+  // onAddBookmark), the map exposes a "✦ Find recs" affordance that
+  // fetches Claude-curated picks from /api/recommendations and lets
+  // the user pin them directly. Replaces the separate Recs sidebar.
+  tripId?: string;
+}
+
+interface MapRec {
+  id: string;
+  name: string;
+  category: 'restaurant' | 'sight' | 'experience' | 'off-beat' | 'neighborhood';
+  blurb: string;
+  whyItFits: string;
 }
 
 declare global {
@@ -189,7 +226,107 @@ export default function UnifiedTripMap({
   onRemoveBookmark,
   pinChangeCount = 0,
   onRegenerate,
+  tripId,
 }: Props) {
+  const recsEnabled = !!(tripId && bookmarks && onAddBookmark);
+  const [recs, setRecs] = useState<MapRec[]>([]);
+  const [recsOpen, setRecsOpen] = useState(false);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState<string | null>(null);
+  // Per-card pinning state so each card can show its own pending spinner.
+  const [pinningRecId, setPinningRecId] = useState<string | null>(null);
+  // Track which rec ids have been pinned this session so they fade out of
+  // the panel after success.
+  const [pinnedRecIds, setPinnedRecIds] = useState<Set<string>>(new Set());
+
+  async function fetchRecs(opts?: { force?: boolean }) {
+    if (!tripId) return;
+    const cacheKey = `geknee:recs:${tripId}`;
+    if (!opts?.force && typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as { recs: MapRec[] };
+          if (Array.isArray(parsed.recs) && parsed.recs.length > 0) {
+            setRecs(parsed.recs);
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+    }
+    setRecsLoading(true);
+    setRecsError(null);
+    try {
+      const r = await fetch('/api/recommendations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tripId }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      const j = await r.json() as { recommendations: MapRec[] };
+      setRecs(j.recommendations);
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({ recs: j.recommendations }));
+      } catch { /* storage full — silent */ }
+    } catch (e) {
+      setRecsError(e instanceof Error ? e.message : 'Failed to load');
+    } finally {
+      setRecsLoading(false);
+    }
+  }
+
+  function toggleRecs() {
+    if (!recsEnabled) return;
+    if (!recsOpen && recs.length === 0) {
+      void fetchRecs();
+    }
+    setRecsOpen(o => !o);
+  }
+
+  // Resolve a rec to coordinates via Google Places textSearch, biased to
+  // the trip destination, then add it as a bookmark. Lets the user pin
+  // a Claude pick straight from the map panel — no detour through the
+  // sidebar.
+  async function pinRec(rec: MapRec) {
+    if (!onAddBookmark || !location) return;
+    setPinningRecId(rec.id);
+    try {
+      const svc = placesServiceRef.current;
+      if (!svc) throw new Error('Places service not ready');
+      const query = `${rec.name}, ${location}`;
+      const result = await new Promise<{ lat: number; lng: number; name: string } | null>((resolve) => {
+        svc.textSearch({ query }, (results, status) => {
+          if (status !== 'OK' || !results?.length) { resolve(null); return; }
+          const first = results[0];
+          if (!first.geometry?.location) { resolve(null); return; }
+          resolve({
+            lat: first.geometry.location.lat(),
+            lng: first.geometry.location.lng(),
+            name: first.name ?? rec.name,
+          });
+        });
+      });
+      if (!result) { setPinningRecId(null); return; }
+      onAddBookmark({
+        id: `rec:${rec.id}`,
+        name: result.name,
+        coords: [result.lng, result.lat],
+        category: recCategoryToBookmarkCategory(rec.category),
+      });
+      setPinnedRecIds(prev => new Set(prev).add(rec.id));
+      // Pan the map to the new pin so the user sees where it landed.
+      if (mapRef.current?.panTo) {
+        mapRef.current.panTo({ lat: result.lat, lng: result.lng });
+      }
+    } catch {
+      // Failure is non-fatal — user can retry.
+    } finally {
+      setPinningRecId(null);
+    }
+  }
   const planningEnabled = !!bookmarks && !!onAddBookmark;
   const bookmarkMarkersRef = useRef<GoogleMarker[]>([]);
   const divRef = useRef<HTMLDivElement | null>(null);
@@ -785,6 +922,145 @@ export default function UnifiedTripMap({
               }}
             >{searching ? '…' : 'Search'}</button>
           </form>
+        )}
+        {recsEnabled && (
+          <>
+            <button
+              type="button"
+              onClick={toggleRecs}
+              aria-expanded={recsOpen}
+              style={{
+                position: 'absolute', top: 8, left: 8, zIndex: 40,
+                padding: '8px 12px',
+                background: recsOpen
+                  ? 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.85))'
+                  : 'rgba(13,17,23,0.92)',
+                border: '1px solid',
+                borderColor: recsOpen ? 'rgba(167,139,250,0.7)' : 'rgba(255,255,255,0.12)',
+                borderRadius: 10,
+                color: recsOpen ? '#0a0a1f' : '#e2e8f0',
+                fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+                letterSpacing: '0.02em',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 13, lineHeight: 1 }}>{recsOpen ? '×' : '✦'}</span>
+              <span>{recsOpen ? 'Hide recs' : 'Find recs'}</span>
+            </button>
+            {recsOpen && (
+              <div
+                role="region"
+                aria-label="Curated recommendations"
+                style={{
+                  position: 'absolute',
+                  top: 52, left: 8, zIndex: 40,
+                  width: 'min(340px, calc(100% - 16px))',
+                  maxHeight: 'calc(100% - 80px)',
+                  overflowY: 'auto',
+                  background: 'rgba(13,13,36,0.96)',
+                  backdropFilter: 'blur(14px)',
+                  WebkitBackdropFilter: 'blur(14px)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 14,
+                  boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+                  padding: 14,
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                  color: '#e2e8f0',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                    fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase',
+                    fontWeight: 700, color: 'rgba(167,139,250,0.95)',
+                  }}>§ Curated for you</div>
+                  <button
+                    type="button"
+                    onClick={() => void fetchRecs({ force: true })}
+                    disabled={recsLoading}
+                    aria-label="Refresh recommendations"
+                    style={{
+                      fontSize: 10, fontFamily: 'inherit', fontWeight: 700,
+                      letterSpacing: '0.12em', textTransform: 'uppercase',
+                      background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+                      color: 'rgba(255,255,255,0.6)',
+                      padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+                    }}
+                  >{recsLoading ? '…' : 'Refresh'}</button>
+                </div>
+                {recsLoading && recs.length === 0 && (
+                  <div style={{ padding: '20px 0', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                    Curating picks for your trip…
+                  </div>
+                )}
+                {recsError && (
+                  <div style={{ padding: '12px', fontSize: 11, color: '#fbbf24',
+                    background: 'rgba(251,191,36,0.08)', borderRadius: 8 }}>
+                    {recsError}
+                  </div>
+                )}
+                {recs.map(rec => {
+                  const tint = REC_TINT[rec.category];
+                  const pinned = pinnedRecIds.has(rec.id);
+                  const pinning = pinningRecId === rec.id;
+                  return (
+                    <div
+                      key={rec.id}
+                      style={{
+                        opacity: pinned ? 0.45 : 1,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: `${tint.bg}`,
+                        border: `1px solid ${tint.fg}33`,
+                      }}
+                    >
+                      <div style={{
+                        fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                        fontSize: 9, fontWeight: 700, letterSpacing: '0.15em',
+                        textTransform: 'uppercase', color: tint.fg,
+                        marginBottom: 3,
+                      }}>{rec.category === 'off-beat' ? 'Off-beat' : rec.category}</div>
+                      <div style={{
+                        fontFamily: 'var(--font-display, Georgia, serif)',
+                        fontSize: 15, fontWeight: 500, letterSpacing: '-0.01em',
+                        color: '#f2f2f8', marginBottom: 4,
+                      }}>{rec.name}</div>
+                      <div style={{
+                        fontSize: 11, color: 'rgba(245,241,232,0.65)',
+                        lineHeight: 1.45, fontStyle: 'italic',
+                        marginBottom: 8,
+                      }}>{rec.whyItFits}</div>
+                      <button
+                        type="button"
+                        onClick={() => !pinned && !pinning && pinRec(rec)}
+                        disabled={pinned || pinning}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '5px 10px', borderRadius: 6,
+                          background: pinned ? 'transparent' : tint.fg,
+                          color: pinned ? tint.fg : '#0a0a1f',
+                          border: pinned ? `1px solid ${tint.fg}55` : 'none',
+                          fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          fontFamily: 'inherit',
+                          cursor: (pinned || pinning) ? 'default' : 'pointer',
+                        }}
+                      >
+                        {pinned ? '✓ Pinned' : pinning ? 'Pinning…' : '+ Pin to trip'}
+                      </button>
+                    </div>
+                  );
+                })}
+                {!recsLoading && recs.length === 0 && !recsError && (
+                  <div style={{ padding: '8px 4px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                    No recs yet. Tap refresh to ask the genie.
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
         {panel && (
           <PlacePanelOverlay

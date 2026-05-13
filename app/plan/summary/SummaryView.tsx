@@ -2153,6 +2153,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                   }}
                   pinChangeCount={pinChangeCount}
                   onRegenerate={requestGeneration}
+                  tripId={savedTripId ?? undefined}
                 />
               </div>
             </div>
@@ -2360,6 +2361,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                     }}
                     pinChangeCount={pinChangeCount}
                     onRegenerate={requestGeneration}
+                    tripId={savedTripId ?? undefined}
                   />
                 </div>
               )}
