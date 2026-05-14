@@ -784,7 +784,13 @@ function GenieCorner({
           transition: "transform 150ms",
           transform: open ? "scale(0.94)" : "scale(1)",
         }}
-      ><Sparkle size={22} /></button>
+      ><img
+        src="/brand/geknee-mascot.jpg"
+        alt="geknee mascot"
+        width={42}
+        height={42}
+        style={{ width: 42, height: 42, objectFit: 'contain', borderRadius: 10 }}
+      /></button>
 
       {open && (
         <div style={{
@@ -812,7 +818,13 @@ function GenieCorner({
                 display: "grid", placeItems: "center",
                 fontFamily: "var(--font-display, Georgia, serif)",
                 fontWeight: 600, fontSize: 13,
-              }}><Sparkle size={14} /></span>
+              }}><img
+                src="/brand/geknee-mascot.jpg"
+                alt="geknee"
+                width={22}
+                height={22}
+                style={{ width: 22, height: 22, objectFit: 'contain', borderRadius: 6 }}
+              /></span>
               <div>
                 <div style={{ fontFamily: "var(--font-display, Georgia, serif)", fontSize: 15, fontWeight: 500 }}>geknee</div>
                 <div style={{ fontSize: 10, color: "var(--brand-ink-mute)", letterSpacing: "0.1em" }}>

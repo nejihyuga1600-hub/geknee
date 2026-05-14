@@ -314,7 +314,17 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             }}
             title="Open GeKnee AI"
           >
-            <span aria-label="GeKnee AI" style={{ fontSize: 36, lineHeight: 1, filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.7))' }}>{String.fromCodePoint(0x1F9DE)}</span>
+            <img
+              src="/brand/geknee-mascot.jpg"
+              alt="geknee mascot"
+              width={56}
+              height={56}
+              style={{
+                width: 56, height: 56, objectFit: 'contain',
+                borderRadius: '50%',
+                filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.7))',
+              }}
+            />
           </button>
         )}
 
@@ -485,7 +495,18 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
               padding: 6, overflow: 'hidden', position: 'relative',
             }}
           >
-            <span aria-label="GeKnee Genie" style={{ fontSize: 36, lineHeight: 1, filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.7)) brightness(0.7)', opacity: 0.6 }}>{String.fromCodePoint(0x1F9DE)}</span>
+            <img
+              src="/brand/geknee-mascot.jpg"
+              alt="geknee mascot"
+              width={56}
+              height={56}
+              style={{
+                width: 56, height: 56, objectFit: 'contain',
+                borderRadius: '50%',
+                filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.7)) brightness(0.7)',
+                opacity: 0.6,
+              }}
+            />
             <span style={{ position: 'absolute', fontSize: 18, color: '#fff', fontWeight: 700, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{String.fromCodePoint(0x00D7)}</span>
           </button>
         )}
