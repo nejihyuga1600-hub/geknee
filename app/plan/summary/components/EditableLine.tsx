@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MarkdownLine } from './MarkdownLine';
 
 // Click-to-edit single line. Renders the line as markdown until clicked,
@@ -24,6 +24,17 @@ export function EditableLine({
 }: EditableLineProps) {
   const [hovered, setHovered] = useState(false);
   const STAR = String.fromCodePoint(0x2726);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Auto-grow the textarea to fit its content. Set height to 0 first so
+  // shrinks work too — otherwise scrollHeight reports the previous max.
+  useEffect(() => {
+    if (!isEditing) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = '0px';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [isEditing, editValue]);
 
   if (!line.trim()) return <div style={{ height: 8 }} />;
 
@@ -35,9 +46,9 @@ export function EditableLine({
     >
       {isEditing ? (
         <textarea
+          ref={textareaRef}
           autoFocus
           value={editValue}
-          rows={2}
           onChange={e => onEditChange(e.target.value)}
           onBlur={onCommit}
           onKeyDown={e => {
@@ -45,11 +56,17 @@ export function EditableLine({
             if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
           }}
           style={{
+            // Auto-grow via the useEffect above + field-sizing for
+            // browsers that support it (no inline height fight). Min
+            // height is one line; max height = whatever the content
+            // needs, no scrollbar.
             width: '100%', background: 'rgba(255,255,255,0.09)',
             border: '1px solid rgba(129,140,248,0.5)', borderRadius: 8,
             color: '#fff', fontSize: 14, padding: '8px 10px',
-            outline: 'none', resize: 'vertical', lineHeight: 1.6,
+            outline: 'none', resize: 'none', lineHeight: 1.6,
             fontFamily: 'inherit', boxSizing: 'border-box',
+            overflow: 'hidden',
+            fieldSizing: 'content',
           }}
         />
       ) : (
