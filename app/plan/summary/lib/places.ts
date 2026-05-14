@@ -30,9 +30,35 @@ const _PLACE_INDICATORS = new Set([
 ]);
 
 export function extractPlace(text: string): string | null {
-  const bolds = [...text.matchAll(/\*\*([^*]+)\*\*/g)].map(m => m[1].trim());
+  // Capture each bold AND whether it sits inside parentheses in the
+  // source text. Parenthetical bolds are typically context — "Lunch at
+  // **Mama Chicken** (near **Sadar Bazaar**)" — and should never beat
+  // the subject. Without this guard, "Sadar Bazaar" would win on the
+  // place-indicator bonus and the pin would resolve to the area, not
+  // the restaurant.
+  const bolds: { name: string; index: number; inParens: boolean }[] = [];
+  const re = /\*\*([^*]+)\*\*/g;
+  let m: RegExpExecArray | null;
+  let order = 0;
+  while ((m = re.exec(text)) !== null) {
+    // Walk backward from the match start to find the last unmatched
+    // ( or ). If ( is the latest unmatched bracket, we're inside parens.
+    let depth = 0;
+    let inParens = false;
+    for (let i = m.index - 1; i >= 0; i--) {
+      const ch = text[i];
+      if (ch === ')') depth++;
+      else if (ch === '(') {
+        if (depth === 0) { inParens = true; break; }
+        depth--;
+      }
+    }
+    bolds.push({ name: m[1].trim(), index: order++, inParens });
+  }
   if (!bolds.length) return null;
-  function score(name: string): number {
+
+  function score(b: { name: string; index: number; inParens: boolean }): number {
+    const { name, index, inParens } = b;
     if (/^[\d:]+\s*[AP]M$/i.test(name)) return -9999;
     if (name.length < 4) return -9999;
     if (!/^[A-Z]/.test(name)) return -9000;
@@ -42,16 +68,23 @@ export function extractPlace(text: string): string | null {
     if (words.some(w => _FOOD_COMMERCIAL.has(w)) || _FOOD_COMMERCIAL.has(lower)) return -7000;
     const hasIndicator = words.some(w => _PLACE_INDICATORS.has(w));
     let s = name.length + words.length * 3;
-    if (hasIndicator) s += 60;
-    // Single-word names only qualify if they contain a place indicator
+    if (hasIndicator) s += 30; // halved from 60 so a strong business name competes
+    // First-position bias: subject usually comes first in natural language.
+    // "Lunch at MAMA CHICKEN (near SADAR BAZAAR)" — Mama Chicken at
+    // index 0 should beat Sadar Bazaar at index 1 even when Sadar
+    // carries an indicator word.
+    s += Math.max(0, 20 - index * 12);
+    // Parenthetical bolds are context, not subject. Hard penalty so
+    // they never outscore the headline subject.
+    if (inParens) s -= 100;
     if (words.length === 1 && !hasIndicator) return -500;
     return s;
   }
-  const best = bolds.reduce<{ name: string; score: number } | null>((acc, name) => {
-    const s = score(name);
-    return !acc || s > acc.score ? { name, score: s } : acc;
+
+  const best = bolds.reduce<{ name: string; score: number } | null>((acc, b) => {
+    const s = score(b);
+    return !acc || s > acc.score ? { name: b.name, score: s } : acc;
   }, null);
-  // Require score >= 15 (multi-word proper noun) OR >= 65 (has place indicator)
   return best && best.score >= 15 ? best.name : null;
 }
 

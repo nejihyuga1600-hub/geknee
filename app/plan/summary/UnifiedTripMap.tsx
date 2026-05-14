@@ -830,15 +830,27 @@ export default function UnifiedTripMap({
           return;
         }
         svc.findPlaceFromQuery(
-          { query: `${p.name}, ${location}`, fields: ['place_id'] },
+          { query: `${p.name}, ${location}`, fields: ['place_id', 'geometry'] },
           (results, status) => {
-            if (status !== 'OK' || !results?.[0]?.place_id) {
+            const r = results?.[0] as
+              | { place_id?: string; geometry?: { location?: { lat: () => number; lng: () => number } } }
+              | undefined;
+            if (status !== 'OK' || !r?.place_id) {
               setPanel({ pin: p, loading: false });
               return;
             }
+            // Pan to the Places result's coords if Geocoder fell back
+            // to a less-specific location (e.g. Geocoder returned the
+            // street "Sadar Bazaar" but Places resolved the actual
+            // restaurant "Mama Chicken"). Otherwise the map shows the
+            // wrong dot for the panel.
+            const placeLoc = r.geometry?.location;
+            if (placeLoc && mapRef.current) {
+              mapRef.current.panTo({ lat: placeLoc.lat(), lng: placeLoc.lng() });
+            }
             svc.getDetails(
               {
-                placeId: results[0].place_id,
+                placeId: r.place_id,
                 fields: [
                   'name', 'rating', 'user_ratings_total', 'price_level',
                   'formatted_address', 'photos', 'opening_hours',
