@@ -24,20 +24,39 @@ export function parseLines(rawLines: string[]): Section[] {
   let current: Section = { id: 's0', heading: '', lines: [] };
   let idx = 1;
 
+  // Match any line that opens a Day section, regardless of whether the
+  // model bolds the whole line ("**Day 4 — Farewell**"), only the
+  // "Day N" token ("**Day 4** — Farewell"), uses an h1/h2/h3 prefix
+  // ("## Day 4"), uses a hyphen ("Day-4"), or a word-form numeral
+  // ("**Day Four** — Farewell"). The previous boldDay regex required
+  // the closing ** to end the line, so "**Day 4** — Farewell" silently
+  // dropped through and merged Day 4's content into Day 3.
+  const DAY_OPENER_RE = /^\s*(?:#{1,3}\s+)?(?:\*\*\s*)?Day[\s\-]+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
+
+  function dayHeadingFrom(line: string): string {
+    return line
+      .trim()
+      .replace(/^#{1,3}\s+/, '')
+      .replace(/^\*\*\s*/, '')
+      .replace(/\*\*\s*$/, '')
+      .replace(/\s*\*\*\s*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   for (const line of rawLines) {
     const trimmed = line.trim();
-    const boldDay = trimmed.match(/^\*\*(Day\s+\d+[^*]*)\*\*\s*:?\s*$/i);
-    // Section boundaries: only `## H2` and `**Day N**`. Older prompts and
-    // some models emit `### Morning|Afternoon|Evening` subheadings which
-    // used to fragment a single day into 3-4 separate cards. Treat those
-    // as in-day noise (filtered below) instead of section breaks.
-    if (line.startsWith('## ') || boldDay) {
+    const isDayOpener = DAY_OPENER_RE.test(trimmed);
+    // Section boundaries: any `## H2` OR a recognized Day opener.
+    // Older `### Morning|Afternoon|Evening` subheadings are dropped
+    // below so a single day stays one card.
+    if (line.startsWith('## ') || isDayOpener) {
       if (current.heading || current.lines.some(l => l.trim())) {
         sections.push(current);
       }
-      const heading = line.startsWith('## ')
-        ? line.slice(3).trim()
-        : (boldDay ? boldDay[1].trim() : '');
+      const heading = isDayOpener
+        ? dayHeadingFrom(line)
+        : line.slice(3).trim();
       current = { id: `s${idx++}`, heading, lines: [] };
     } else if (line === '---') {
       // Drop horizontal rules — they're decoration in the AI output.

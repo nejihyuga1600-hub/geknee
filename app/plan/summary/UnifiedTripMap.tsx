@@ -955,7 +955,8 @@ export default function UnifiedTripMap({
               });
             }}
             style={{
-              position: 'absolute', top: 8, right: 8, zIndex: 40,
+              // Search bar — second row (below the day chips).
+              position: 'absolute', top: 56, right: 8, zIndex: 40,
               display: 'flex', gap: 6,
               background: 'rgba(13,17,23,0.92)',
               border: '1px solid rgba(255,255,255,0.12)',
@@ -995,7 +996,8 @@ export default function UnifiedTripMap({
               onClick={toggleRecs}
               aria-expanded={recsOpen}
               style={{
-                position: 'absolute', top: 8, left: 8, zIndex: 40,
+                // Find recs button — second row (below the day chips).
+                position: 'absolute', top: 56, left: 8, zIndex: 40,
                 padding: '8px 12px',
                 background: recsOpen
                   ? 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.85))'
@@ -1020,9 +1022,9 @@ export default function UnifiedTripMap({
                 aria-label="Curated recommendations"
                 style={{
                   position: 'absolute',
-                  top: 56, left: 8, zIndex: 40,
+                  top: 104, left: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
-                  maxHeight: 'calc(100% - 80px)',
+                  maxHeight: 'calc(100% - 128px)',
                   overflowY: 'auto',
                   background: 'rgba(13,13,36,0.96)',
                   backdropFilter: 'blur(14px)',
@@ -1141,10 +1143,10 @@ export default function UnifiedTripMap({
             dayAssignment={activeFilter === 'all' ? null : activeFilter}
           />
         )}
-        {/* Day-filter chips strip — top-centered, sits below the
-            search/Find-recs row. Horizontal-scrolls (single row, no
-            wrap) so the strip never grows tall enough to crowd the
-            map at narrow widths. */}
+        {/* Day-filter chips strip — top row. Horizontal-scrolls
+            (single row, no wrap) so the strip never grows tall enough
+            to crowd the map at narrow widths. Find recs + search bar
+            sit on the row below at top:56. */}
         {dayChips.length > 0 && (
           <div
             role="tablist"
@@ -1152,7 +1154,7 @@ export default function UnifiedTripMap({
             style={{
               position: 'absolute',
               left: 8, right: 8,
-              top: 56,
+              top: 8,
               zIndex: 35,
               display: 'flex', flexWrap: 'nowrap', gap: 6,
               padding: 6,
