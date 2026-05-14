@@ -405,17 +405,37 @@ export default function UnifiedTripMap({
     return out;
   }, [daySections]);
 
+  // Two parallel handler registries. byKey is the legacy name-based
+  // lookup. byDayPos is the canonical (dayNumber, positionInDay) map —
+  // ActivityBlock's number-circle click ships those values straight
+  // through, so we resolve to the exact pin even when name strings
+  // diverge between the parser inside ActivityBlock and the geocoder
+  // inside this component.
+  const pinHandlersByDayPosRef = useRef<Map<string, () => void>>(new Map());
+
   // Listen for the in-itinerary number-circle click. ActivityBlock
-  // dispatches geknee:focus-map-pin with { name, city }; we look up
-  // the matching pin handler and invoke it. preventDefault() signals
-  // back to ActivityBlock that we handled it (else it falls back to
-  // opening Google Maps in a new tab).
+  // dispatches geknee:focus-map-pin with { name, city, dayNumber,
+  // positionInDay }; we resolve via (day,pos) first, then fall back
+  // to the name key. preventDefault() tells ActivityBlock we handled
+  // it (else it falls back to opening Google Maps in a new tab).
   useEffect(() => {
     const onFocus = (e: Event) => {
-      const ce = e as CustomEvent<{ name: string; city: string | null }>;
-      const key = normalizePinKey(ce.detail?.name ?? '');
-      if (!key) return;
-      const handler = pinHandlersRef.current.get(key);
+      const ce = e as CustomEvent<{
+        name: string;
+        city: string | null;
+        dayNumber?: number | null;
+        positionInDay?: number | null;
+      }>;
+      const day = ce.detail?.dayNumber;
+      const pos = ce.detail?.positionInDay;
+      let handler: (() => void) | undefined;
+      if (typeof day === 'number' && typeof pos === 'number') {
+        handler = pinHandlersByDayPosRef.current.get(`${day}:${pos}`);
+      }
+      if (!handler) {
+        const key = normalizePinKey(ce.detail?.name ?? '');
+        if (key) handler = pinHandlersRef.current.get(key);
+      }
       if (handler) {
         ce.preventDefault();
         handler();
@@ -580,6 +600,7 @@ export default function UnifiedTripMap({
     polylinesRef.current.forEach((p) => p.setMap(null));
     polylinesRef.current = [];
     pinHandlersRef.current.clear();
+    pinHandlersByDayPosRef.current.clear();
     infoWindowRef.current?.close();
 
     const visible = pins.filter((p) => activeFilter === 'all' || p.dayNumber === activeFilter);
@@ -796,6 +817,7 @@ export default function UnifiedTripMap({
           openPlaceCard(p);
         };
         pinHandlersRef.current.set(normalizePinKey(p.name), handler);
+        pinHandlersByDayPosRef.current.set(`${p.dayNumber}:${p.positionInDay}`, handler);
         markersRef.current.push(marker);
         bounds.extend(p.resolved);
       }
@@ -1116,45 +1138,63 @@ export default function UnifiedTripMap({
             dayAssignment={activeFilter === 'all' ? null : activeFilter}
           />
         )}
+        {/* Day-filter chips overlaid on the map itself (bottom-center).
+            Was a strip below the map — moved on top so the map can use
+            the full column height and the user gets the filter where
+            their eyes already are. Backdrop-blur keeps map labels
+            readable through the chip strip. */}
+        {dayChips.length > 0 && (
+          <div
+            role="tablist"
+            aria-label="Filter map by day"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: 12,
+              zIndex: 35,
+              display: 'flex', flexWrap: 'wrap', gap: 6,
+              padding: 6,
+              background: 'rgba(13,17,23,0.78)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 12,
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              maxWidth: 'calc(100% - 24px)',
+              boxShadow: '0 6px 22px rgba(0,0,0,0.35)',
+              justifyContent: 'center',
+            }}
+          >
+            <button
+              role="tab"
+              aria-selected={activeFilter === 'all'}
+              onClick={() => setActiveFilter('all')}
+              style={chipStyle(activeFilter === 'all', null)}
+            >
+              All ({pins.length})
+            </button>
+            {dayChips.map((d) => {
+              const count = pins.filter((p) => p.dayNumber === d).length;
+              const color = DAY_COLORS[(d - 1) % DAY_COLORS.length];
+              return (
+                <button
+                  key={d}
+                  role="tab"
+                  aria-selected={activeFilter === d}
+                  onClick={() => setActiveFilter(d)}
+                  style={chipStyle(activeFilter === d, color)}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 6 }} />
+                  Day {d} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       {error && (
         <div style={{ marginTop: 6, fontSize: 11, color: '#fbbf24' }}>
           Map error: {error}
-        </div>
-      )}
-      {dayChips.length > 0 && (
-        <div
-          role="tablist"
-          aria-label="Filter map by day"
-          style={{
-            display: 'flex', flexWrap: 'wrap', gap: 6,
-            marginTop: 8,
-          }}
-        >
-          <button
-            role="tab"
-            aria-selected={activeFilter === 'all'}
-            onClick={() => setActiveFilter('all')}
-            style={chipStyle(activeFilter === 'all', null)}
-          >
-            All ({pins.length})
-          </button>
-          {dayChips.map((d) => {
-            const count = pins.filter((p) => p.dayNumber === d).length;
-            const color = DAY_COLORS[(d - 1) % DAY_COLORS.length];
-            return (
-              <button
-                key={d}
-                role="tab"
-                aria-selected={activeFilter === d}
-                onClick={() => setActiveFilter(d)}
-                style={chipStyle(activeFilter === d, color)}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 6 }} />
-                Day {d} ({count})
-              </button>
-            );
-          })}
         </div>
       )}
       {/* Bottom action bar — dim when no pin changes vs. the last-

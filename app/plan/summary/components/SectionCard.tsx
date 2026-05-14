@@ -125,6 +125,7 @@ export function SectionCard({
           city={mapLocation}
           activityNumber={activityNumberMap.get(group.headlineIdx)}
           nextActivityNumber={nextActivityNumberMap.get(group.headlineIdx)}
+          dayNumber={dayNum ?? undefined}
         />
       ) : (
         <EditableLine

@@ -1799,7 +1799,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               // 40% sidebar (bookmarks list) / 60% map. Same proportion
               // as the itinerary view so the merged tab feels consistent.
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 2fr) minmax(0, 3fr)',
+              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 2fr)',
               gap: 20,
               alignItems: 'start',
             }}>
@@ -2301,7 +2301,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 display: 'grid',
                 // 40% itinerary / 60% map on desktop, reactive to viewport.
                 // Stacks 1-col on mobile (Capacitor app + narrow web).
-                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 2fr) minmax(0, 3fr)',
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 2fr)',
                 gap: 20,
                 alignItems: 'start',
               }}

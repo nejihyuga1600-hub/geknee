@@ -30,6 +30,11 @@ export interface ActivityBlockProps {
   // the transit chip suffixes "→ step N" so users can see exactly which
   // step they're heading to next.
   nextActivityNumber?: number;
+  // Day number this activity belongs to. Passed into the focus-pin event
+  // so UnifiedTripMap can resolve the click via (dayNumber, position)
+  // instead of relying on name-string matching, which fails when the
+  // headline's bold place name differs from the geocoded primary.
+  dayNumber?: number;
 }
 
 function PlaceThumb({ place, city }: { place: string; city?: string }) {
@@ -287,7 +292,7 @@ function Chip({ icon, label, accent }: { icon?: ReactNode; label: string; accent
 export function ActivityBlock({
   group, sectionIdx, editTarget, editValue,
   onStartEdit, onEditChange, onCommit, onCancel, onAskGenie,
-  city, activityNumber, nextActivityNumber,
+  city, activityNumber, nextActivityNumber, dayNumber,
 }: ActivityBlockProps) {
   const place = extractPlace(group.headline);
   const duration = parseDuration(group.headline);
@@ -326,7 +331,12 @@ export function ActivityBlock({
           const openInMaps = () => {
             if (!place) return;
             const ev = new CustomEvent('geknee:focus-map-pin', {
-              detail: { name: place, city: city ?? null },
+              detail: {
+                name: place,
+                city: city ?? null,
+                dayNumber: dayNumber ?? null,
+                positionInDay: activityNumber ?? null,
+              },
               cancelable: true,
             });
             window.dispatchEvent(ev);
