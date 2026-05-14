@@ -71,10 +71,11 @@ export function EditableLine({
         />
       ) : (
         <div
-          // stopPropagation so the parent activity row's click handler
-          // (which opens the place panel) doesn't fire when the user
-          // is actually trying to edit the text inline.
-          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+          // No stopPropagation — let the click bubble to the parent
+          // activity row so clicking the text BOTH starts inline edit
+          // AND opens the destination's place panel on the unified map.
+          // The two surfaces should feel cohesive, not separate.
+          onClick={() => onStartEdit()}
           style={{
             cursor: 'text', borderRadius: 6, padding: '3px 6px',
             background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',

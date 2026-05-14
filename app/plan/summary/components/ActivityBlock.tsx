@@ -386,7 +386,11 @@ export function ActivityBlock({
           return (
             <button
               type="button"
-              onClick={openInMaps}
+              // Number-circle has its own openInMaps; stopPropagation so
+              // the parent activity row's onClick (which would also fire
+              // openOnMap) doesn't double-trigger the panel for the same
+              // pin.
+              onClick={(e) => { e.stopPropagation(); openInMaps(); }}
               disabled={!place}
               aria-label={place ? `Open ${place} in Google Maps` : `Step ${activityNumber}`}
               title={place ? `Open ${place} in Google Maps` : undefined}

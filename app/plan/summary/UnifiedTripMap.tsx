@@ -209,6 +209,7 @@ interface GoogleMap {
   fitBounds: (b: unknown, padding?: number) => void;
   panTo: (p: { lat: number; lng: number }) => void;
   getBounds: () => unknown | undefined;
+  getCenter: () => { lat: () => number; lng: () => number } | undefined;
 }
 
 interface GoogleMarker {
@@ -1065,10 +1066,20 @@ export default function UnifiedTripMap({
                 if (!q || !svc || !mapRef.current) return;
                 setSearching(true);
                 setSearchResults([]);
-                const bounds = mapRef.current.getBounds();
+                // Bias by map CENTER + 50km radius rather than getBounds().
+                // When the user has the map zoomed out wide, getBounds()
+                // covers half the planet and Google falls back to the
+                // user's IP geolocation. A center+radius forces Google
+                // to stay near where the map is looking. Plus suffix
+                // the trip city in the query as belt-and-suspenders.
+                const ctr = mapRef.current.getCenter?.();
+                const center = ctr ? { lat: ctr.lat(), lng: ctr.lng() } : null;
                 const biasedQuery = location ? `${q} ${location}` : q;
                 svc.textSearch(
-                  { query: biasedQuery, ...(bounds ? { bounds } : {}) },
+                  {
+                    query: biasedQuery,
+                    ...(center ? { location: center, radius: 50000 } : {}),
+                  },
                   (results, status) => {
                     setSearching(false);
                     if (status !== 'OK' || !results?.length) return;
