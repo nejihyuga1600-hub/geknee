@@ -1428,11 +1428,12 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Compact photo attacher — sits in the empty space next to the
-                "plan your stops" title. Only renders on the planning tab,
-                only when an itinerary already exists (pre-generation, a
-                photo→activity has nowhere to land). Click → modal picker. */}
-            {mainTab === 'planning' && savedTripId && fullItinerary && nights && (
+            {/* Compact photo attacher — Claude recognizes the place in the
+                photo and slots it into the itinerary as a new activity.
+                Renders in both planning and itinerary modes once an
+                itinerary exists (pre-generation a photo→activity has
+                nowhere to land). Click → modal picker. */}
+            {savedTripId && fullItinerary && nights && (
               <PhotoToItinerary
                 tripId={savedTripId}
                 dayCount={(parseInt(nights, 10) || 0) + 1}
