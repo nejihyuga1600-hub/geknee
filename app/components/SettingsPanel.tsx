@@ -365,17 +365,10 @@ export default function SettingsPanel({ open, onClose }: Props) {
               <Toggle on={s.locationSharing} onChange={v => update("locationSharing", v)} />
             </Row>
             <RowLast label="Navigation Tracking" sub="GPS tracking during active trips">
-              <Toggle on={s.locationTracking} onChange={v => {
-                if (v && typeof navigator !== "undefined" && navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    () => update("locationTracking", true),
-                    () => update("locationTracking", false),
-                    { timeout: 5000 }
-                  );
-                } else {
-                  update("locationTracking", v);
-                }
-              }} />
+              {/* Location is only requested for flight-departure detection.
+                  Per privacy policy: this toggle stores user preference but
+                  doesn't actually request browser geolocation here. */}
+              <Toggle on={s.locationTracking} onChange={v => update("locationTracking", v)} />
             </RowLast>
           </Section>
 

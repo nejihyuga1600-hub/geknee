@@ -138,17 +138,9 @@ export default function LiveTripPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Browser geolocation. Silent failure — we just don't recenter.
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    let cancelled = false;
-    navigator.geolocation.getCurrentPosition(
-      pos => { if (!cancelled) setGeo({ lat: pos.coords.latitude, lon: pos.coords.longitude }); },
-      () => { /* permission denied or unavailable — keep mock center */ },
-      { timeout: 8000, maximumAge: 60_000 },
-    );
-    return () => { cancelled = true; };
-  }, []);
+  // Geolocation removed per privacy directive — only flight departure
+  // detection requests location. Live trip view falls back to the
+  // trip's anchor city for the mock map center; no GPS recenter.
 
   // Weather lookup keyed off the trip's location. Uses the existing
   // /api/weather endpoint (OpenWeather forecast cached 1h).

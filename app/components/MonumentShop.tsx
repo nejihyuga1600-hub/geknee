@@ -739,21 +739,13 @@ export default function MonumentShop({ open, onClose }: Props) {
         return;
       }
 
-      let lat: number | undefined;
-      let lon: number | undefined;
-      if (!isDev && navigator.geolocation) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: false })
-          );
-          lat = pos.coords.latitude;
-          lon = pos.coords.longitude;
-        } catch {
-          setMsg('Location access required — enable location services to complete missions near monuments');
-          setLoading(false);
-          return;
-        }
-      }
+      // Geolocation removed per privacy directive — only flight
+      // departure detection requests location now. Monument missions
+      // submit without lat/lon; the API will trust the user's claim
+      // that they're at the monument or a server-side verification
+      // path can be added later.
+      const lat: number | undefined = undefined;
+      const lon: number | undefined = undefined;
 
       const res = await fetch('/api/monuments', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
