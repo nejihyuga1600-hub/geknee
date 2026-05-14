@@ -201,6 +201,7 @@ interface GoogleMap {
   setZoom: (z: number) => void;
   fitBounds: (b: unknown, padding?: number) => void;
   panTo: (p: { lat: number; lng: number }) => void;
+  getBounds: () => unknown | undefined;
 }
 
 interface GoogleMarker {
@@ -1043,16 +1044,26 @@ export default function UnifiedTripMap({
               const svc = placesServiceRef.current;
               if (!q || !svc || !mapRef.current) return;
               setSearching(true);
-              svc.textSearch({ query: q }, (results, status) => {
-                setSearching(false);
-                if (status !== 'OK' || !results?.length) return;
-                const first = results[0];
-                if (!first.place_id || !first.geometry?.location) return;
-                openPlaceFromPlaceId(first.place_id, first.name, {
-                  lat: first.geometry.location.lat(),
-                  lng: first.geometry.location.lng(),
-                });
-              });
+              // Bias the search HARD to the trip area so Google doesn't
+              // fall back to the user's IP geolocation (was returning
+              // results near the user's home, not the trip city).
+              // Two-pronged bias: append the trip city to the query
+              // string AND pass the current map viewport bounds.
+              const bounds = mapRef.current.getBounds();
+              const biasedQuery = location ? `${q} ${location}` : q;
+              svc.textSearch(
+                { query: biasedQuery, ...(bounds ? { bounds } : {}) },
+                (results, status) => {
+                  setSearching(false);
+                  if (status !== 'OK' || !results?.length) return;
+                  const first = results[0];
+                  if (!first.place_id || !first.geometry?.location) return;
+                  openPlaceFromPlaceId(first.place_id, first.name, {
+                    lat: first.geometry.location.lat(),
+                    lng: first.geometry.location.lng(),
+                  });
+                },
+              );
             }}
             style={{
               // Search bar — second row (below the day chips).

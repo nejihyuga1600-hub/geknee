@@ -103,14 +103,19 @@ export function groupLines(lines: string[]): ActivityGroup[] {
 }
 
 // Pull the day index out of headings like "Day 1", "Day 2: Arrival", "Day Three".
+// Anchored to the start of the heading (after dayHeadingFrom strips any
+// markdown markers) so a stray "Day 2 - related" inside a Day 3 heading
+// can't hijack the match. \b after the digits prevents "Day 2-3"
+// returning 2 — both digits would slip in without it.
 export function extractDayNumber(heading: string): number | null {
-  const m1 = heading.match(/day[\s\-]*(\d+)/i);
+  const trimmed = heading.trim();
+  const m1 = trimmed.match(/^day[\s\-]+(\d{1,2})\b/i);
   if (m1) return parseInt(m1[1], 10);
   const wordToNum: Record<string, number> = {
     one: 1, two: 2, three: 3, four: 4, five: 5,
     six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   };
-  const m2 = heading.match(/day\s+(one|two|three|four|five|six|seven|eight|nine|ten)/i);
+  const m2 = trimmed.match(/^day\s+(one|two|three|four|five|six|seven|eight|nine|ten)\b/i);
   if (m2) return wordToNum[m2[1].toLowerCase()];
   return null;
 }
