@@ -509,8 +509,23 @@ const GENIE_SVG_MAP: Record<string, (props: { size: number; colors: GenieCharact
   stella: Stella,
 };
 
+// Approved geknee help-bot mascot. Single canonical avatar — the per-id
+// SVG variants (Lumina, Cosmo, etc.) are kept around for future "skin"
+// rebuilds but are no longer rendered. All call sites now resolve to the
+// same purple-genie crayon mark.
 export function GenieAvatar({ id, size = 80 }: { id: string; size?: number }) {
-  const genie = GENIES.find(g => g.id === id) ?? GENIES[0];
-  const Component = GENIE_SVG_MAP[genie.id] ?? Lumina;
-  return <Component size={size} colors={genie.colors} />;
+  void id; // retained for API compatibility
+  return (
+    <img
+      src="/brand/geknee-mascot.jpg"
+      alt="geknee mascot"
+      width={size}
+      height={size}
+      style={{
+        width: size, height: size,
+        objectFit: 'contain',
+        display: 'block',
+      }}
+    />
+  );
 }
