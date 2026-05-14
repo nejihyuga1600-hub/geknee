@@ -795,7 +795,6 @@ export default function UnifiedTripMap({
       if (cancelled) return;
 
       const bounds = new window.google!.maps!.LatLngBounds();
-      let perDayCounter = new Map<number, number>();
 
       // Register handlers for EVERY resolved pin first — independent of
       // the active day filter. The map then renders markers + polylines
@@ -903,8 +902,6 @@ export default function UnifiedTripMap({
 
       for (const p of visibleResolved) {
         if (!p.resolved) continue;
-        const dayCount = (perDayCounter.get(p.dayNumber) ?? 0) + 1;
-        perDayCounter.set(p.dayNumber, dayCount);
         const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
         const color = p.isQuest ? QUEST_COLOR : dayColor;
 
@@ -1288,7 +1285,7 @@ export default function UnifiedTripMap({
                   key={d}
                   role="tab"
                   aria-selected={activeFilter === d}
-                  onClick={() => setActiveFilter(d)}
+                  onClick={() => setActiveFilter(activeFilter === d ? 'all' : d)}
                   style={chipStyle(activeFilter === d, color)}
                 >
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 6 }} />
@@ -1304,7 +1301,7 @@ export default function UnifiedTripMap({
                 <button
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setActiveFilter('quest')}
+                  onClick={() => setActiveFilter(active ? 'all' : 'quest')}
                   style={{
                     ...chipStyle(active, QUEST_COLOR),
                     // Shiny gold gradient when active; subtle gold tint
@@ -1812,6 +1809,12 @@ const DARK_MAP_STYLE = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#304a7d' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#98a5be' }] },
+  // Hide road/highway shield icons (yellow AH47, NH-19 badges) — they
+  // visually compete with our gold quest pins and made the user think
+  // the quest filter was leaking. Safe to remove; route info isn't
+  // needed for trip planning context.
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road.highway', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4e6d70' }] },
