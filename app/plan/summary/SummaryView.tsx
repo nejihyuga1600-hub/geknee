@@ -1396,11 +1396,14 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
 
       <div style={{
         position: 'relative', zIndex: 1,
-        maxWidth: mainTab === 'planning' ? '100%' : 1720,
+        // Full-bleed on desktop so the itinerary + map split uses the
+        // whole viewport. Keep a small horizontal pad so the cards
+        // don't kiss the screen edge.
+        maxWidth: '100%',
         margin: '0 auto',
         padding: isMobile
           ? '16px 14px 120px'
-          : (mainTab === 'planning' ? '20px 24px 60px' : '36px 40px 140px'),
+          : '20px 20px 60px',
       }}>
 
         {/* Top nav — design handoff: ← Plan left, trip · N days center label,

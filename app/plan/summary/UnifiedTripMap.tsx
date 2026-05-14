@@ -952,7 +952,12 @@ export default function UnifiedTripMap({
               });
             }}
             style={{
-              position: 'absolute', top: 8, right: 8, zIndex: 40,
+              // Anchored bottom-right. The top of the sticky map can
+              // slide under the navbar at page-end (sticky releases when
+              // its parent grid row ends), so any control at top:N gets
+              // hidden. Bottom controls remain visible because the map's
+              // bottom stays in viewport longest.
+              position: 'absolute', bottom: 60, right: 8, zIndex: 40,
               display: 'flex', gap: 6,
               background: 'rgba(13,17,23,0.92)',
               border: '1px solid rgba(255,255,255,0.12)',
@@ -992,7 +997,9 @@ export default function UnifiedTripMap({
               onClick={toggleRecs}
               aria-expanded={recsOpen}
               style={{
-                position: 'absolute', top: 8, left: 8, zIndex: 40,
+                // Bottom-anchored mirror of the search bar so it stays
+                // visible when the sticky map releases at page bottom.
+                position: 'absolute', bottom: 60, left: 8, zIndex: 40,
                 padding: '8px 12px',
                 background: recsOpen
                   ? 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.85))'
@@ -1016,10 +1023,15 @@ export default function UnifiedTripMap({
                 role="region"
                 aria-label="Curated recommendations"
                 style={{
+                  // Anchored above the bottom-left Find recs button so
+                  // the panel grows upward from the trigger. Top of the
+                  // panel is bounded by the navbar clearance — 80px from
+                  // the map's top edge keeps the panel out from under it
+                  // even when sticky releases at page bottom.
                   position: 'absolute',
-                  top: 52, left: 8, zIndex: 40,
+                  bottom: 100, left: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
-                  maxHeight: 'calc(100% - 80px)',
+                  maxHeight: 'calc(100% - 180px)',
                   overflowY: 'auto',
                   background: 'rgba(13,13,36,0.96)',
                   backdropFilter: 'blur(14px)',
