@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
-import { extractDayNumber, type Section } from './lib/itinerary-parse';
+import { extractDayNumber, isTimeLine, type Section } from './lib/itinerary-parse';
 import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
 
 const QUEST_RE = /\[\s*MONUMENT\s*QUEST\s*\]/i;
@@ -375,9 +375,12 @@ export default function UnifiedTripMap({
       let pos = 0;
       let pendingTransit: LegMode | null = null;
       for (const line of entry.s.lines as string[]) {
-        if (/\*\*[^*]+\*\*/.test(line)) {
-          // Activity headline. The transit line we last saw applies to
-          // the previous activity's leg-to-this one — assign it back.
+        if (isTimeLine(line)) {
+          // Activity headline (must be a **HH:MM AM** time-stamped line
+          // so positionInDay aligns with SectionCard's activityNumber —
+          // otherwise non-time bolds like **Cost: $50** would inflate
+          // pos here and the (day,pos) lookup from the number-circle
+          // click would resolve to the wrong pin).
           if (pendingTransit && out.length > 0) {
             const prev = out[out.length - 1];
             if (prev.dayIdx === dayIdx && prev.legModeToNext === null) {
@@ -385,10 +388,14 @@ export default function UnifiedTripMap({
             }
           }
           pendingTransit = null;
+          // Increment pos BEFORE the early-return so position counting
+          // matches even when this activity has no resolvable place
+          // (the next activity's pos still aligns with what the user
+          // sees in the itinerary card).
+          pos += 1;
           const candidates = extractActivityCandidates(line, []);
           const primary = extractActivityPlace(line, []);
           if (!candidates.length || !primary) continue;
-          pos += 1;
           out.push({
             dayIdx,
             dayNumber: dayNum,
