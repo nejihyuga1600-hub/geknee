@@ -619,37 +619,77 @@ export default function UnifiedTripMap({
       return null;
     }
 
-    async function resolve(p: PlacePin, anchor: { lat: number; lng: number } | null): Promise<{ lat: number; lng: number } | null> {
-      const inBbox = (c: { lat: number; lng: number }) =>
-        !anchor || (Math.abs(c.lat - anchor.lat) < 1.5 && Math.abs(c.lng - anchor.lng) < 2.0);
+    // Build a per-pin attempt list. Raw queries first so specific
+    // landmarks ("Taj Mahal East Gate") resolve to their actual city
+    // instead of being forced into the trip's primary city via a
+    // ", New Delhi" suffix that Google can't reconcile.
+    function attemptsFor(c: string): string[] {
+      const stripped = c.replace(/\([^)]*\)/g, '').trim();
+      const out: string[] = [];
+      const push = (q: string) => { if (q && !out.includes(q)) out.push(q); };
+      push(c);                          // raw
+      push(stripped);                   // raw, parens stripped
+      push(`${c}, ${location}`);        // suffixed (legacy)
+      push(`${stripped}, ${location}`); // suffixed + stripped
+      return out;
+    }
 
+    async function tryCandidates(
+      p: PlacePin,
+      accept: (c: { lat: number; lng: number }) => boolean,
+    ): Promise<{ lat: number; lng: number } | null> {
       for (const c of p.candidates) {
         if (isGeneric(c)) continue;
-        const tries = [
-          `${c}, ${location}`,
-          `${c.replace(/\([^)]*\)/g, '').trim()}, ${location}`,
-        ];
-        const seen = new Set<string>();
-        for (const q of tries) {
-          if (seen.has(q.toLowerCase())) continue;
-          seen.add(q.toLowerCase());
+        for (const q of attemptsFor(c)) {
           const hit = await geocode(q);
-          if (hit && inBbox(hit)) return hit;
+          if (hit && accept(hit)) return hit;
         }
       }
       return null;
     }
 
     (async () => {
-      // Anchor on the trip city first so we can reject candidate
-      // geocode hits that fall outside it. Without this, generic words
-      // ("Lunch", "Restaurant") that slip past isGeneric still pin
-      // wherever Google's first match happens to be.
+      // Geocode the trip's primary city to seed the bbox.
       const anchor = await geocode(location);
 
-      const resolved = await Promise.all(
-        visible.map(async (p) => ({ ...p, resolved: (await resolve(p, anchor)) ?? undefined })),
+      // Pass 1 — geocode every visible pin with a generous default bbox
+      // (±3° from anchor, ~330km) so multi-city itineraries (Delhi →
+      // Agra, London → Cambridge, NYC → Boston) all pass. The tight
+      // 1.5°/2° box dropped legit Day-N pins in adjacent cities and
+      // emptied entire days from the map.
+      const defaultBbox = (c: { lat: number; lng: number }) =>
+        !anchor || (Math.abs(c.lat - anchor.lat) < 3 && Math.abs(c.lng - anchor.lng) < 3);
+
+      const firstPass = await Promise.all(
+        visible.map(async (p) => ({ ...p, resolved: (await tryCandidates(p, defaultBbox)) ?? undefined })),
       );
+      if (cancelled) return;
+
+      // Pass 2 — derive a dynamic trip bbox from successful pass-1 hits
+      // (with 0.5° padding) and retry any pin that didn't resolve. Lets
+      // a third city far from the anchor still resolve once two pins in
+      // that city land via raw queries.
+      const successCoords = firstPass.map((p) => p.resolved).filter((c): c is { lat: number; lng: number } => !!c);
+      let dynamicBbox: ((c: { lat: number; lng: number }) => boolean) | null = null;
+      if (successCoords.length >= 2) {
+        const lats = successCoords.map((c) => c.lat);
+        const lngs = successCoords.map((c) => c.lng);
+        const minLat = Math.min(...lats) - 0.5;
+        const maxLat = Math.max(...lats) + 0.5;
+        const minLng = Math.min(...lngs) - 0.5;
+        const maxLng = Math.max(...lngs) + 0.5;
+        dynamicBbox = (c) => c.lat >= minLat && c.lat <= maxLat && c.lng >= minLng && c.lng <= maxLng;
+      }
+
+      const resolved = dynamicBbox
+        ? await Promise.all(
+            firstPass.map(async (p) => {
+              if (p.resolved) return p;
+              const hit = await tryCandidates(p, dynamicBbox!);
+              return { ...p, resolved: hit ?? undefined };
+            }),
+          )
+        : firstPass;
       if (cancelled) return;
 
       const bounds = new window.google!.maps!.LatLngBounds();
