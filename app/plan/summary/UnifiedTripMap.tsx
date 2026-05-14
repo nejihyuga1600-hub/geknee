@@ -188,7 +188,14 @@ interface PlacesService {
   ) => void;
   textSearch: (
     req: { query: string; bounds?: unknown; location?: unknown; radius?: number },
-    cb: (results: Array<{ place_id?: string; geometry?: { location?: { lat: () => number; lng: () => number } }; name?: string }> | null, status: string) => void,
+    cb: (results: Array<{
+      place_id?: string;
+      geometry?: { location?: { lat: () => number; lng: () => number } };
+      name?: string;
+      formatted_address?: string;
+      rating?: number;
+      photos?: Array<{ getUrl: (opts: { maxWidth: number; maxHeight: number }) => string }>;
+    }> | null, status: string) => void,
   ) => void;
 }
 
@@ -349,6 +356,18 @@ export default function UnifiedTripMap({
   const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  // Results dropdown — when the query returns multiple matches we
+  // surface a list instead of opening the first match. Cleared on
+  // selection, escape, or empty query.
+  const [searchResults, setSearchResults] = useState<Array<{
+    placeId: string;
+    name: string;
+    address?: string;
+    lat: number;
+    lng: number;
+    rating?: number;
+    photoUrl?: string;
+  }>>([]);
 
   // Pull day sections only. /^Day\s*\d+\b/ accepts "Day 4: Title",
   // "Day 4 - Title", and "Day 4 Title" while rejecting "Day 41". The
@@ -1037,68 +1056,180 @@ export default function UnifiedTripMap({
           }}
         />
         {planningEnabled && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const q = searchQuery.trim();
-              const svc = placesServiceRef.current;
-              if (!q || !svc || !mapRef.current) return;
-              setSearching(true);
-              // Bias the search HARD to the trip area so Google doesn't
-              // fall back to the user's IP geolocation (was returning
-              // results near the user's home, not the trip city).
-              // Two-pronged bias: append the trip city to the query
-              // string AND pass the current map viewport bounds.
-              const bounds = mapRef.current.getBounds();
-              const biasedQuery = location ? `${q} ${location}` : q;
-              svc.textSearch(
-                { query: biasedQuery, ...(bounds ? { bounds } : {}) },
-                (results, status) => {
-                  setSearching(false);
-                  if (status !== 'OK' || !results?.length) return;
-                  const first = results[0];
-                  if (!first.place_id || !first.geometry?.location) return;
-                  openPlaceFromPlaceId(first.place_id, first.name, {
-                    lat: first.geometry.location.lat(),
-                    lng: first.geometry.location.lng(),
-                  });
-                },
-              );
-            }}
-            style={{
-              // Search bar — second row (below the day chips).
-              position: 'absolute', top: 56, right: 8, zIndex: 40,
-              display: 'flex', gap: 6,
-              background: 'rgba(13,17,23,0.92)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 10, padding: 4,
-              backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-              maxWidth: 'min(320px, calc(100% - 16px))',
-            }}
-          >
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search places, restaurants, sights…"
-              style={{
-                flex: 1, minWidth: 0,
-                background: 'transparent', border: 'none', outline: 'none',
-                color: '#e2e8f0', fontSize: 12, padding: '6px 8px',
-                fontFamily: 'inherit',
+          <>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = searchQuery.trim();
+                const svc = placesServiceRef.current;
+                if (!q || !svc || !mapRef.current) return;
+                setSearching(true);
+                setSearchResults([]);
+                const bounds = mapRef.current.getBounds();
+                const biasedQuery = location ? `${q} ${location}` : q;
+                svc.textSearch(
+                  { query: biasedQuery, ...(bounds ? { bounds } : {}) },
+                  (results, status) => {
+                    setSearching(false);
+                    if (status !== 'OK' || !results?.length) return;
+                    // Build the candidate list. If the first hit is a
+                    // landslide match (the user's query == the result
+                    // name, case-insensitive), open it directly. Else
+                    // show a scrollable dropdown so the user picks.
+                    const candidates = results
+                      .filter((r) => r.place_id && r.geometry?.location)
+                      .slice(0, 8)
+                      .map((r) => ({
+                        placeId: r.place_id!,
+                        name: r.name ?? '',
+                        address: r.formatted_address,
+                        lat: r.geometry!.location!.lat(),
+                        lng: r.geometry!.location!.lng(),
+                        rating: r.rating,
+                        photoUrl: r.photos?.[0]?.getUrl({ maxWidth: 120, maxHeight: 120 }),
+                      }));
+                    if (!candidates.length) return;
+                    const first = candidates[0];
+                    const exact = first.name.trim().toLowerCase() === q.toLowerCase();
+                    if (exact || candidates.length === 1) {
+                      openPlaceFromPlaceId(first.placeId, first.name, { lat: first.lat, lng: first.lng });
+                    } else {
+                      setSearchResults(candidates);
+                    }
+                  },
+                );
               }}
-            />
-            <button
-              type="submit"
-              disabled={searching || !searchQuery.trim()}
               style={{
-                padding: '6px 12px', borderRadius: 6,
-                background: searchQuery.trim() ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(255,255,255,0.06)',
-                color: searchQuery.trim() ? '#0a0a1f' : 'rgba(255,255,255,0.4)',
-                border: 'none', fontWeight: 700, fontSize: 11, cursor: 'pointer',
-                fontFamily: 'inherit',
+                position: 'absolute', top: 56, right: 8, zIndex: 40,
+                display: 'flex', gap: 6,
+                background: 'rgba(13,17,23,0.92)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10, padding: 4,
+                backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                maxWidth: 'min(320px, calc(100% - 16px))',
               }}
-            >{searching ? '…' : 'Search'}</button>
-          </form>
+            >
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') { setSearchResults([]); setSearchQuery(''); } }}
+                placeholder="Search hotels, restaurants, sights…"
+                style={{
+                  flex: 1, minWidth: 0,
+                  background: 'transparent', border: 'none', outline: 'none',
+                  color: '#e2e8f0', fontSize: 12, padding: '6px 8px',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <button
+                type="submit"
+                disabled={searching || !searchQuery.trim()}
+                style={{
+                  padding: '6px 12px', borderRadius: 6,
+                  background: searchQuery.trim() ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(255,255,255,0.06)',
+                  color: searchQuery.trim() ? '#0a0a1f' : 'rgba(255,255,255,0.4)',
+                  border: 'none', fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >{searching ? '…' : 'Search'}</button>
+            </form>
+            {searchResults.length > 0 && (
+              <div
+                role="listbox"
+                aria-label="Search results"
+                style={{
+                  position: 'absolute',
+                  top: 104, right: 8, zIndex: 40,
+                  width: 'min(340px, calc(100% - 16px))',
+                  maxHeight: 'calc(100% - 128px)',
+                  overflowY: 'auto',
+                  background: 'rgba(13,13,36,0.96)',
+                  backdropFilter: 'blur(14px)',
+                  WebkitBackdropFilter: 'blur(14px)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 14,
+                  boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+                  padding: 6,
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                  color: '#e2e8f0',
+                }}
+              >
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '4px 8px',
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                    fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
+                    color: '#94a3b8', fontWeight: 700,
+                  }}>{searchResults.length} results</div>
+                  <button
+                    type="button"
+                    onClick={() => setSearchResults([])}
+                    aria-label="Close results"
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%', border: 'none',
+                      background: 'rgba(255,255,255,0.06)', color: '#e2e8f0',
+                      cursor: 'pointer', fontSize: 12, lineHeight: 1,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >×</button>
+                </div>
+                {searchResults.map((r) => (
+                  <button
+                    key={r.placeId}
+                    type="button"
+                    role="option"
+                    onClick={() => {
+                      openPlaceFromPlaceId(r.placeId, r.name, { lat: r.lat, lng: r.lng });
+                      setSearchResults([]);
+                    }}
+                    style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start',
+                      padding: 8, borderRadius: 10,
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      color: '#e2e8f0', textAlign: 'left',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      width: '100%',
+                    }}
+                  >
+                    {r.photoUrl ? (
+                      <img
+                        src={r.photoUrl}
+                        alt=""
+                        style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 56, height: 56, borderRadius: 8, flexShrink: 0,
+                        background: 'rgba(167,139,250,0.12)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 18, color: 'rgba(167,139,250,0.7)',
+                      }}>📍</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {r.name}
+                      </div>
+                      {typeof r.rating === 'number' && (
+                        <div style={{ fontSize: 11, color: '#fbbf24', marginBottom: 2 }}>
+                          ★ {r.rating.toFixed(1)}
+                        </div>
+                      )}
+                      {r.address && (
+                        <div style={{
+                          fontSize: 10, color: '#94a3b8', lineHeight: 1.4,
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}>{r.address}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
         {recsEnabled && (
           <>
