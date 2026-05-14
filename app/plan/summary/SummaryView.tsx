@@ -2128,12 +2128,16 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 </div>
               </aside>
               {/* ── Map column (right) ─────────────────────────────────── */}
+              {/* Sticky offset clears the 56px trip-tabs navbar — the
+                  map's overlays (search bar + Find recs button) live at
+                  top:8 of the map div, so any offset less than the
+                  navbar's 56px hides them behind it. */}
               <div
                 style={{
                   position: isMobile ? 'static' : 'sticky',
-                  top: isMobile ? undefined : 16,
+                  top: isMobile ? undefined : 72,
                   alignSelf: 'start',
-                  height: isMobile ? 320 : 'calc(100vh - 32px)',
+                  height: isMobile ? 320 : 'calc(100vh - 88px)',
                 }}
               >
                 <UnifiedTripMap
@@ -2339,9 +2343,9 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 <div
                   style={{
                     position: isMobile ? 'static' : 'sticky',
-                    top: isMobile ? undefined : 16,
+                    top: isMobile ? undefined : 72,
                     alignSelf: 'start',
-                    height: isMobile ? 'auto' : 'calc(100vh - 32px)',
+                    height: isMobile ? 'auto' : 'calc(100vh - 88px)',
                   }}
                 >
                   <UnifiedTripMap
