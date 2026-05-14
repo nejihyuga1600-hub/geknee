@@ -97,6 +97,13 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes gk-shine {
+  /* Shifts a 200%-sized linear-gradient back and forth so it reads as
+     a moving sheen on the Quest filter chip. */
+  0%   { background-position:   0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position:   0% 50%; }
+}
 @keyframes geniePulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
   50%       { box-shadow: 0 0 0 8px rgba(167, 139, 250, 0); }

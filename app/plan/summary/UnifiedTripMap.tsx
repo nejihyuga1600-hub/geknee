@@ -342,7 +342,7 @@ export default function UnifiedTripMap({
   const [ready, setReady] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | number>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'quest' | number>('all');
   const [panel, setPanel] = useState<PlacePanelData | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
   const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
@@ -498,14 +498,34 @@ export default function UnifiedTripMap({
     bookmarkMarkersRef.current.forEach((m) => m.setMap(null));
     bookmarkMarkersRef.current = [];
 
-    (bookmarks ?? []).forEach((b, i) => {
+    // Filter bookmarks by the same chip the user has active.
+    // - 'all'   → show all bookmarks
+    // - 'quest' → bookmarks have no quest concept; hide them so the
+    //             quest filter shows only quest activity pins
+    // - number  → show only bookmarks assigned to that day, plus
+    //             unassigned ones (dayAssignment == null) so the user
+    //             can still see free-floating pins they haven't
+    //             routed yet.
+    const visibleBookmarks = (bookmarks ?? []).filter((b) => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'quest') return false;
+      return b.dayAssignment === activeFilter || b.dayAssignment == null;
+    });
+
+    visibleBookmarks.forEach((b) => {
       const marker = new gmaps.Marker({
         position: { lat: b.coords[1], lng: b.coords[0] },
         map: mapRef.current,
-        label: { text: String(i + 1), color: '#0a0a1f', fontSize: '12px', fontWeight: '700' },
+        // No numeric label — bookmark numbering used to collide with
+        // activity numbers (a Day-2 activity #1 and a bookmark #1
+        // looked identical on the map). Use a small star symbol so
+        // bookmarks read as "user-pinned" at a glance.
+        label: { text: '★', color: '#0a0a1f', fontSize: '11px', fontWeight: '700' },
         icon: {
-          path: gmaps.SymbolPath.CIRCLE,
-          scale: 12,
+          // Diamond (rotated square) so bookmarks visually disambiguate
+          // from the round activity pins.
+          path: 'M 0,-12 L 12,0 L 0,12 L -12,0 Z',
+          scale: 1,
           fillColor: '#7dd3fc',
           fillOpacity: 0.95,
           strokeColor: '#0a0a1f',
@@ -535,7 +555,7 @@ export default function UnifiedTripMap({
       bookmarkMarkersRef.current.forEach((m) => m.setMap(null));
       bookmarkMarkersRef.current = [];
     };
-  }, [ready, planningEnabled, bookmarks]);
+  }, [ready, planningEnabled, bookmarks, activeFilter]);
 
   // Open the place panel given a Place ID (POI click or bookmark click).
   // No day context — panel surfaces the "Pin destination" CTA instead.
@@ -613,7 +633,11 @@ export default function UnifiedTripMap({
     pinHandlersByDayPosRef.current.clear();
     infoWindowRef.current?.close();
 
-    const visible = pins.filter((p) => activeFilter === 'all' || p.dayNumber === activeFilter);
+    const visible = pins.filter((p) => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'quest') return p.isQuest;
+      return p.dayNumber === activeFilter;
+    });
 
     // Reject candidate names that are obviously generic activity verbs
     // (geocoding "Lunch" returns a random Lunch, NJ; "Breakfast" returns
@@ -1147,7 +1171,7 @@ export default function UnifiedTripMap({
             onClose={() => setPanel(null)}
             bookmarks={bookmarks}
             onAddBookmark={onAddBookmark}
-            dayAssignment={activeFilter === 'all' ? null : activeFilter}
+            dayAssignment={typeof activeFilter === 'number' ? activeFilter : null}
           />
         )}
         {/* Day-filter chips strip — top row. Horizontal-scrolls
@@ -1200,6 +1224,35 @@ export default function UnifiedTripMap({
                 </button>
               );
             })}
+            {(() => {
+              const questCount = pins.filter((p) => p.isQuest).length;
+              if (questCount === 0) return null;
+              const active = activeFilter === 'quest';
+              return (
+                <button
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveFilter('quest')}
+                  style={{
+                    ...chipStyle(active, QUEST_COLOR),
+                    // Shiny gold gradient when active; subtle gold tint
+                    // when inactive so the chip always reads as "quest".
+                    background: active
+                      ? `linear-gradient(135deg, ${QUEST_COLOR} 0%, #fde68a 50%, ${QUEST_COLOR} 100%)`
+                      : `linear-gradient(135deg, rgba(251,191,36,0.18) 0%, rgba(253,230,138,0.28) 50%, rgba(251,191,36,0.18) 100%)`,
+                    backgroundSize: '200% 200%',
+                    animation: active ? 'gk-shine 2.4s ease-in-out infinite' : undefined,
+                    color: active ? '#0a0a1f' : '#fde68a',
+                    border: `1px solid ${active ? '#0a0a1f' : 'rgba(251,191,36,0.55)'}`,
+                    boxShadow: active ? '0 0 14px rgba(251,191,36,0.55)' : '0 0 6px rgba(251,191,36,0.18)',
+                    fontWeight: 700,
+                  }}
+                >
+                  <span aria-hidden style={{ marginRight: 6 }}>★</span>
+                  Quest ({questCount})
+                </button>
+              );
+            })()}
           </div>
         )}
       </div>
