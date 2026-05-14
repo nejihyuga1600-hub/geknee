@@ -952,12 +952,7 @@ export default function UnifiedTripMap({
               });
             }}
             style={{
-              // Anchored bottom-right. The top of the sticky map can
-              // slide under the navbar at page-end (sticky releases when
-              // its parent grid row ends), so any control at top:N gets
-              // hidden. Bottom controls remain visible because the map's
-              // bottom stays in viewport longest.
-              position: 'absolute', bottom: 60, right: 8, zIndex: 40,
+              position: 'absolute', top: 8, right: 8, zIndex: 40,
               display: 'flex', gap: 6,
               background: 'rgba(13,17,23,0.92)',
               border: '1px solid rgba(255,255,255,0.12)',
@@ -997,9 +992,7 @@ export default function UnifiedTripMap({
               onClick={toggleRecs}
               aria-expanded={recsOpen}
               style={{
-                // Bottom-anchored mirror of the search bar so it stays
-                // visible when the sticky map releases at page bottom.
-                position: 'absolute', bottom: 60, left: 8, zIndex: 40,
+                position: 'absolute', top: 8, left: 8, zIndex: 40,
                 padding: '8px 12px',
                 background: recsOpen
                   ? 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.85))'
@@ -1023,15 +1016,10 @@ export default function UnifiedTripMap({
                 role="region"
                 aria-label="Curated recommendations"
                 style={{
-                  // Anchored above the bottom-left Find recs button so
-                  // the panel grows upward from the trigger. Top of the
-                  // panel is bounded by the navbar clearance — 80px from
-                  // the map's top edge keeps the panel out from under it
-                  // even when sticky releases at page bottom.
                   position: 'absolute',
-                  bottom: 100, left: 8, zIndex: 40,
+                  top: 56, left: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
-                  maxHeight: 'calc(100% - 180px)',
+                  maxHeight: 'calc(100% - 80px)',
                   overflowY: 'auto',
                   background: 'rgba(13,13,36,0.96)',
                   backdropFilter: 'blur(14px)',
@@ -1150,11 +1138,9 @@ export default function UnifiedTripMap({
             dayAssignment={activeFilter === 'all' ? null : activeFilter}
           />
         )}
-        {/* Day-filter chips overlaid on the map itself (bottom-center).
-            Was a strip below the map — moved on top so the map can use
-            the full column height and the user gets the filter where
-            their eyes already are. Backdrop-blur keeps map labels
-            readable through the chip strip. */}
+        {/* Day-filter chips strip — top-centered, sits below the
+            search/Find-recs row so all map controls cluster at the
+            top of the map. */}
         {dayChips.length > 0 && (
           <div
             role="tablist"
@@ -1163,7 +1149,7 @@ export default function UnifiedTripMap({
               position: 'absolute',
               left: '50%',
               transform: 'translateX(-50%)',
-              bottom: 12,
+              top: 56,
               zIndex: 35,
               display: 'flex', flexWrap: 'wrap', gap: 6,
               padding: 6,
