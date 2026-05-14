@@ -438,22 +438,64 @@ export default function UnifiedTripMap({
       }>;
       const day = ce.detail?.dayNumber;
       const pos = ce.detail?.positionInDay;
+      const name = ce.detail?.name ?? '';
+      const cityHint = ce.detail?.city ?? location;
+
+      // Tier 1: registered handler by (day,pos) — exact match for any
+      // pin in the parsed itinerary.
       let handler: (() => void) | undefined;
       if (typeof day === 'number' && typeof pos === 'number') {
         handler = pinHandlersByDayPosRef.current.get(`${day}:${pos}`);
       }
+      // Tier 2: handler by normalized place name.
       if (!handler) {
-        const key = normalizePinKey(ce.detail?.name ?? '');
+        const key = normalizePinKey(name);
         if (key) handler = pinHandlersRef.current.get(key);
       }
       if (handler) {
         ce.preventDefault();
         handler();
+        return;
       }
+
+      // Tier 3: live Places lookup. Reaches here when the pin's
+      // geocode failed (so no marker, no handler) but the activity
+      // text still has a place name. Places.findPlaceFromQuery is
+      // more permissive than the Geocoder for landmark names — it
+      // resolves "Kinari Bazaar" where "Kinari Bazaar, Agra" via
+      // geocode might miss. Open the in-page panel directly with
+      // the resolved place_id instead of falling through to a
+      // Google-Maps tab.
+      if (!name) return;
+      const svc = placesServiceRef.current;
+      if (!svc || !window.google?.maps?.places) return;
+      ce.preventDefault();
+      const query = cityHint ? `${name}, ${cityHint}` : name;
+      svc.findPlaceFromQuery(
+        { query, fields: ['place_id', 'geometry'] },
+        (results, status) => {
+          if (status !== 'OK') return;
+          const r = results?.[0] as
+            | { place_id?: string; geometry?: { location?: { lat: () => number; lng: () => number } } }
+            | undefined;
+          const placeId = r?.place_id;
+          const loc = r?.geometry?.location;
+          if (!placeId) return;
+          openPlaceFromPlaceId(
+            placeId,
+            name,
+            loc ? { lat: loc.lat(), lng: loc.lng() } : undefined,
+          );
+        },
+      );
     };
     window.addEventListener('geknee:focus-map-pin', onFocus);
     return () => window.removeEventListener('geknee:focus-map-pin', onFocus);
-  }, []);
+    // openPlaceFromPlaceId is component-scope and doesn't change
+    // identity across renders. location is captured by closure but
+    // re-creating the listener every location change is fine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   // Init map once.
   useEffect(() => {
@@ -715,8 +757,13 @@ export default function UnifiedTripMap({
       const defaultBbox = (c: { lat: number; lng: number }) =>
         !anchor || (Math.abs(c.lat - anchor.lat) < 3 && Math.abs(c.lng - anchor.lng) < 3);
 
+      // Geocode EVERY pin (not just the active filter's subset) so the
+      // (day,pos) handler registry below covers the full itinerary.
+      // Otherwise filtering to "Day 2" would un-register Day-3's
+      // handlers, and clicking step 5 of Day 3 in the itinerary card
+      // would silently fall through to a Google-Maps-tab fallback.
       const firstPass = await Promise.all(
-        visible.map(async (p) => ({ ...p, resolved: (await tryCandidates(p, defaultBbox)) ?? undefined })),
+        pins.map(async (p) => ({ ...p, resolved: (await tryCandidates(p, defaultBbox)) ?? undefined })),
       );
       if (cancelled) return;
 
@@ -749,6 +796,21 @@ export default function UnifiedTripMap({
 
       const bounds = new window.google!.maps!.LatLngBounds();
       let perDayCounter = new Map<number, number>();
+
+      // Register handlers for EVERY resolved pin first — independent of
+      // the active day filter. The map then renders markers + polylines
+      // only for the filtered subset, but a click on any pin from the
+      // itinerary card still finds its handler.
+      for (const p of resolved) {
+        if (!p.resolved) continue;
+        const captured = p;
+        const handler = () => {
+          if (mapRef.current && captured.resolved) mapRef.current.panTo(captured.resolved);
+          openPlaceCard(captured);
+        };
+        pinHandlersRef.current.set(normalizePinKey(captured.name), handler);
+        pinHandlersByDayPosRef.current.set(`${captured.dayNumber}:${captured.positionInDay}`, handler);
+      }
 
       // Open the rich React side panel for a pin. Mirrors the planning
       // map's place panel: photo carousel, rating + price + address,
@@ -817,12 +879,20 @@ export default function UnifiedTripMap({
         );
       };
 
-      for (const p of resolved) {
+      // Marker rendering — only the filtered subset gets a marker on
+      // the map. Handlers for the FULL itinerary are already registered
+      // above so click-to-open works for any pin even when filtered out.
+      const visibleResolved = resolved.filter((p) => {
+        if (!p.resolved) return false;
+        if (activeFilter === 'all') return true;
+        if (activeFilter === 'quest') return p.isQuest;
+        return p.dayNumber === activeFilter;
+      });
+
+      for (const p of visibleResolved) {
         if (!p.resolved) continue;
         const dayCount = (perDayCounter.get(p.dayNumber) ?? 0) + 1;
         perDayCounter.set(p.dayNumber, dayCount);
-        // Quest pins override the day color with gold so the
-        // monument-quest stops are unmistakable across the whole trip.
         const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
         const color = p.isQuest ? QUEST_COLOR : dayColor;
 
@@ -841,17 +911,7 @@ export default function UnifiedTripMap({
           title: `${p.dayLabel} · ${p.name}${p.isQuest ? ' · Monument Quest' : ''}`,
           zIndex: p.isQuest ? 100 : 10,
         });
-        marker.addListener('click', () => {
-          openPlaceCard(p);
-        });
-        // Register a handler so the in-itinerary number-circle click
-        // can resolve to this exact marker. Pan first, then open.
-        const handler = () => {
-          if (mapRef.current && p.resolved) mapRef.current.panTo(p.resolved);
-          openPlaceCard(p);
-        };
-        pinHandlersRef.current.set(normalizePinKey(p.name), handler);
-        pinHandlersByDayPosRef.current.set(`${p.dayNumber}:${p.positionInDay}`, handler);
+        marker.addListener('click', () => openPlaceCard(p));
         markersRef.current.push(marker);
         bounds.extend(p.resolved);
       }
@@ -864,8 +924,8 @@ export default function UnifiedTripMap({
       // requests fan out in parallel so this doesn't block first paint.
       const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
       if (MAPBOX_TOKEN) {
-        const byDay = new Map<number, typeof resolved>();
-        for (const p of resolved) {
+        const byDay = new Map<number, typeof visibleResolved>();
+        for (const p of visibleResolved) {
           if (!p.resolved) continue;
           if (!byDay.has(p.dayNumber)) byDay.set(p.dayNumber, []);
           byDay.get(p.dayNumber)!.push(p);
