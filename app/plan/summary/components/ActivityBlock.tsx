@@ -317,10 +317,45 @@ export function ActivityBlock({
     .map(d => ({ ...d, displayLine: cost ? stripCostFromLine(d.line) : d.line }));
   const hasDetails = visibleDetails.some(d => d.displayLine.trim());
 
+  // Stable handler for "open this activity's place panel on the unified
+  // map". Dispatches the same focus event the number-circle button
+  // uses so the WHOLE activity row reacts identically — clicking
+  // anywhere on the headline / chips area opens the place panel.
+  // Clicking directly on EditableLine text still starts an inline
+  // edit because EditableLine stops the click from bubbling.
+  const openOnMap = () => {
+    if (!place) return;
+    const ev = new CustomEvent('geknee:focus-map-pin', {
+      detail: {
+        name: place,
+        city: city ?? null,
+        dayNumber: dayNumber ?? null,
+        positionInDay: activityNumber ?? null,
+      },
+      cancelable: true,
+    });
+    window.dispatchEvent(ev);
+    if (!ev.defaultPrevented) {
+      const q = city ? `${place}, ${city}` : place;
+      window.open(
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
+        '_blank', 'noopener,noreferrer',
+      );
+    }
+  };
+
   return (
     <div style={{ marginBottom: 14 }}>
-      {/* Headline row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      {/* Headline row — clicking anywhere outside the editable text
+          opens the place panel. Editable text stops propagation so
+          inline edit still works on click. */}
+      <div
+        onClick={place ? openOnMap : undefined}
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          cursor: place ? 'pointer' : 'default',
+        }}
+      >
         {activityNumber !== undefined ? (() => {
           const isMonument = isMonumentQuest || /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(group.headline);
           // Click the number circle to open the same Google place card

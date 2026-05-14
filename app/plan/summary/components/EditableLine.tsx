@@ -54,7 +54,10 @@ export function EditableLine({
         />
       ) : (
         <div
-          onClick={onStartEdit}
+          // stopPropagation so the parent activity row's click handler
+          // (which opens the place panel) doesn't fire when the user
+          // is actually trying to edit the text inline.
+          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
           style={{
             cursor: 'text', borderRadius: 6, padding: '3px 6px',
             background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
