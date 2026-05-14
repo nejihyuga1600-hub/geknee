@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
-import type { Section } from './lib/itinerary-parse';
+import { extractDayNumber, type Section } from './lib/itinerary-parse';
 import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
 
 const QUEST_RE = /\[\s*MONUMENT\s*QUEST\s*\]/i;
@@ -356,9 +356,12 @@ export default function UnifiedTripMap({
   // open with "Day N" but have no content) are filtered out at the
   // chip step because dayChips derives from pins, not sections.
   const daySections = useMemo(() => {
+    // Use the canonical extractDayNumber so headings with leading
+    // markdown markers ("**Day 4** — Farewell"), word-form numbers
+    // ("Day Four"), or hyphen separators ("Day-4") all match.
     return sections
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => /^Day\s*\d+\b/i.test(s.heading ?? ''));
+      .filter(({ s }) => extractDayNumber(s.heading ?? '') !== null);
   }, [sections]);
 
   // Build the candidate place list per day, in chronological order.
@@ -368,7 +371,7 @@ export default function UnifiedTripMap({
   const pins = useMemo<PlacePin[]>(() => {
     const out: PlacePin[] = [];
     daySections.forEach((entry, dayIdx) => {
-      const dayNum = parseInt(((entry.s.heading ?? '').match(/Day\s*(\d+)/i) ?? [])[1] ?? `${dayIdx + 1}`, 10);
+      const dayNum = extractDayNumber(entry.s.heading ?? '') ?? (dayIdx + 1);
       let pos = 0;
       let pendingTransit: LegMode | null = null;
       for (const line of entry.s.lines as string[]) {
@@ -1139,28 +1142,29 @@ export default function UnifiedTripMap({
           />
         )}
         {/* Day-filter chips strip — top-centered, sits below the
-            search/Find-recs row so all map controls cluster at the
-            top of the map. */}
+            search/Find-recs row. Horizontal-scrolls (single row, no
+            wrap) so the strip never grows tall enough to crowd the
+            map at narrow widths. */}
         {dayChips.length > 0 && (
           <div
             role="tablist"
             aria-label="Filter map by day"
             style={{
               position: 'absolute',
-              left: '50%',
-              transform: 'translateX(-50%)',
+              left: 8, right: 8,
               top: 56,
               zIndex: 35,
-              display: 'flex', flexWrap: 'wrap', gap: 6,
+              display: 'flex', flexWrap: 'nowrap', gap: 6,
               padding: 6,
               background: 'rgba(13,17,23,0.78)',
               border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: 12,
               backdropFilter: 'blur(12px)',
               WebkitBackdropFilter: 'blur(12px)',
-              maxWidth: 'calc(100% - 24px)',
               boxShadow: '0 6px 22px rgba(0,0,0,0.35)',
-              justifyContent: 'center',
+              justifyContent: 'flex-start',
+              overflowX: 'auto',
+              scrollbarWidth: 'thin',
             }}
           >
             <button
@@ -1578,6 +1582,8 @@ function chipStyle(active: boolean, color: string | null): React.CSSProperties {
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
   };
 }
 
