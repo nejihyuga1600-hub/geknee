@@ -12,7 +12,7 @@
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS 4 |
 | 3D Globe | React Three Fiber (R3F) + Drei |
-| Maps | Google Maps JS (@googlemaps/js-api-loader) |
+| Maps | Google Maps JS API (lazy-loaded via `lib/googleMapsLoader.ts`) |
 | Auth | NextAuth v5 beta + Prisma adapter |
 | Database | Supabase (PostgreSQL via Prisma v6) |
 | AI | Anthropic SDK (`claude-sonnet-4-5`) |
