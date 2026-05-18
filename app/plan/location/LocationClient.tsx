@@ -2210,19 +2210,26 @@ function GlobeScene() {
     let loadedBitmap: ImageBitmap | null = null;
 
     // ── GeoJSON border data ──────────────────────────────────────────────────
+    // Countries (820KB) always; states/provinces (39MB) only on desktop.
+    // Parsing the states JSON allocates 100MB+ of JS heap — fatal on iOS Safari.
     (async () => {
       try {
-        const [cRes, sRes] = await Promise.all([
-          fetch("/ne_110m_admin_0_countries.json"),
-          fetch("/ne_10m_admin_1_states_provinces.json"),
-        ]);
-        if (!cRes.ok || !sRes.ok || cancelled) return;
-        const [c, s]: [GeoCollection, GeoCollection] = await Promise.all([
-          cRes.json(), sRes.json(),
-        ]);
-        if (!cancelled) { setCountries(c); setStates(s); }
+        const cRes = await fetch("/ne_110m_admin_0_countries.json");
+        if (!cRes.ok || cancelled) return;
+        const c: GeoCollection = await cRes.json();
+        if (!cancelled) setCountries(c);
       } catch { /* keep border-free texture */ }
     })();
+    if (!isMobile) {
+      (async () => {
+        try {
+          const sRes = await fetch("/ne_10m_admin_1_states_provinces.json");
+          if (!sRes.ok || cancelled) return;
+          const s: GeoCollection = await sRes.json();
+          if (!cancelled) setStates(s);
+        } catch { /* state borders skipped */ }
+      })();
+    }
 
     // ── NASA Blue Marble Next Generation — monthly terrain textures ───────────
     // Files: /public/earth_terrain_01.jpg … earth_terrain_12.jpg
