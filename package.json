@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "meshy": "python meshy_batch.py",
-    "meshy:register": "python meshy_register.py"
+    "meshy:register": "python meshy_register.py",
+    "compress": "node scripts/compress-glb.mjs",
+    "compress:ktx2": "cross-env COMPRESS_KTX2=1 node scripts/compress-glb.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

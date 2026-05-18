@@ -9,6 +9,39 @@ import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlo
 
 const R = 10;
 
+// ─── Device tier (SSR-safe, module-level) ─────────────────────────────────────
+// Used by Canvas DPR cap, antialias toggle, GeoJSON lazy load, terrain texture
+// resolution, and to skip the heaviest GLBs on memory-constrained devices.
+export type DeviceTier = 'low' | 'mid' | 'high';
+export function getDeviceTier(): DeviceTier {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
+  const dpr   = window.devicePixelRatio ?? 1;
+  const mem   = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  const cores = navigator.hardwareConcurrency ?? 4;
+  if (mem !== undefined && mem <= 2) return 'low';
+  if (cores <= 2) return 'low';
+  if (dpr <= 1.5 && cores <= 4) return 'mid';
+  return 'high';
+}
+
+// GLBs > ~40MB on disk decompress into hundreds of MB of GPU memory.
+// iOS Safari has crashed loading even one of these. Skipped on non-high tier;
+// the Lm component falls back to its primitive-geometry children instead.
+const HEAVY_GLB_PATHS: ReadonlySet<string> = new Set([
+  "/models/maasai_mara.glb",
+  "/models/morocco_mar.glb",
+  "/models/neuschwanstein.glb",
+  "/models/angkor_wat.glb",
+  "/models/osaka_castle.glb",
+  "/models/sagrada_familia.glb",
+  "/models/petra.glb",
+  "/models/grand_canyon.glb",
+  "/models/hagia_sophia.glb",
+  "/models/mt_rushmore.glb",
+  "/models/forbidden_city.glb",
+  "/models/victoria_falls.glb",
+]);
+
 // ─── Surface positioning helpers ──────────────────────────────────────────────
 // Converts geographic coordinates to a 3-D position on the globe surface plus
 // a quaternion that aligns the local Y-axis with the outward radial direction,
@@ -1430,13 +1463,16 @@ function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?:
   const density = LM_DENSITY.get(p) ?? 1;
   const effS    = s * density;
 
+  // Skip the heaviest GLBs on memory-constrained devices — these crash iOS Safari.
+  const useModel = !!model && !(HEAVY_GLB_PATHS.has(model.path) && getDeviceTier() !== 'high');
+
   return (
     <group position={p.pos} quaternion={p.q}>
       <group scale={effS}>
-        {model ? (
+        {useModel ? (
           <ModelErrorBoundary fallback={<>{children}</>}>
             <Suspense fallback={<>{children}</>}>
-              <GlbModel path={model.path} scale={1} />
+              <GlbModel path={model!.path} scale={1} />
             </Suspense>
           </ModelErrorBoundary>
         ) : children}
@@ -6101,19 +6137,27 @@ function GlobeScene() {
     let cancelled = false;
 
     // ── GeoJSON border data ──────────────────────────────────────────────────
+    // Countries (820KB) always; states/provinces (39MB) only on 'high' tier.
+    // Parsing the states JSON allocates 100MB+ of JS heap — fatal on iOS Safari.
+    const _tier = getDeviceTier();
     (async () => {
       try {
-        const [cRes, sRes] = await Promise.all([
-          fetch("/ne_110m_admin_0_countries.json"),
-          fetch("/ne_10m_admin_1_states_provinces.json"),
-        ]);
-        if (!cRes.ok || !sRes.ok || cancelled) return;
-        const [c, s]: [GeoCollection, GeoCollection] = await Promise.all([
-          cRes.json(), sRes.json(),
-        ]);
-        if (!cancelled) { setCountries(c); setStates(s); }
+        const cRes = await fetch("/ne_110m_admin_0_countries.json");
+        if (!cRes.ok || cancelled) return;
+        const c: GeoCollection = await cRes.json();
+        if (!cancelled) setCountries(c);
       } catch { /* keep border-free texture */ }
     })();
+    if (_tier === 'high') {
+      (async () => {
+        try {
+          const sRes = await fetch("/ne_10m_admin_1_states_provinces.json");
+          if (!sRes.ok || cancelled) return;
+          const s: GeoCollection = await sRes.json();
+          if (!cancelled) setStates(s);
+        } catch { /* state borders skipped */ }
+      })();
+    }
 
     // ── NASA Blue Marble Next Generation — monthly terrain textures ───────────
     // Files: /public/earth_terrain_01.jpg … earth_terrain_12.jpg
@@ -6125,12 +6169,18 @@ function GlobeScene() {
       const pad   = (n: number) => String(n).padStart(2, '0');
       // Build candidate list: current month first, then wrap around
       const candidates = Array.from({ length: 12 }, (_, i) => ((month - 1 + i) % 12) + 1);
+      // Scale resize target by device tier. 8192×4096 RGBA = 134 MB GPU memory
+      // per texture — guaranteed iOS Safari crash. Mobile gets 2048×1024 (8 MB).
+      const _tt = getDeviceTier();
+      const [tw, th] = _tt === 'high' ? [8192, 4096]
+                     : _tt === 'mid'  ? [4096, 2048]
+                                      : [2048, 1024];
       for (const m of candidates) {
         try {
           const res = await fetch(`/earth_terrain_${pad(m)}.jpg`);
           if (!res.ok) continue;
           const blob = await res.blob();
-          const bmp  = await createImageBitmap(blob, { resizeWidth: 8192, resizeHeight: 4096, resizeQuality: "high" });
+          const bmp  = await createImageBitmap(blob, { resizeWidth: tw, resizeHeight: th, resizeQuality: "high" });
           if (!cancelled) setTerrainBitmap(bmp);
           break; // found one — stop
         } catch { continue; }
@@ -6405,15 +6455,7 @@ export default function LocationPage() {
 
   // Device quality tier — cap DPR on low-end devices to protect frame rate
   const _dpr = typeof window !== 'undefined' ? (window.devicePixelRatio ?? 1) : 1;
-  const deviceTier = (() => {
-    if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
-    const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-    const cores = navigator.hardwareConcurrency ?? 4;
-    if (mem !== undefined && mem <= 2) return 'low';
-    if (cores <= 2) return 'low';
-    if (_dpr <= 1.5 && cores <= 4) return 'mid';
-    return 'high';
-  })();
+  const deviceTier = getDeviceTier();
 
   const dprRange: [number, number] =
     deviceTier === 'low'  ? [1, 1] :
