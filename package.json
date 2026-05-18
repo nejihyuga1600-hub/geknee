@@ -24,12 +24,10 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
-    "mapbox-gl": "^3.19.1",
     "next": "^16.2.1",
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-map-gl": "^8.1.0",
     "stripe": "^22.0.0"
   },
   "devDependencies": {
