@@ -43,6 +43,8 @@ next-env.d.ts
 # Large 3D model files
 public/models/*.glb
 public/models/*.gltf
+# Pre-compression source GLBs (1.8GB+) — kept locally, never committed
+public/models-source/
 
 # Large binaries and installers
 *.exe

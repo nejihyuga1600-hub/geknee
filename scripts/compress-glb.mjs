@@ -10,9 +10,10 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC  = join(ROOT, 'public', 'models-source');
 const DST  = join(ROOT, 'public', 'models');
 
