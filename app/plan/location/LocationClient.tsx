@@ -33,6 +33,16 @@ export function getDeviceTier(): DeviceTier {
   return 'high';
 }
 
+// Multiplier applied to every globe label's fontSize. Zoomed out = small;
+// zoomed in = large. Combined with the existing density-based scaling, this
+// gives labels a "live" feel as the user scrolls in/out.
+//   camDist range (OrbitControls): 11.5 (closest) → 45 (farthest)
+//   scale  range:                   1.6 (closest) → 0.55 (farthest)
+function camDistScale(camDist: number): number {
+  const t = Math.max(0, Math.min(1, (45 - camDist) / (45 - 11.5)));
+  return 0.55 + 1.05 * t;
+}
+
 // ─── Surface positioning helpers ──────────────────────────────────────────────
 // Converts geographic coordinates to a 3-D position on the globe surface plus
 // a quaternion that aligns the local Y-axis with the outward radial direction,
@@ -4813,10 +4823,11 @@ function GeoLabels({ countries, states, camDist }: {
       const base = it.kind === "country" ? 0.20 : 0.115;
       const thr  = it.kind === "country" ? 18   : 12;
       const min  = it.kind === "country" ? 0.08  : 0.05;
-      const fontSize = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
+      const density = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
+      const fontSize = density * camDistScale(camDist);
       return { ...it, fontSize };
     });
-  }, [visible]);
+  }, [visible, camDist]);
 
   return (
     <>
@@ -5012,7 +5023,8 @@ function CountryLabels({ camDist }: { camDist: number }) {
         if (deg < minDeg) minDeg = deg;
       }
       const base = 0.20, thr = 18, min = 0.08;
-      const fontSize = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
+      const density = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
+      const fontSize = density * camDistScale(camDist);
       return { ...it, fontSize };
     });
   }, [items, camDist]);
@@ -5862,7 +5874,8 @@ function CityLabels({ camDist }: { camDist: number }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const fontSize = minDeg >= 10 ? 0.055 : Math.max(0.026, 0.055 * (minDeg / 10));
+      const density = minDeg >= 10 ? 0.055 : Math.max(0.026, 0.055 * (minDeg / 10));
+      const fontSize = density * camDistScale(camDist);
       return { ...city, fontSize };
     });
   }, [items, camDist, sepThresh]);
