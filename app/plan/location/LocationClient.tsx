@@ -33,24 +33,6 @@ export function getDeviceTier(): DeviceTier {
   return 'high';
 }
 
-// GLBs > ~40MB on disk decompress into hundreds of MB of GPU memory.
-// iOS Safari has crashed loading even one of these. Skipped on non-high tier;
-// the Lm component falls back to its primitive-geometry children instead.
-const HEAVY_GLB_PATHS: ReadonlySet<string> = new Set([
-  "/models/maasai_mara.glb",
-  "/models/morocco_mar.glb",
-  "/models/neuschwanstein.glb",
-  "/models/angkor_wat.glb",
-  "/models/osaka_castle.glb",
-  "/models/sagrada_familia.glb",
-  "/models/petra.glb",
-  "/models/grand_canyon.glb",
-  "/models/hagia_sophia.glb",
-  "/models/mt_rushmore.glb",
-  "/models/forbidden_city.glb",
-  "/models/victoria_falls.glb",
-]);
-
 // ─── Surface positioning helpers ──────────────────────────────────────────────
 // Converts geographic coordinates to a 3-D position on the globe surface plus
 // a quaternion that aligns the local Y-axis with the outward radial direction,
@@ -1472,16 +1454,13 @@ function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?:
   const density = LM_DENSITY.get(p) ?? 1;
   const effS    = s * density;
 
-  // Skip the heaviest GLBs on memory-constrained devices — these crash iOS Safari.
-  const useModel = !!model && !(HEAVY_GLB_PATHS.has(model.path) && getDeviceTier() !== 'high');
-
   return (
     <group position={p.pos} quaternion={p.q}>
       <group scale={effS}>
-        {useModel ? (
+        {model ? (
           <ModelErrorBoundary fallback={<>{children}</>}>
             <Suspense fallback={<>{children}</>}>
-              <GlbModel path={model!.path} scale={1} />
+              <GlbModel path={model.path} scale={1} />
             </Suspense>
           </ModelErrorBoundary>
         ) : children}
