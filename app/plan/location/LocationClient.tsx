@@ -15,6 +15,15 @@ const R = 10;
 export type DeviceTier = 'low' | 'mid' | 'high';
 export function getDeviceTier(): DeviceTier {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
+  const ua = navigator.userAgent || '';
+  // iOS Safari hides deviceMemory and modern iPhones report 6 cores + DPR=3,
+  // so the heuristic below misclassifies them as 'high'. Force-low any mobile UA.
+  // iPadOS 13+ identifies as "Mac" in desktop mode — detect via touch points.
+  const isMobile =
+    /iPhone|iPod|Android.*Mobile|Mobile.*Firefox|Opera Mini/i.test(ua) ||
+    (/iPad/i.test(ua)) ||
+    (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  if (isMobile) return 'low';
   const dpr   = window.devicePixelRatio ?? 1;
   const mem   = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   const cores = navigator.hardwareConcurrency ?? 4;
