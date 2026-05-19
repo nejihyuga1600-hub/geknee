@@ -146,8 +146,31 @@ Pull MonumentShop interactions, settings, and trip-related sub-features to separ
 ### M4.2 Defer non-globe code paths
 Today, `app/page.tsx` is 758 lines of zine landing. If the user is signed in, the server-side redirect (already shipped) skips this entirely — but the chunk still ships. Code-split the landing page so it's a separate route bundle.
 
-### M4.3 Bundle analyzer audit
+### M4.3 Bundle analyzer audit ✅ DONE 2026-05-19 (static pass)
 Run `ANALYZE=true npm run build` to see actual chunk sizes. Identify mobile-hostile dependencies (large `lodash`, unused `@radix-ui/*`, etc.).
+
+Static-import audit results (no analyzer install required):
+
+| Dep | Verdict |
+|---|---|
+| `mapbox-gl` / `react-map-gl` | OK — only loaded by `/trip/[id]/live`, `/plan/summary/DayMap`, `CityMapView`. Not on cold-start globe. |
+| `framer-motion` | OK — only inside `MonumentShop` (already `dynamic()`-imported) and other lazy modals. |
+| `@anthropic-ai/sdk` | OK — server-only (`app/api/*` routes). Never bundled to client. |
+| `@react-three/postprocessing` | **DEAD** — removed in commit 1529112 but still in package.json. ✅ Removed in this pass. |
+| `@googlemaps/js-api-loader` | **DEAD** — `lib/googleMapsLoader.ts` uses raw `<script>` injection; the npm package has zero imports. ✅ Removed in this pass. |
+| `posthog-js` | Required — session-replay infra per CLAUDE.md. |
+| `lodash` / `@radix-ui/*` | Not in tree at all. |
+
+`npm install` removed 5 packages (the 2 top-level + 3 transitive: `postprocessing`, `maath`, etc.). TypeScript still clean.
+
+Future analyzer wiring (if numbers needed):
+```bash
+npm i -D @next/bundle-analyzer
+# add to next.config.ts:
+# const withBundleAnalyzer = require('@next/bundle-analyzer')({ enabled: process.env.ANALYZE === 'true' });
+# export default withBundleAnalyzer(nextConfig);
+ANALYZE=true npm run build
+```
 
 ## Recommended ship order
 
@@ -157,7 +180,7 @@ Run `ANALYZE=true npm run build` to see actual chunk sizes. Identify mobile-host
    ⚠ Only registers in production (RegisterSW.tsx skips dev intentionally) — test via `npm run build && npm start` or Vercel deploy.
 4. **M1.3 Frustum-bound monument loading** — ✅ DONE 2026-05-19 (landmark.tsx 1Hz NDC gate on `<GlbModel>` mount)
 5. **M1.2 On-background cache flush** — ✅ DONE 2026-05-19 (30s mem-pressure → useGLTF.clear off-screen)
-6. **M4.3 Bundle audit** — pending
+6. **M4.3 Bundle audit** — ✅ DONE 2026-05-19 (static pass; 2 dead deps removed)
 
 Stop after step 3 and remeasure before continuing. The first three together should drop mobile RAM by 40-60% with no UX regressions.
 
