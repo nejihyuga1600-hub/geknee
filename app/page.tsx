@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
 import StepPillNav from './components/StepPillNav';
 import LandingTour from './components/landing/LandingTour';
 import Link from 'next/link';
@@ -35,7 +37,14 @@ const ACCENT3 = '#fb923c';
 const MONO = "var(--font-mono-display), ui-monospace, monospace";
 const DISPLAY = "var(--font-display), Georgia, serif";
 
-export default function Home() {
+export default async function Home() {
+  // Signed-in users skip the magazine landing and go straight to the globe.
+  // The landing is reserved for first-time / unauthenticated visitors.
+  const session = await auth();
+  if (session?.user) {
+    redirect('/plan/location');
+  }
+
   return (
     <main style={{
       minHeight: '100svh',

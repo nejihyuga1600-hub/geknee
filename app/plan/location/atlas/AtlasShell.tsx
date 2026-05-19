@@ -375,8 +375,9 @@ export default function AtlasShell() {
               top nav was getting crowded. */}
           {session?.user ? (
             <button
-              onClick={() => setTripsOpen(true)}
-              title={session.user.name ?? "Account"}
+              onClick={() => router.push("/account")}
+              title={session.user.name ? `${session.user.name} — account` : "Account"}
+              aria-label="Account"
               style={{
                 width: 28, height: 28, borderRadius: "50%",
                 background: "linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2, #7dd3fc))",
