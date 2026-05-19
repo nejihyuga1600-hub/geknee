@@ -84,7 +84,16 @@ Rules:
       .replace(/\s*```$/i, "")
       .trim();
     const flights = JSON.parse(raw);
-    return Response.json({ flights });
+    const googleFlightsUrl =
+      `https://www.google.com/travel/flights?q=` +
+      encodeURIComponent(`Flights from ${origin} to ${destination} on ${startDate} returning ${endDate}`);
+    return Response.json({
+      // AI-generated illustrative options — not booked from a real GDS.
+      // Clients must surface this as "AI estimate — verify on Google Flights".
+      estimated: true,
+      flights,
+      googleFlightsUrl,
+    });
   } catch (err) {
     console.error("Flights error:", err);
     return Response.json({ error: "Failed to get flight options" }, { status: 500 });

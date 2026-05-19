@@ -375,8 +375,9 @@ export default function AtlasShell() {
               top nav was getting crowded. */}
           {session?.user ? (
             <button
-              onClick={() => setTripsOpen(true)}
-              title={session.user.name ?? "Account"}
+              onClick={() => router.push("/account")}
+              title={session.user.name ? `${session.user.name} — account` : "Account"}
+              aria-label="Account"
               style={{
                 width: 28, height: 28, borderRadius: "50%",
                 background: "linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2, #7dd3fc))",
@@ -657,11 +658,15 @@ export default function AtlasShell() {
 
       {/* Live product modals — wired to the existing components, not the
           stale design-session copies. */}
-      <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />
-      <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />
+      {/* Lazy-mount: defer chunk load + state hooks until the user actually
+          opens the panel. Saves ~150KB JS + the panel's effects/intervals
+          for sessions where the user never opens it. TripSocialPanel stays
+          eager because users open it almost every session. */}
+      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />}
+      {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
       <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />
-      <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />
+      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+      {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
     </main>
   );
 }

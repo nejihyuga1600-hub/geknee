@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { track } from '@/lib/analytics';
+import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 
 const FileVault = dynamic(() => import('@/app/components/FileVault'), { ssr: false });
 
@@ -104,6 +105,7 @@ export default function TripSocialPanel({
   const [pendingIncoming, setPendingIncoming] = useState<PendingUser[]>([]);
   const [pendingOutgoing, setPendingOutgoing] = useState<PendingUser[]>([]);
   const [friendsLoading,  setFriendsLoading]  = useState(false);
+  const [favoriteFriends, setFavoriteFriends] = useState<Set<string>>(new Set());
   const [addQuery,        setAddQuery]        = useState('');
   const [addError,        setAddError]        = useState('');
   const [addLoading,      setAddLoading]      = useState(false);
@@ -127,7 +129,10 @@ export default function TripSocialPanel({
   useEffect(() => {
     if (!open || !userId) return;
     loadNotifications();
-    const iv = setInterval(loadNotifications, 15_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadNotifications();
+    }, 15_000);
     return () => clearInterval(iv);
   }, [open, userId, loadNotifications]);
 
@@ -150,6 +155,13 @@ export default function TripSocialPanel({
   const [chatSending,    setChatSending]    = useState(false);
   const [editingGrpName, setEditingGrpName] = useState(false);
   const [grpNameInput,   setGrpNameInput]   = useState('');
+
+  // Trip-membership UI (multi-user shared trips).
+  const [members,        setMembers]        = useState<Array<{ id: string; role: string; user: { id: string; name?: string | null; email?: string | null; image?: string | null; username?: string | null } }>>([]);
+  const [memberInput,    setMemberInput]    = useState('');
+  const [memberError,    setMemberError]    = useState<string | null>(null);
+  const [memberLoading,  setMemberLoading]  = useState(false);
+  const [showInviteRow,  setShowInviteRow]  = useState(false);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatEndRef  = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +175,10 @@ export default function TripSocialPanel({
   useEffect(() => {
     if (!open || !userId) return;
     pingPresence();
-    const iv = setInterval(pingPresence, 30_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      pingPresence();
+    }, 30_000);
     return () => clearInterval(iv);
   }, [open, userId, pingPresence]);
 
@@ -202,7 +217,10 @@ export default function TripSocialPanel({
 
   useEffect(() => {
     if (!open || !userId) return;
-    const iv = setInterval(loadFriends, 30_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadFriends();
+    }, 30_000);
     return () => clearInterval(iv);
   }, [open, userId, loadFriends]);
 
@@ -221,7 +239,10 @@ export default function TripSocialPanel({
       return;
     }
     pollChat(activeGroup.id);
-    chatPollRef.current = setInterval(() => pollChat(activeGroup.id), 3000);
+    chatPollRef.current = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      pollChat(activeGroup.id);
+    }, 3000);
     return () => { if (chatPollRef.current) clearInterval(chatPollRef.current); };
   }, [activeGroup, pollChat]);
 
@@ -379,23 +400,99 @@ export default function TripSocialPanel({
     setEditingGrpName(false);
   }
 
-  // Build group list from trips + currentLocation (deduplicated)
-  const groups: GroupChat[] = (() => {
-    const names = loadGroupNames();
-    const seen = new Set<string>();
-    const result: GroupChat[] = [];
-    const locs = [
-      ...(currentLocation ? [currentLocation] : []),
-      ...trips.map(t => t.location),
-    ];
-    for (const loc of locs) {
-      const id = hashStr(loc.toLowerCase().trim());
-      if (seen.has(id)) continue;
-      seen.add(id);
-      result.push({ id, name: names[id] ?? loc, location: loc });
+  function activeTripDbIdFor(g: { location: string } | null): string | null {
+    if (!g) return null;
+    return trips.find(t => t.location === g.location)?.id ?? null;
+  }
+
+  const loadMembers = useCallback(async () => {
+    const tripDbId = activeTripDbIdFor(activeGroup);
+    if (!tripDbId) { setMembers([]); return; }
+    try {
+      const r = await fetch(`/api/trips/${tripDbId}/members`);
+      if (!r.ok) { setMembers([]); return; }
+      const d = await r.json();
+      setMembers(d.members ?? []);
+    } catch { setMembers([]); }
+  }, [activeGroup, trips]);
+
+  async function inviteMember(override?: { email?: string; username?: string }) {
+    const tripDbId = activeTripDbIdFor(activeGroup);
+    if (!tripDbId) return;
+    const usingOverride = !!override && (!!override.email || !!override.username);
+    if (!usingOverride && !memberInput.trim()) return;
+    setMemberError(null);
+    setMemberLoading(true);
+    let body: { email?: string; username?: string };
+    if (usingOverride) {
+      body = override!;
+    } else {
+      const raw = memberInput.trim();
+      body = raw.includes('@')
+        ? { email: raw.toLowerCase() }
+        : { username: raw.toLowerCase().replace(/^@/, '') };
     }
-    return result;
-  })();
+    try {
+      const r = await fetch(`/api/trips/${tripDbId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMemberError(d?.error ?? 'Could not invite that user');
+      } else {
+        if (!usingOverride) setMemberInput('');
+        await loadMembers();
+      }
+    } catch {
+      setMemberError('Network error');
+    } finally {
+      setMemberLoading(false);
+    }
+  }
+
+  // Favorite friends — persisted in localStorage (per-browser, no DB roundtrip).
+  // Stored as a JSON array of friendshipId strings.
+  const FAVORITES_KEY = 'travel-ai:favoriteFriends';
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      if (raw) {
+        const ids = JSON.parse(raw);
+        if (Array.isArray(ids)) setFavoriteFriends(new Set(ids.filter(x => typeof x === 'string')));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  function toggleFavoriteFriend(friendshipId: string) {
+    setFavoriteFriends(prev => {
+      const next = new Set(prev);
+      if (next.has(friendshipId)) next.delete(friendshipId);
+      else next.add(friendshipId);
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  async function removeMember(targetUserId: string) {
+    const tripDbId = activeTripDbIdFor(activeGroup);
+    if (!tripDbId) return;
+    if (!confirm('Remove this member from the trip?')) return;
+    try {
+      await fetch(`/api/trips/${tripDbId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: targetUserId }),
+      });
+      await loadMembers();
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    if (!activeGroup) { setMembers([]); setShowInviteRow(false); setMemberError(null); return; }
+    loadMembers();
+  }, [activeGroup, loadMembers]);
 
   if (!open) return null;
 
@@ -691,29 +788,51 @@ export default function TripSocialPanel({
                           const isPast = !!trip.endDate && today > trip.endDate;
                           const label = isLiveNow ? 'LIVE NOW' : isPast ? 'Recap' : 'Go Live';
                           return (
-                            <button
-                              onClick={e => { e.stopPropagation(); router.push(`/trip/${trip.id}/live`); }}
-                              aria-label={isLiveNow ? 'Open live planner' : 'Preview live planner'}
-                              style={{
-                                marginTop: 10,
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                padding: '5px 10px',
-                                borderRadius: 999,
-                                background: isLiveNow ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(167,139,250,0.12)',
-                                border: isLiveNow ? 'none' : '1px solid rgba(167,139,250,0.32)',
-                                color: isLiveNow ? '#0a0a1f' : '#c7d2fe',
-                                fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-                                cursor: 'pointer', fontFamily: 'inherit',
-                              }}
-                            >
-                              {isLiveNow && (
-                                <span style={{
-                                  width: 6, height: 6, borderRadius: '50%',
-                                  background: '#0a0a1f',
-                                }} />
-                              )}
-                              {label}
-                            </button>
+                            <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={e => { e.stopPropagation(); router.push(`/trip/${trip.id}/live`); }}
+                                aria-label={isLiveNow ? 'Open live planner' : 'Preview live planner'}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  padding: '5px 10px',
+                                  borderRadius: 999,
+                                  background: isLiveNow ? 'linear-gradient(135deg,#a78bfa,#7dd3fc)' : 'rgba(167,139,250,0.12)',
+                                  border: isLiveNow ? 'none' : '1px solid rgba(167,139,250,0.32)',
+                                  color: isLiveNow ? '#0a0a1f' : '#c7d2fe',
+                                  fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                              >
+                                {isLiveNow && (
+                                  <span style={{
+                                    width: 6, height: 6, borderRadius: '50%',
+                                    background: '#0a0a1f',
+                                  }} />
+                                )}
+                                {label}
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); openGroup(trip.location); }}
+                                aria-label="Open group chat"
+                                title="Group chat"
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                                  padding: '9px 16px',
+                                  borderRadius: 999,
+                                  background: 'linear-gradient(135deg, rgba(56,189,248,0.22), rgba(167,139,250,0.22))',
+                                  border: '1px solid rgba(56,189,248,0.45)',
+                                  color: '#e0f2fe',
+                                  fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                  boxShadow: '0 4px 14px rgba(14,165,233,0.18)',
+                                }}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                                CHAT
+                              </button>
+                            </div>
                           );
                         })()}
                         <button
@@ -816,35 +935,9 @@ export default function TripSocialPanel({
                   )}
                 </div>
 
-                {/* Group Chats */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-                    GROUP CHATS
-                  </div>
-                  {groups.length === 0 && (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: '12px 0' }}>
-                      Save a trip to create a group chat
-                    </div>
-                  )}
-                  {groups.map(g => (
-                    <button
-                      key={g.id}
-                      onClick={() => openGroup(g.location)}
-                      style={{ ...CARD, width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', marginBottom: 8 }}
-                    >
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(167, 139, 250,0.2)', border: '1px solid rgba(167, 139, 250,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                        {String.fromCodePoint(0x1F4AC)}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e7ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
-                          {friends.length} friend{friends.length !== 1 ? 's' : ''} · Tap to chat
-                        </div>
-                      </div>
-                      <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 16 }}>›</span>
-                    </button>
-                  ))}
-                </div>
+                {/* Group chats moved out of Friends tab — each trip card in the
+                    Trips tab has its own "Chat" link. Friends tab is now scoped
+                    purely to friend management. */}
 
                 {/* Pending incoming */}
                 {pendingIncoming.length > 0 && (
@@ -906,22 +999,40 @@ export default function TripSocialPanel({
                     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'rgba(255,255,255,0.3)', marginBottom: 8 }}>
                       FRIENDS · {friends.filter(f => f.online).length} ONLINE
                     </div>
-                    {friends
-                      .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0))
-                      .map(f => (
-                        <div key={f.friendshipId} style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ position: 'relative', flexShrink: 0 }}>
-                            <Avatar src={f.image} name={f.name} size={36} />
-                            <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: f.online ? '#22c55e' : 'rgba(255,255,255,0.2)', border: '2px solid rgba(6,8,22,0.97)' }} />
+                    {[...friends]
+                      .sort((a, b) => {
+                        const aFav = favoriteFriends.has(a.friendshipId) ? 1 : 0;
+                        const bFav = favoriteFriends.has(b.friendshipId) ? 1 : 0;
+                        if (aFav !== bFav) return bFav - aFav;
+                        return (b.online ? 1 : 0) - (a.online ? 1 : 0);
+                      })
+                      .map(f => {
+                        const isFav = favoriteFriends.has(f.friendshipId);
+                        return (
+                          <div key={f.friendshipId} style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                              <Avatar src={f.image} name={f.name} size={36} />
+                              <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: f.online ? '#22c55e' : 'rgba(255,255,255,0.2)', border: '2px solid rgba(6,8,22,0.97)' }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e7ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name ?? f.email}</div>
+                              <div style={{ fontSize: 11, color: '#818cf8' }}>{f.username ? `@${f.username}` : f.email}</div>
+                              <div style={{ fontSize: 11, color: f.online ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>{f.online ? 'Online now' : 'Offline'}</div>
+                            </div>
+                            <button
+                              onClick={() => toggleFavoriteFriend(f.friendshipId)}
+                              aria-label={isFav ? 'Unfavorite' : 'Favorite'}
+                              title={isFav ? 'Unfavorite' : 'Favorite'}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 1, color: isFav ? '#fbbf24' : 'rgba(255,255,255,0.25)' }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill={isFav ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <polygon points="12 2 15 8.5 22 9.3 17 14 18.5 21 12 17.5 5.5 21 7 14 2 9.3 9 8.5 12 2" />
+                              </svg>
+                            </button>
+                            <button onClick={() => removeFriend(f.friendshipId)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 4 }}>×</button>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e7ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name ?? f.email}</div>
-                            <div style={{ fontSize: 11, color: '#818cf8' }}>{f.username ? `@${f.username}` : f.email}</div>
-                            <div style={{ fontSize: 11, color: f.online ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>{f.online ? 'Online now' : 'Offline'}</div>
-                          </div>
-                          <button onClick={() => removeFriend(f.friendshipId)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 4 }}>×</button>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </>
                 )}
               </>
@@ -931,6 +1042,183 @@ export default function TripSocialPanel({
         ) : (
           /* ── Group chat body ── */
           <>
+            {/* ── Members strip ── */}
+            {(() => {
+              const tripDbId = activeTripDbIdFor(activeGroup);
+              if (!tripDbId) return null;
+              const isOwner = members.find(m => m.user.id === userId)?.role === 'owner';
+              return (
+                <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {members.map(m => {
+                      const label = m.user.name || m.user.username || (m.user.email ?? '?').split('@')[0];
+                      const isSelf = m.user.id === userId;
+                      const canRemove = isOwner && !isSelf && m.role !== 'owner';
+                      return (
+                        <span
+                          key={m.id}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            background: m.role === 'owner' ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.06)',
+                            border: `1px solid ${m.role === 'owner' ? 'rgba(167,139,250,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                            borderRadius: 999,
+                            padding: '3px 9px',
+                            fontSize: 11,
+                            color: m.role === 'owner' ? '#ddd6fe' : '#e2e8f0',
+                          }}
+                          title={m.user.email ?? undefined}
+                        >
+                          {label}{m.role === 'owner' ? ' · owner' : ''}
+                          {canRemove && (
+                            <button
+                              onClick={() => removeMember(m.user.id)}
+                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1 }}
+                              title="Remove from trip"
+                              aria-label={`Remove ${label}`}
+                            >×</button>
+                          )}
+                        </span>
+                      );
+                    })}
+                    {isOwner && (
+                      <button
+                        onClick={() => setShowInviteRow(v => !v)}
+                        style={{
+                          background: 'rgba(56,189,248,0.15)',
+                          border: '1px solid rgba(56,189,248,0.35)',
+                          color: '#bae6fd',
+                          borderRadius: 999,
+                          padding: '3px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >+ Invite</button>
+                    )}
+                  </div>
+                  {showInviteRow && isOwner && (() => {
+                    const memberUserIds = new Set(members.map(m => m.user.id));
+                    const invitable = friends.filter(f => !memberUserIds.has(f.id));
+                    return (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          background: 'rgba(10, 12, 30, 0.95)',
+                          border: '1px solid rgba(167, 139, 250, 0.28)',
+                          borderRadius: 12,
+                          padding: 12,
+                          boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+                          display: 'flex', flexDirection: 'column', gap: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#c7d2fe', textTransform: 'uppercase' }}>
+                            Invite to trip
+                          </span>
+                          <button
+                            onClick={() => setShowInviteRow(false)}
+                            aria-label="Close invite menu"
+                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: 0, fontSize: 18, lineHeight: 1 }}
+                          >×</button>
+                        </div>
+
+                        {friends.length === 0 ? (
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', padding: '4px 0' }}>
+                            You don&apos;t have any friends yet. Add them on the Friends tab, then come back.
+                          </div>
+                        ) : invitable.length === 0 ? (
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', padding: '4px 0' }}>
+                            All your friends are already on this trip.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+                            {invitable.map(f => {
+                              const label = f.name || (f.username ? `@${f.username}` : f.email);
+                              const sub = f.username ? `@${f.username}` : f.email;
+                              return (
+                                <button
+                                  key={f.friendshipId}
+                                  onClick={() => inviteMember(f.username ? { username: f.username } : { email: f.email })}
+                                  disabled={memberLoading}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '8px 10px',
+                                    borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.04)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#e2e8f0',
+                                    fontSize: 12,
+                                    cursor: memberLoading ? 'wait' : 'pointer',
+                                    textAlign: 'left',
+                                    transition: 'background 120ms',
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(167,139,250,0.10)'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                                >
+                                  <span style={{
+                                    width: 28, height: 28, borderRadius: '50%',
+                                    background: 'linear-gradient(135deg,#a78bfa,#7dd3fc)',
+                                    color: '#0a0a1f',
+                                    display: 'grid', placeItems: 'center',
+                                    fontSize: 12, fontWeight: 700,
+                                    overflow: 'hidden',
+                                    flexShrink: 0,
+                                  }}>
+                                    {f.image
+                                      /* eslint-disable-next-line @next/next/no-img-element */
+                                      ? <img src={f.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      : (label[0]?.toUpperCase() ?? '?')
+                                    }
+                                  </span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ color: '#f1f5f9', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
+                                    {label !== sub && <div style={{ color: 'rgba(167, 139, 250, 0.7)', fontSize: 10, marginTop: 1 }}>{sub}</div>}
+                                  </div>
+                                  <span style={{ color: '#bae6fd', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em' }}>+ ADD</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10 }}>
+                          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            Or by email / @username
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <input
+                              value={memberInput}
+                              onChange={e => setMemberInput(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter' && !memberLoading) inviteMember(); }}
+                              placeholder="someone@example.com"
+                              style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#fff', fontSize: 12, padding: '7px 10px', outline: 'none' }}
+                            />
+                            <button
+                              onClick={() => inviteMember()}
+                              disabled={memberLoading || !memberInput.trim()}
+                              style={{
+                                padding: '7px 14px',
+                                borderRadius: 8,
+                                border: 'none',
+                                background: memberInput.trim() && !memberLoading ? 'linear-gradient(135deg,#0ea5e9,#a78bfa)' : 'rgba(255,255,255,0.08)',
+                                color: '#fff',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: memberInput.trim() && !memberLoading ? 'pointer' : 'not-allowed',
+                              }}
+                            >Invite</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {memberError && (
+                    <div style={{ marginTop: 6, color: '#fca5a5', fontSize: 11 }}>{memberError}</div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {chatMsgs.length === 0 && (
                 <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 13, marginTop: 40 }}>
@@ -957,6 +1245,33 @@ export default function TripSocialPanel({
               })}
               <div ref={chatEndRef} />
             </div>
+
+            {/* AI suggestions button */}
+            {(() => {
+              const activeTripDbId = trips.find(t => t.location === activeGroup.location)?.id ?? null;
+              return CHAT_SUGGESTIONS_ENABLED && activeTripDbId ? (
+                <div style={{ padding: '0 14px 8px' }}>
+                  <button
+                    onClick={async () => {
+                      const res = await fetch(`/api/trips/${activeTripDbId}/suggest-from-chat`, { method: 'POST' });
+                      if (res.status === 429) {
+                        alert('Daily AI-suggestion limit reached. Try again tomorrow.');
+                        return;
+                      }
+                      if (!res.ok) {
+                        alert('Could not get suggestions right now.');
+                        return;
+                      }
+                      window.dispatchEvent(new CustomEvent('suggestions:refresh'));
+                    }}
+                    className="mb-2 w-full px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-400/30 text-amber-200 text-sm font-semibold hover:bg-amber-500/20"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#fde68a', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {String.fromCodePoint(0x2728)} Suggest itinerary changes
+                  </button>
+                </div>
+              ) : null;
+            })()}
 
             {/* Chat input */}
             <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>

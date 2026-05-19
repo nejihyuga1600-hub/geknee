@@ -78,3 +78,39 @@ export async function checkTripSaveLimit(userId: string): Promise<string | null>
   }
   return null;
 }
+
+
+const FREE_SUGGEST_PER_DAY = 1;   // cost lever: free tier is a taste; heavy use upgrades to Pro
+const PRO_SUGGEST_PER_DAY  = 20;
+
+/** Check whether a user may trigger another AI suggestion call for this trip today. */
+export async function checkChatSuggestQuota(
+  userId: string,
+  tripId: string,
+): Promise<{ allowed: true } | { allowed: false; reason: 'rate_limit'; resetAt: string }> {
+  if (await isDevAccount(userId)) return { allowed: true };
+
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const info = await getUserPlan(userId);
+  const limit = info.plan === 'pro' ? PRO_SUGGEST_PER_DAY : FREE_SUGGEST_PER_DAY;
+
+  const row = await prisma.chatSuggestUsage.upsert({
+    where: { userId_tripId_day: { userId, tripId, day } },
+    create: { userId, tripId, day, count: 1 },
+    update: { count: { increment: 1 } },
+  });
+
+  if (row.count > limit) {
+    // Roll back the increment so a denied call doesn't burn budget
+    await prisma.chatSuggestUsage.update({
+      where: { id: row.id },
+      data: { count: { decrement: 1 } },
+    });
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
+    return { allowed: false, reason: 'rate_limit', resetAt: tomorrow.toISOString() };
+  }
+
+  return { allowed: true };
+}

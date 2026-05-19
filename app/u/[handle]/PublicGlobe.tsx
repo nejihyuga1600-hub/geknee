@@ -8,10 +8,12 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars, Sphere } from "@react-three/drei";
 import { useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import * as THREE from "three";
 import {
   _setCollectedMonuments,
   _setActiveSkins,
+  _setViewerAuthed,
 } from "@/app/plan/location/globe/landmark";
 import { L } from "@/app/plan/location/globe/locations";
 import AllLandmarks from "@/app/plan/location/globe/AllLandmarks";
@@ -40,16 +42,30 @@ function CameraFocus({ mk }: { mk?: string }) {
 }
 
 export default function PublicGlobe({ collected, focusMk }: { collected: CollectedEntry[]; focusMk?: string }) {
+  const { data: session, status } = useSession();
+  const isViewerAuthed = status === "authenticated" && !!session?.user;
+
   // Push the owner's collection into the bridge so every <Lm /> in
   // AllLandmarks renders the right skin GLB (when available) or the
   // primitive fallback. The bridge is module-singleton; that's fine on a
   // public profile page since only one user's globe is loaded at a time.
+  //
+  // Gated on viewer-auth: an anonymous visitor would otherwise leak the
+  // profile owner's collected skins into the shared _activeSkins singleton,
+  // which other globe instances on the same page would then render.
   useEffect(() => {
+    if (!isViewerAuthed) {
+      _setViewerAuthed(false);
+      _setCollectedMonuments(new Set());
+      _setActiveSkins(new Map());
+      return;
+    }
     const ids = new Set(collected.map((c) => c.mk));
     const skins = new Map(collected.map((c) => [c.mk, c.displaySkin]));
     _setCollectedMonuments(ids);
     _setActiveSkins(skins);
-  }, [collected]);
+    _setViewerAuthed(true);
+  }, [collected, isViewerAuthed]);
 
   return (
     <Canvas

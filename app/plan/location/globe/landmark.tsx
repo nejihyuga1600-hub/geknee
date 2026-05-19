@@ -11,6 +11,11 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
+import { safePreloadGLB } from "./safeGLB";
+
+// Meshopt decoder support: drei v10 exposes this as the third arg to
+// useGLTF / useGLTF.preload. Passing `true` auto-wires MeshoptDecoder from
+// three/examples so gltfpack-compressed GLBs (~80% smaller) load correctly.
 import React, {
   useEffect,
   useRef,
@@ -115,6 +120,11 @@ export const MODELS: Record<string, { path: string; scale: number }> = {};
 // flashing the children primitive (the "default Liberty" the user sees while
 // the 10MB Meshy GLB streams). Runs once at module load — drei's preload
 // short-circuits if the GLB is already cached.
+//
+// safePreloadGLB probes each URL with HEAD first and only triggers the actual
+// preload when reachable. With Vercel Blob currently 403-locked (see
+// docs/MEMORY_OPTIMIZATION_PLAN.md Phase 1.1), this kills the 50+ console
+// errors that fired on every page load.
 if (typeof window !== 'undefined') {
   for (const [mk, prefix] of Object.entries(MONUMENT_FILE_PREFIX)) {
     const skins = AVAILABLE_SKINS[mk];
@@ -122,7 +132,7 @@ if (typeof window !== 'undefined') {
     const tier = skins.has('bronze') ? 'bronze'
       : skins.has('stone') ? 'stone'
       : [...skins][0];
-    if (tier) useGLTF.preload(`${BLOB_BASE}/${prefix}_${tier}.glb`);
+    if (tier) safePreloadGLB(`${BLOB_BASE}/${prefix}_${tier}.glb`);
   }
 }
 
@@ -144,7 +154,7 @@ class ModelErrorBoundary extends Component<
 // Loads a GLB, normalises it to fit a 1-unit bounding box with base at y=0,
 // then multiplies by `scale` so it matches the surrounding Lm s-wrapper size.
 export function GlbModel({ path, scale }: { path: string; scale: number }) {
-  const { scene } = useGLTF(path);
+  const { scene } = useGLTF(path, undefined, true);
   const obj = useMemo(() => {
     const c = scene.clone();
     const box = new THREE.Box3().setFromObject(c);
@@ -393,10 +403,20 @@ let _onGlobeReady: (() => void) | null = null;
 // ─── Collected monuments bridge (LocationPage → Lm)
 let _collectedMonuments = new Set<string>();
 let _activeSkins = new Map<string, string>();
+let _viewerAuthed = false;
 let _monumentVersion = 0;
 const _monumentListeners = new Set<() => void>();
 export function _setCollectedMonuments(ids: Set<string>) {
   _collectedMonuments = ids;
+  _monumentVersion++;
+  _monumentListeners.forEach(fn => fn());
+}
+// Gate-all-monuments flag. Defaults to false so the globe is empty for
+// anonymous viewers on every route. Authenticated callers (LocationClient,
+// PublicGlobe) flip this true after confirming a session.
+export function _setViewerAuthed(v: boolean) {
+  if (_viewerAuthed === v) return;
+  _viewerAuthed = v;
   _monumentVersion++;
   _monumentListeners.forEach(fn => fn());
 }
@@ -413,7 +433,7 @@ export function _setActiveSkins(skins: Map<string, string>) {
       const prefix = MONUMENT_FILE_PREFIX[mk] ?? mk;
       const tiers = AVAILABLE_SKINS[mk];
       if (!tiers || !tiers.has(skin)) return;
-      useGLTF.preload(`${BLOB_BASE}/${prefix}_${skin}.glb`);
+      safePreloadGLB(`${BLOB_BASE}/${prefix}_${skin}.glb`);
     });
   }
 }
@@ -427,6 +447,7 @@ export function useMonumentBridge(mk?: string) {
   return {
     isCollected: mk ? _collectedMonuments.has(mk) : false,
     activeSkin: mk ? _activeSkins.get(mk) : undefined,
+    viewerAuthed: _viewerAuthed,
   };
 }
 
@@ -496,7 +517,7 @@ export function usePendingUnlock(): PendingUnlock | null {
 }
 
 export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
-  const { isCollected, activeSkin } = useMonumentBridge(mk);
+  const { isCollected, activeSkin, viewerAuthed } = useMonumentBridge(mk);
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
   // Lightweight preview tier (bronze when available — typically ~17MB vs
@@ -827,12 +848,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     }
   });
 
-  // Dismiss when another mobile city card is activated
+  // Dismiss when another mobile city card is activated.
+  // Use a ref so all 50+ landmarks early-bail without entering React's update
+  // queue when their card was already inactive — otherwise every globe click
+  // triggers N setState calls, even if React bails on same-value primitives.
   const posKey = `${p.pos[0]},${p.pos[1]},${p.pos[2]}`;
+  const mobileActiveRef = useRef(mobileActive);
+  mobileActiveRef.current = mobileActive;
   useEffect(() => {
     const handler = (e: Event) => {
       const key = (e as CustomEvent<{ key: string }>).detail.key;
-      if (key !== posKey) setMobileActive(false);
+      if (key !== posKey && mobileActiveRef.current) setMobileActive(false);
     };
     window.addEventListener('geknee:mobilecity', handler);
     return () => window.removeEventListener('geknee:mobilecity', handler);
@@ -851,12 +877,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const showLabel = mobileActive;
 
   // Render rules:
-  //   - Collected user with active skin → full landmark with their skin GLB
-  //   - Anonymous (or uncollected) user with previewSkin available → render
-  //     the preview-tier GLB so the globe shows real monuments to everyone
+  //   - Anonymous viewer (no session) → hide everything; the globe is empty
+  //     until the user signs in. Reverses an earlier preview-to-everyone
+  //     behavior to prevent un-signed-in pages from showing monument GLBs.
+  //   - Signed-in viewer + collected monument → full landmark with their skin
+  //   - Signed-in viewer + uncollected + previewSkin available → preview tier
   //   - mk-less decorative Lm or no preview available → hide
   // Placed AFTER all hooks to satisfy Rules of Hooks across state transitions.
-  const shouldRender = !!mk && (isCollected || !!previewSkin);
+  const shouldRender = !!mk && viewerAuthed && (isCollected || !!previewSkin);
   if (!shouldRender) return null;
 
   return (
@@ -864,19 +892,18 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       <group ref={zoomWrapperRef}>
       <group scale={effS}>
         <group ref={modelGroupRef}>
-          {(skinPath || model) ? (
-            <ModelErrorBoundary fallback={model ? (
-              <ModelErrorBoundary fallback={<>{children}</>}>
-                <Suspense fallback={<>{children}</>}>
-                  <GlbModel path={model.path} scale={1} />
-                </Suspense>
-              </ModelErrorBoundary>
-            ) : <>{children}</>}>
-              <Suspense fallback={<>{children}</>}>
+          {/* No primitive fallback — if the Meshy GLB isn't available
+              (Blob locked, network error, missing skin) the monument simply
+              doesn't render. The previous "default Liberty" fallback was
+              removed per user direction: globe populates with real Meshy
+              models once Blob is unlocked, otherwise the slot stays empty. */}
+          {(skinPath || model) && (
+            <ModelErrorBoundary fallback={null}>
+              <Suspense fallback={null}>
                 <GlbModel path={skinPath ?? model!.path} scale={1} />
               </Suspense>
             </ModelErrorBoundary>
-          ) : children}
+          )}
         </group>
 
         {/* Flash point light for skin switch transition */}

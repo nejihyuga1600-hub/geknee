@@ -48,6 +48,7 @@ import {
   _setCollectedMonuments,
   _setCollectedOrder,
   _setActiveSkins,
+  _setViewerAuthed,
   _setOnGlobeReady,
   _triggerLmNav,
   _triggerLmNavDirect,
@@ -384,11 +385,14 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
   const [fact, setFact]                 = useState<string>("");
   const fetchedRef = useRef(false);
 
-  // Dismiss when another geo card is activated on mobile
+  // Dismiss when another geo card is activated on mobile.
+  // Ref-guarded so non-matching geo labels skip setState entirely.
+  const mobileActiveRef = useRef(mobileActive);
+  mobileActiveRef.current = mobileActive;
   useEffect(() => {
     const handler = (e: Event) => {
       const key = (e as CustomEvent<{ key: string }>).detail.key;
-      if (key !== `geo:${name}`) setMobileActive(false);
+      if (key !== `geo:${name}` && mobileActiveRef.current) setMobileActive(false);
     };
     window.addEventListener("geknee:mobilegeo", handler);
     return () => window.removeEventListener("geknee:mobilegeo", handler);
@@ -1604,11 +1608,14 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
   const [fact,         setFact]         = useState<string>(CITY_FACTS[n] ?? "");
   const fetchedRef = useRef(false);
 
-  // Dismiss when another mobile city card is activated
+  // Dismiss when another mobile city card is activated.
+  // Ref-guarded so non-matching city labels skip setState entirely.
+  const mobileActiveRef = useRef(mobileActive);
+  mobileActiveRef.current = mobileActive;
   useEffect(() => {
     const handler = (e: Event) => {
       const key = (e as CustomEvent<{ key: string }>).detail.key;
-      if (key !== `city:${n}`) setMobileActive(false);
+      if (key !== `city:${n}` && mobileActiveRef.current) setMobileActive(false);
     };
     window.addEventListener('geknee:mobilecity', handler);
     return () => window.removeEventListener('geknee:mobilecity', handler);
@@ -2557,7 +2564,10 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
       } catch {}
     };
     poll();
-    const iv = setInterval(poll, 30_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      poll();
+    }, 30_000);
     return () => clearInterval(iv);
   }, [(session?.user as { id?: string })?.id]);
   // Register globe-click navigation so Lm can navigate without prop-drilling
@@ -2574,6 +2584,20 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
     });
     _setOnGlobeReady(() => setGlobeReady(true));
   });
+
+  // Drive the global viewer-auth flag so <Lm> knows whether to render
+  // any monuments at all. Anonymous viewers get an empty globe; the flag
+  // flips back to false on sign-out and the bridge is cleared.
+  useEffect(() => {
+    const userId = (session?.user as { id?: string })?.id;
+    if (userId) {
+      _setViewerAuthed(true);
+    } else {
+      _setViewerAuthed(false);
+      _setCollectedMonuments(new Set());
+      _setActiveSkins(new Map());
+    }
+  }, [(session?.user as { id?: string })?.id]);
 
   // Fetch collected monuments and update the bridge so Lm can show them
   useEffect(() => {
@@ -2919,22 +2943,14 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         </button>
       </div>
 
-      {/* Auth modal */}
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
-
-      {/* Trips & Friends panel */}
+      {/* Lazy-mount: defer chunk load + state hooks until the user opens
+          the panel. See AtlasShell.tsx for matching pattern. TripSocialPanel
+          stays eager because users open it almost every session. */}
+      {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
       <TripSocialPanel open={panelOpen} onClose={() => setPanelOpen(false)} currentLocation={location} />
-
-      {/* Monument collection shop */}
-      <MonumentShop open={shopOpen} onClose={() => setShopOpen(false)} />
-      {/* CityMapView lives below the chromeless gate so it surfaces even
-          when AtlasShell mounts us as the background globe. */}
-
-      {/* Upgrade modal */}
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
-
-      {/* Settings panel */}
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />}
+      {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
+      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
       {/* Language detection banner */}
       <LanguageBanner onSwitch={(lang) => {
