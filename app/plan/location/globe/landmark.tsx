@@ -13,6 +13,15 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
 import { safePreloadGLB } from "./safeGLB";
 
+// M1.3 — Mobile-only viewport gating for GLB loads. On phones we mount the
+// heavy GlbModel only when the monument is on the camera-facing hemisphere
+// AND inside the NDC frustum (with 30% margin so panning never shows pop-in
+// past the actual viewport edge). Desktop always mounts — VRAM there is
+// plentiful. Detection mirrors LocationClient.tsx so the two stay in sync.
+const IS_MOBILE = typeof window !== "undefined" && (
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768
+);
+
 // Meshopt decoder support: drei v10 exposes this as the third arg to
 // useGLTF / useGLTF.preload. Passing `true` auto-wires MeshoptDecoder from
 // three/examples so gltfpack-compressed GLBs (~80% smaller) load correctly.
@@ -601,6 +610,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const _pitchQ = useRef(new THREE.Quaternion()).current;
   const _yAxis = useRef(new THREE.Vector3(0, 1, 0)).current;
   const _xAxis = useRef(new THREE.Vector3(1, 0, 0)).current;
+  // M1.3 viewport gate — scratch vectors + timer so the 1Hz NDC check
+  // doesn't allocate. Initial timer above threshold so first useFrame
+  // evaluates immediately (no 1s blank-globe wait on mobile cold start).
+  const _checkPos = useRef(new THREE.Vector3()).current;
+  const _camDir = useRef(new THREE.Vector3()).current;
+  const _monDir = useRef(new THREE.Vector3()).current;
+  const viewCheckTimerRef = useRef(2);
+  const [glbVisible, setGlbVisible] = useState(!IS_MOBILE);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const modelGroupRef = useRef<THREE.Group>(null);
   const sparkleGroupRef = useRef<THREE.Group>(null);
@@ -649,6 +666,28 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   // ─── Per-frame animation loop ───────────────────────────────────────────────
   useFrame(({ camera }, delta) => {
     const dt = Math.min(delta, 0.05); // clamp to avoid jumps
+
+    // M1.3 — Mobile viewport gate. Checks ~once per second whether this
+    // monument is on the camera-facing hemisphere of the globe and inside
+    // the frustum. Crossing the boundary flips a state bit that gates the
+    // GlbModel JSX below. Setting state only on transitions keeps the
+    // render churn proportional to pan velocity, not landmark count.
+    if (IS_MOBILE) {
+      viewCheckTimerRef.current += delta;
+      if (viewCheckTimerRef.current >= 1.0 && zoomWrapperRef.current) {
+        viewCheckTimerRef.current = 0;
+        zoomWrapperRef.current.getWorldPosition(_checkPos);
+        _camDir.copy(camera.position).normalize();
+        _monDir.copy(_checkPos).normalize();
+        const onFront = _monDir.dot(_camDir) > 0.05;
+        let inView = false;
+        if (onFront) {
+          _checkPos.project(camera);
+          inView = Math.abs(_checkPos.x) < 1.3 && Math.abs(_checkPos.y) < 1.3;
+        }
+        if (inView !== glbVisible) setGlbVisible(inView);
+      }
+    }
 
     // Zoom-aware scale: monuments grow when the camera pulls back so they
     // remain easy to spot at world view, then shrink back to natural size
@@ -897,7 +936,7 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
               doesn't render. The previous "default Liberty" fallback was
               removed per user direction: globe populates with real Meshy
               models once Blob is unlocked, otherwise the slot stays empty. */}
-          {(skinPath || model) && (
+          {glbVisible && (skinPath || model) && (
             <ModelErrorBoundary fallback={null}>
               <Suspense fallback={null}>
                 <GlbModel path={skinPath ?? model!.path} scale={1} />

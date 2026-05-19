@@ -58,15 +58,21 @@ const dropCachesIfBackgrounded = () => {
 
 **Effort:** 1 hr. **Mobile gain:** survives OS memory pressure without being killed.
 
-### M1.3 Reduce concurrent loaded monuments on mobile ★★★
+### M1.3 Reduce concurrent loaded monuments on mobile ★★★ ✅ DONE 2026-05-19
 On mobile, only load GLBs for monuments **currently in the camera frustum at zoom**, plus a small ring outside. Don't preload all 19 — load 6-8 visible, lazy-load on pan.
 
-Implementation:
-- `AllLandmarks.tsx` already renders all `<Lm>` components, but they don't load their GLB until skinPath resolves
-- Add a viewport check: only set skinPath when the landmark's screen position is within X pixels of the viewport
-- `useFrame` checks once per second (not per frame)
+Shipped in `app/plan/location/globe/landmark.tsx`:
+- Module-level `IS_MOBILE` constant mirrors `LocationClient.tsx` detection
+- `Lm` carries a `glbVisible` state (init `!IS_MOBILE` so desktop always renders)
+- `useFrame` runs a 1Hz NDC + horizon check; flips state only on transitions
+- Outer JSX gates `<GlbModel>` mount on `glbVisible` — useGLTF never fires for off-screen monuments on cold start, drei cache survives across pans
 
-**Effort:** 2 hrs. **Mobile gain:** 60-80% reduction in VRAM at any moment.
+Caveats:
+- VRAM only drops on **cold start**: drei's `useGLTF` cache retains parsed GLBs after a monument scrolls out — next visit is from cache. To reclaim VRAM aggressively, pair with M1.2 cache flush on backgrounding.
+- Frustum margin is 1.3 (30% past edge) — keeps pop-in invisible during normal pan velocities; aggressive flicks may briefly reveal it.
+- 1Hz timer initialized at 2.0 so first useFrame evaluates immediately (no 1s blank-globe wait on cold start).
+
+**Effort:** ~30 min. **Mobile gain:** ~60-80% fewer GLB downloads on cold start; ~50% fewer draw calls per frame in steady state.
 
 ## Phase M2 — Mobile-aware loader settings
 
@@ -149,7 +155,7 @@ Run `ANALYZE=true npm run build` to see actual chunk sizes. Identify mobile-host
 2. **M2.2 Cap mobile texture size at 4096** — ✅ DONE 2026-05-19 (LocationClient.tsx:2204 `texCap` ceiling on `createEarthTexture`)
 3. **M3 SW cache for GLBs** — ✅ DONE 2026-05-19 (public/sw.js MODELS bucket, mobile 10/60MB caps, LRU)
    ⚠ Only registers in production (RegisterSW.tsx skips dev intentionally) — test via `npm run build && npm start` or Vercel deploy.
-4. **M1.3 Frustum-bound monument loading** — pending
+4. **M1.3 Frustum-bound monument loading** — ✅ DONE 2026-05-19 (landmark.tsx 1Hz NDC gate on `<GlbModel>` mount)
 5. **M1.2 On-background cache flush** — pending
 6. **M4.3 Bundle audit** — pending
 
