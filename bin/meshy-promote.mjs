@@ -6,6 +6,21 @@
 // Reads state from /tmp/meshy-preview/<prefix>_<style>.json (written by
 // bin/meshy-new-skin.mjs), so the only required args are --mk and --style.
 //
+// ── Asset layout (2026-05-19+) ───────────────────────────────────────────────
+// public/models/   — local copies of GLBs whose monument key IS in
+//                    MONUMENT_FILE_PREFIX (the active 19-monument lineup).
+//                    Gitignored. Browser fetches the styled variants
+//                    (eiffel_tower_bronze.glb etc.) from Vercel Blob.
+//
+// meshy-staging/   — generated GLBs that are "done" in meshy_progress.json
+//                    but NOT yet promoted into AVAILABLE_SKINS. Kept here
+//                    so the work isn't lost while staying out of public/ so
+//                    it never ships to the browser. Gitignored.
+//
+// This script itself operates entirely on Vercel Blob (`put`/`del`); the
+// local filesystem folders above are a parallel staging concern for the
+// human + Meshy generation workflow, not for this promote step.
+//
 // Usage:
 //   node bin/meshy-promote.mjs --mk eiffelTower --style obsidian
 //   node bin/meshy-promote.mjs --mk eiffelTower --style obsidian --mission "Visit the Eiffel at sunrise and frame it through a café window"

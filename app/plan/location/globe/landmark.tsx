@@ -12,6 +12,10 @@
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
 import { safePreloadGLB } from "./safeGLB";
+
+// Meshopt decoder support: drei v10 exposes this as the third arg to
+// useGLTF / useGLTF.preload. Passing `true` auto-wires MeshoptDecoder from
+// three/examples so gltfpack-compressed GLBs (~80% smaller) load correctly.
 import React, {
   useEffect,
   useRef,
@@ -150,7 +154,7 @@ class ModelErrorBoundary extends Component<
 // Loads a GLB, normalises it to fit a 1-unit bounding box with base at y=0,
 // then multiplies by `scale` so it matches the surrounding Lm s-wrapper size.
 export function GlbModel({ path, scale }: { path: string; scale: number }) {
-  const { scene } = useGLTF(path);
+  const { scene } = useGLTF(path, undefined, true);
   const obj = useMemo(() => {
     const c = scene.clone();
     const box = new THREE.Box3().setFromObject(c);
@@ -888,19 +892,18 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       <group ref={zoomWrapperRef}>
       <group scale={effS}>
         <group ref={modelGroupRef}>
-          {(skinPath || model) ? (
-            <ModelErrorBoundary fallback={model ? (
-              <ModelErrorBoundary fallback={<>{children}</>}>
-                <Suspense fallback={<>{children}</>}>
-                  <GlbModel path={model.path} scale={1} />
-                </Suspense>
-              </ModelErrorBoundary>
-            ) : <>{children}</>}>
-              <Suspense fallback={<>{children}</>}>
+          {/* No primitive fallback — if the Meshy GLB isn't available
+              (Blob locked, network error, missing skin) the monument simply
+              doesn't render. The previous "default Liberty" fallback was
+              removed per user direction: globe populates with real Meshy
+              models once Blob is unlocked, otherwise the slot stays empty. */}
+          {(skinPath || model) && (
+            <ModelErrorBoundary fallback={null}>
+              <Suspense fallback={null}>
                 <GlbModel path={skinPath ?? model!.path} scale={1} />
               </Suspense>
             </ModelErrorBoundary>
-          ) : children}
+          )}
         </group>
 
         {/* Flash point light for skin switch transition */}

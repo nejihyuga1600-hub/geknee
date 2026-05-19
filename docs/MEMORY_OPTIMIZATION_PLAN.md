@@ -96,6 +96,12 @@ Run all 275 GLBs through `gltfpack -i in.glb -o out.glb -c -cc`. Convert embedde
 
 **Caveat:** user has a rule against degrading Meshy GLBs without explicit OK. Visual-diff sign-off required.
 
+**Status update 2026-05-19:**
+- Single-file experiment on `maasai_mara.glb`: **269 MB → 43 MB (84% reduction)** with default meshopt-only compression (`gltfpack -c`).
+- ✅ Loader is now wired for meshopt via `useGLTF(path, undefined, true)` (drei v10 third-arg). `safePreloadGLB` passes the same flag.
+- A full 52-GLB pass is queued pending visual A/B sign-off on the experiment file.
+- KTX2 texture compression is a separate phase — requires `KTX2Loader` setup which isn't wired yet.
+
 ### 2.3 LOD system on monuments
 Add a low-poly `_lod` proxy for distant monuments. Use `<Lod>` from R3F. **Saves: ~70% triangles drawn at typical zoom.**
 

@@ -44,6 +44,10 @@ next-env.d.ts
 public/models/*.glb
 public/models/*.gltf
 
+# Meshy staging — generated GLBs that aren't promoted into AVAILABLE_SKINS yet.
+# Kept locally for future promotion, but never shipped to the browser.
+meshy-staging/
+
 # Large binaries and installers
 *.exe
 *.zip

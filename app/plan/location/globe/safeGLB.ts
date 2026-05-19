@@ -36,7 +36,8 @@ async function probe(url: string): Promise<boolean> {
 export function safePreloadGLB(url: string): void {
   if (typeof window === "undefined") return;
   probe(url).then(ok => {
-    if (ok) useGLTF.preload(url);
+    // Pass `true` for useMeshopt so gltfpack-compressed GLBs preload correctly.
+    if (ok) useGLTF.preload(url, undefined, true);
   });
 }
 
