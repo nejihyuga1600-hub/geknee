@@ -393,10 +393,20 @@ let _onGlobeReady: (() => void) | null = null;
 // ─── Collected monuments bridge (LocationPage → Lm)
 let _collectedMonuments = new Set<string>();
 let _activeSkins = new Map<string, string>();
+let _viewerAuthed = false;
 let _monumentVersion = 0;
 const _monumentListeners = new Set<() => void>();
 export function _setCollectedMonuments(ids: Set<string>) {
   _collectedMonuments = ids;
+  _monumentVersion++;
+  _monumentListeners.forEach(fn => fn());
+}
+// Gate-all-monuments flag. Defaults to false so the globe is empty for
+// anonymous viewers on every route. Authenticated callers (LocationClient,
+// PublicGlobe) flip this true after confirming a session.
+export function _setViewerAuthed(v: boolean) {
+  if (_viewerAuthed === v) return;
+  _viewerAuthed = v;
   _monumentVersion++;
   _monumentListeners.forEach(fn => fn());
 }
@@ -427,6 +437,7 @@ export function useMonumentBridge(mk?: string) {
   return {
     isCollected: mk ? _collectedMonuments.has(mk) : false,
     activeSkin: mk ? _activeSkins.get(mk) : undefined,
+    viewerAuthed: _viewerAuthed,
   };
 }
 
@@ -496,7 +507,7 @@ export function usePendingUnlock(): PendingUnlock | null {
 }
 
 export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
-  const { isCollected, activeSkin } = useMonumentBridge(mk);
+  const { isCollected, activeSkin, viewerAuthed } = useMonumentBridge(mk);
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
   // Lightweight preview tier (bronze when available — typically ~17MB vs
@@ -851,12 +862,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const showLabel = mobileActive;
 
   // Render rules:
-  //   - Collected user with active skin → full landmark with their skin GLB
-  //   - Anonymous (or uncollected) user with previewSkin available → render
-  //     the preview-tier GLB so the globe shows real monuments to everyone
+  //   - Anonymous viewer (no session) → hide everything; the globe is empty
+  //     until the user signs in. Reverses an earlier preview-to-everyone
+  //     behavior to prevent un-signed-in pages from showing monument GLBs.
+  //   - Signed-in viewer + collected monument → full landmark with their skin
+  //   - Signed-in viewer + uncollected + previewSkin available → preview tier
   //   - mk-less decorative Lm or no preview available → hide
   // Placed AFTER all hooks to satisfy Rules of Hooks across state transitions.
-  const shouldRender = !!mk && (isCollected || !!previewSkin);
+  const shouldRender = !!mk && viewerAuthed && (isCollected || !!previewSkin);
   if (!shouldRender) return null;
 
   return (

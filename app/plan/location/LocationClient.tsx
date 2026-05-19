@@ -48,6 +48,7 @@ import {
   _setCollectedMonuments,
   _setCollectedOrder,
   _setActiveSkins,
+  _setViewerAuthed,
   _setOnGlobeReady,
   _triggerLmNav,
   _triggerLmNavDirect,
@@ -2574,6 +2575,20 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
     });
     _setOnGlobeReady(() => setGlobeReady(true));
   });
+
+  // Drive the global viewer-auth flag so <Lm> knows whether to render
+  // any monuments at all. Anonymous viewers get an empty globe; the flag
+  // flips back to false on sign-out and the bridge is cleared.
+  useEffect(() => {
+    const userId = (session?.user as { id?: string })?.id;
+    if (userId) {
+      _setViewerAuthed(true);
+    } else {
+      _setViewerAuthed(false);
+      _setCollectedMonuments(new Set());
+      _setActiveSkins(new Map());
+    }
+  }, [(session?.user as { id?: string })?.id]);
 
   // Fetch collected monuments and update the bridge so Lm can show them
   useEffect(() => {

@@ -69,14 +69,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // user's inbox for booking confirmations. access_type=offline +
       // prompt=consent are both required to receive a refresh_token —
       // without them Google only issues a 1h access_token and the user
-      // has to re-auth manually each session. The consent screen will
-      // always show at sign-in as a result; acceptable trade for the
-      // vault feature working for everyone who signs in via Google.
+      // has to re-auth manually each session. select_account forces the
+      // Google account picker to show every sign-in so the user can
+      // switch accounts cleanly instead of Google silently reusing the
+      // last-authenticated account on the same browser.
       authorization: {
         params: {
           scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
           access_type: 'offline',
-          prompt: 'consent',
+          prompt: 'select_account consent',
         },
       },
     }),
