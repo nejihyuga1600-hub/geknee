@@ -11,6 +11,7 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
+import { safePreloadGLB } from "./safeGLB";
 import React, {
   useEffect,
   useRef,
@@ -115,6 +116,11 @@ export const MODELS: Record<string, { path: string; scale: number }> = {};
 // flashing the children primitive (the "default Liberty" the user sees while
 // the 10MB Meshy GLB streams). Runs once at module load — drei's preload
 // short-circuits if the GLB is already cached.
+//
+// safePreloadGLB probes each URL with HEAD first and only triggers the actual
+// preload when reachable. With Vercel Blob currently 403-locked (see
+// docs/MEMORY_OPTIMIZATION_PLAN.md Phase 1.1), this kills the 50+ console
+// errors that fired on every page load.
 if (typeof window !== 'undefined') {
   for (const [mk, prefix] of Object.entries(MONUMENT_FILE_PREFIX)) {
     const skins = AVAILABLE_SKINS[mk];
@@ -122,7 +128,7 @@ if (typeof window !== 'undefined') {
     const tier = skins.has('bronze') ? 'bronze'
       : skins.has('stone') ? 'stone'
       : [...skins][0];
-    if (tier) useGLTF.preload(`${BLOB_BASE}/${prefix}_${tier}.glb`);
+    if (tier) safePreloadGLB(`${BLOB_BASE}/${prefix}_${tier}.glb`);
   }
 }
 
@@ -423,7 +429,7 @@ export function _setActiveSkins(skins: Map<string, string>) {
       const prefix = MONUMENT_FILE_PREFIX[mk] ?? mk;
       const tiers = AVAILABLE_SKINS[mk];
       if (!tiers || !tiers.has(skin)) return;
-      useGLTF.preload(`${BLOB_BASE}/${prefix}_${skin}.glb`);
+      safePreloadGLB(`${BLOB_BASE}/${prefix}_${skin}.glb`);
     });
   }
 }
@@ -838,12 +844,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     }
   });
 
-  // Dismiss when another mobile city card is activated
+  // Dismiss when another mobile city card is activated.
+  // Use a ref so all 50+ landmarks early-bail without entering React's update
+  // queue when their card was already inactive — otherwise every globe click
+  // triggers N setState calls, even if React bails on same-value primitives.
   const posKey = `${p.pos[0]},${p.pos[1]},${p.pos[2]}`;
+  const mobileActiveRef = useRef(mobileActive);
+  mobileActiveRef.current = mobileActive;
   useEffect(() => {
     const handler = (e: Event) => {
       const key = (e as CustomEvent<{ key: string }>).detail.key;
-      if (key !== posKey) setMobileActive(false);
+      if (key !== posKey && mobileActiveRef.current) setMobileActive(false);
     };
     window.addEventListener('geknee:mobilecity', handler);
     return () => window.removeEventListener('geknee:mobilecity', handler);
