@@ -6,6 +6,7 @@ import { checkChatSuggestQuota } from '@/lib/plan';
 import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 import { buildUserPrompt, SUGGESTION_SYSTEM_PROMPT } from '@/lib/suggestions/prompt';
 import { parseAndValidate } from '@/lib/suggestions/validate';
+import { getTripAccess } from '@/lib/tripAccess';
 
 const MAX_RECENT_MESSAGES = 25;   // cost lever
 const MAX_HISTORY = 10;
@@ -23,6 +24,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id: tripId } = await params;
+  if (!(await getTripAccess(tripId, userId))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const trip = await prisma.tripDraft.findUnique({ where: { id: tripId } });
   if (!trip) return Response.json({ error: 'Trip not found' }, { status: 404 });
 

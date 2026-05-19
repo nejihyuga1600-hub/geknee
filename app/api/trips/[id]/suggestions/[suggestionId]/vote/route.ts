@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 import { shouldAutoApply, AUTO_APPLY_WINDOW_MS } from '@/lib/suggestions/threshold';
+import { getTripAccess } from '@/lib/tripAccess';
 
 const MAX_ALT_LEN = 280;
 
@@ -50,6 +51,9 @@ export async function POST(req: Request, { params }: { params: Params }) {
   if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id: tripId, suggestionId } = await params;
+  if (!(await getTripAccess(tripId, userId))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const body = await req.json().catch(() => ({})) as { vote?: string; alternative?: string };
   if (body.vote !== 'up' && body.vote !== 'down') {
     return Response.json({ error: 'invalid_vote' }, { status: 400 });
@@ -96,6 +100,9 @@ export async function DELETE(_req: Request, { params }: { params: Params }) {
   if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id: tripId, suggestionId } = await params;
+  if (!(await getTripAccess(tripId, userId))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const s = await prisma.itinerarySuggestion.findUnique({
     where: { id: suggestionId },
     select: { tripId: true },

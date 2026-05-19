@@ -4,6 +4,7 @@
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { getTripAccess } from '@/lib/tripAccess';
 
 const MAX_PER_TRIP = 200;
 const MAX_CONTENT_LEN = 4000;
@@ -12,6 +13,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tripId = searchParams.get('tripId') ?? '';
   if (!tripId) return Response.json({ messages: [] });
+
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await getTripAccess(tripId, userId))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const rows = await prisma.tripMessage.findMany({
     where: { tripId },
@@ -42,6 +50,10 @@ export async function POST(req: Request) {
 
   const session = await auth();
   const senderId = (session?.user as { id?: string })?.id ?? null;
+  if (!senderId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await getTripAccess(tripId, senderId))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const msg = await prisma.tripMessage.create({
     data: { tripId, authorId: senderId, author, content },
@@ -61,24 +73,21 @@ export async function POST(req: Request) {
     }
   }
 
-  // Notify friends of the sender (best-effort).
+  // Notify other trip members (best-effort).
   try {
-    if (senderId) {
-      const friendships = await prisma.friendship.findMany({
-        where: { status: 'accepted', OR: [{ userId: senderId }, { friendId: senderId }] },
-        select: { userId: true, friendId: true },
+    const others = await prisma.tripMember.findMany({
+      where: { tripId, NOT: { userId: senderId } },
+      select: { userId: true },
+    });
+    if (others.length > 0) {
+      await prisma.notification.createMany({
+        data: others.map(m => ({
+          userId: m.userId,
+          type: 'friend_message',
+          title: `${author} sent a message`,
+          body: `In ${location} trip chat: "${content.slice(0, 80)}${content.length > 80 ? '…' : ''}"`,
+        })),
       });
-      const friendIds = friendships.map(f => f.userId === senderId ? f.friendId : f.userId);
-      if (friendIds.length > 0) {
-        await prisma.notification.createMany({
-          data: friendIds.map(fId => ({
-            userId: fId,
-            type: 'friend_message',
-            title: `${author} sent a message`,
-            body: `In ${location} trip chat: "${content.slice(0, 80)}${content.length > 80 ? '…' : ''}"`,
-          })),
-        });
-      }
     }
   } catch { /* non-critical */ }
 

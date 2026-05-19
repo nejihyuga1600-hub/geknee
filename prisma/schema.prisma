@@ -53,6 +53,7 @@ model User {
   sessions Session[]
   trips    TripDraft[]
   tripFiles TripFile[]
+  tripMemberships TripMember[]
   sentFriendRequests     Friendship[]   @relation("SentRequests")
   receivedFriendRequests Friendship[]   @relation("ReceivedRequests")
   notifications          Notification[]
@@ -154,6 +155,25 @@ model TripDraft {
   files    TripFile[]
   bookings Booking[]
   expenses TripExpense[]
+  members  TripMember[]
+}
+
+// ── Trip membership (multi-user shared trips) ─────────────────────────────────
+// Owner of a TripDraft also has a row here with role="owner".
+// Other users joining the trip get role="member". Membership unlocks
+// reading/writing the trip's chat, suggestions, and itinerary view.
+model TripMember {
+  id        String   @id @default(cuid())
+  tripId    String
+  userId    String
+  role      String   @default("member") // "owner" | "member"
+  createdAt DateTime @default(now())
+
+  trip TripDraft @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([userId])
 }
 
 // ── Affiliate-partner conversion records ─────────────────────────────────────
