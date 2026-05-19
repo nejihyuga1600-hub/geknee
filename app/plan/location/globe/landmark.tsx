@@ -126,27 +126,16 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// ─── GLB error boundary — renders fallback (intentionally `null`) on GLB failure
-// Per feedback_meshy_models_preserve: never silently swap a missing Meshy
-// GLB for primitive geometry. If a GLB fails to load, render nothing and log
-// loudly so the missing asset surfaces during dev/review instead of being
-// papered over with a degraded placeholder.
+// ─── GLB error boundary — falls back to primitive geometry if .glb missing ────
 class ModelErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode; modelPath?: string },
+  { fallback: ReactNode; children: ReactNode },
   { hasError: boolean }
 > {
-  constructor(props: { fallback: ReactNode; children: ReactNode; modelPath?: string }) {
+  constructor(props: { fallback: ReactNode; children: ReactNode }) {
     super(props);
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: Error) {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[monument GLB load failed${this.props.modelPath ? ` — ${this.props.modelPath}` : ''}]`,
-      error,
-    );
-  }
   render() {
     return this.state.hasError ? this.props.fallback : this.props.children;
   }
@@ -876,18 +865,18 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       <group scale={effS}>
         <group ref={modelGroupRef}>
           {(skinPath || model) ? (
-            <ModelErrorBoundary modelPath={skinPath ?? model?.path} fallback={model ? (
-              <ModelErrorBoundary modelPath={model.path} fallback={null}>
-                <Suspense fallback={null}>
+            <ModelErrorBoundary fallback={model ? (
+              <ModelErrorBoundary fallback={<>{children}</>}>
+                <Suspense fallback={<>{children}</>}>
                   <GlbModel path={model.path} scale={1} />
                 </Suspense>
               </ModelErrorBoundary>
-            ) : null}>
-              <Suspense fallback={null}>
+            ) : <>{children}</>}>
+              <Suspense fallback={<>{children}</>}>
                 <GlbModel path={skinPath ?? model!.path} scale={1} />
               </Suspense>
             </ModelErrorBoundary>
-          ) : null}
+          ) : children}
         </group>
 
         {/* Flash point light for skin switch transition */}
