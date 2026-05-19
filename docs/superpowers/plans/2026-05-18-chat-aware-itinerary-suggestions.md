@@ -154,7 +154,7 @@ git commit -m "feat(suggestions): add ItinerarySuggestion, SuggestionVote, ChatS
 Append to `lib/plan.ts`:
 
 ```ts
-const FREE_SUGGEST_PER_DAY = 3;
+const FREE_SUGGEST_PER_DAY = 1;   // cost lever: free tier is a taste; heavy use upgrades to Pro
 const PRO_SUGGEST_PER_DAY  = 20;
 
 /** Check whether a user may trigger another AI suggestion call for this trip today. */
@@ -747,7 +747,7 @@ import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 import { buildUserPrompt, SUGGESTION_SYSTEM_PROMPT } from '@/lib/suggestions/prompt';
 import { parseAndValidate } from '@/lib/suggestions/validate';
 
-const MAX_RECENT_MESSAGES = 50;
+const MAX_RECENT_MESSAGES = 25;   // cost lever: 25 most recent is almost always enough signal
 const MAX_HISTORY = 10;
 const SUGGESTION_TTL_DAYS = 7;
 
@@ -837,13 +837,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })),
   });
 
+  // Split the prompt into a cacheable "stable" prefix (trip metadata + itinerary,
+  // which rarely changes between calls within a few minutes) and a volatile suffix
+  // (recent chat + voting history). Anthropic's prompt cache hits the prefix and
+  // skips re-billing input tokens for it — ~40% saving on the average call.
+  const stableHeader = prompt.split('\nRECENT CHAT')[0];   // trip + itinerary section
+  const volatileTail = '\nRECENT CHAT' + prompt.split('\nRECENT CHAT').slice(1).join('\nRECENT CHAT');
+
   let raw = '';
   try {
     const resp = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
-      system: SUGGESTION_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
+      system: [
+        { type: 'text', text: SUGGESTION_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+      ],
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: stableHeader, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: volatileTail },
+        ],
+      }],
     });
     const block = resp.content.find(b => b.type === 'text');
     if (block && block.type === 'text') raw = block.text;

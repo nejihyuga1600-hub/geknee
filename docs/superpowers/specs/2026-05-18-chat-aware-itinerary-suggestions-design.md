@@ -160,15 +160,27 @@ Trip settings (owner only): radio toggle for `suggestionVoteMode` with short cop
 
 ## Cost & rate limiting
 
+Three cost-reducing levers applied from the cost analysis:
+
+- **Lever 1 — Anthropic prompt caching** on the system prompt + the current itinerary markdown. Both change rarely; caching them cuts input-token cost by ~40% on the second through Nth call within the cache TTL.
+- **Lever 2 — Tighter chat window: 25 messages** (not 50). Fewer tokens per call; the most recent 25 messages are almost always sufficient signal.
+- **Lever 3 — Free tier: 1 call/day/trip** (not 3). Free tier becomes a taste; heavy collaborative use is a Pro upgrade lever.
+
+Resulting cost profile:
+
 - **Model:** `claude-haiku-4-5-20251001` (~5× cheaper than sonnet-4-6 at this payload size).
-- **Per-call cost estimate:** ~6k input tokens (chat + itinerary + history) + ~1k output → ~$0.005–$0.008.
-- **Caching:** every call first checks `(tripId, latestMessageId, latestVoteId)`. Re-clicks with no new state → $0.
+- **Per-call cost estimate:** ~6k input + ~1k output → **~$0.008 first call, ~$0.005 cached subsequent** within the 5-minute cache TTL.
+- **App-level cache** (the cache we own): every call first checks `(tripId, latestMessageId, latestVoteId)`. Re-clicks with no new state → **$0 (skips Claude entirely)**.
 - **Rate limit:** new helper in `lib/plan.ts`:
   ```ts
   export async function checkChatSuggestQuota(userId, tripId): { allowed; reason?; resetAt? }
   ```
-  Tracks per-`(userId, tripId, day)` count in a new lightweight `ChatSuggestUsage` table. Free: 3/day/trip. Pro: 20/day/trip. Dev (`isDevAccount`): unlimited.
-- **Worst-case spend** on free tier: 3 calls × $0.008 × 30 days × ~100 active free trips = **~$72/month**. Pro tier covers itself via subscription. Well within the project's >$10/month warning threshold — flag at launch but no further guardrail needed for v1.
+  Tracks per-`(userId, tripId, day)` count in a new lightweight `ChatSuggestUsage` table. Free: **1/day/trip**. Pro: 20/day/trip. Dev (`isDevAccount`): unlimited.
+- **Realistic scale spend** with all three levers applied:
+  - 100 DAU mixed Free/Pro: ~$30–50/month
+  - 1,000 DAU: ~$250–500/month
+  - 10,000 DAU: ~$2,500–4,000/month
+- Single Pro user maxing 20/day with cache miss: ~$4–5/month (within typical Pro tier margin).
 
 ## Error handling
 
