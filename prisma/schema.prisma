@@ -141,6 +141,12 @@ model TripDraft {
   bookingSuggestions   String?
   bookingSuggestionsAt DateTime?
 
+  // Group voting mode for chat-aware AI suggestions. "advisory" (default):
+  // owner sees vote tally + alternatives but solo-applies. "auto_majority":
+  // a quorum-met suggestion enters a 60s pending_apply countdown and auto-
+  // applies unless a 👎 lands within the window.
+  suggestionVoteMode  String @default("advisory")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -384,4 +390,61 @@ model TripMessage {
   createdAt DateTime @default(now())
 
   @@index([tripId, createdAt])
+}
+
+// ── Chat-aware AI suggestions ─────────────────────────────────────────────────
+
+model ItinerarySuggestion {
+  id                 String   @id @default(cuid())
+  tripId             String                                       // TripDraft.id
+  status             String   @default("pending")                 // pending | pending_apply | accepted | rejected | superseded | expired
+  kind               String                                       // activity_swap | stop_reorder | place_pick | trip_field
+  dayNumber          Int?                                         // 1-based; null for trip-level
+  summary            String                                       // <= 80 chars, card title
+  rationale          String                                       // <= 240 chars, cites chat
+  payload            Json                                         // shape varies by kind, validated per-kind
+  basedOnMessageIds  String[]                                     // TripMessage.id list
+  latestMessageId    String                                       // cache key
+  latestVoteId       String?                                      // extends cache key once any vote arrives
+  votesUpCount       Int      @default(0)
+  votesDownCount     Int      @default(0)
+  appliedById        String?
+  appliedAt          DateTime?
+  autoApplyAt        DateTime?                                    // when pending_apply timer expires
+  expiresAt          DateTime                                     // hard expiry, createdAt + 7d
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  votes              SuggestionVote[]
+
+  @@index([tripId, status])
+  @@index([tripId, latestMessageId])
+  @@index([status, autoApplyAt])
+}
+
+model SuggestionVote {
+  id            String   @id @default(cuid())
+  suggestionId  String
+  userId        String
+  vote          String                                            // "up" | "down"
+  alternative   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  suggestion ItinerarySuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+
+  @@unique([suggestionId, userId])
+  @@index([suggestionId])
+}
+
+model ChatSuggestUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  tripId    String
+  day       String                                                // YYYY-MM-DD in UTC
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, tripId, day])
+  @@index([day])
 }
