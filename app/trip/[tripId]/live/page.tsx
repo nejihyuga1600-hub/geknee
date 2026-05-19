@@ -134,7 +134,10 @@ export default function LiveTripPage() {
   const [geo, setGeo] = useState<Geo | null>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30_000);
+    const t = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setNow(new Date());
+    }, 30_000);
     return () => clearInterval(t);
   }, []);
 

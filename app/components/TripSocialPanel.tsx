@@ -129,7 +129,10 @@ export default function TripSocialPanel({
   useEffect(() => {
     if (!open || !userId) return;
     loadNotifications();
-    const iv = setInterval(loadNotifications, 15_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadNotifications();
+    }, 15_000);
     return () => clearInterval(iv);
   }, [open, userId, loadNotifications]);
 
@@ -172,7 +175,10 @@ export default function TripSocialPanel({
   useEffect(() => {
     if (!open || !userId) return;
     pingPresence();
-    const iv = setInterval(pingPresence, 30_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      pingPresence();
+    }, 30_000);
     return () => clearInterval(iv);
   }, [open, userId, pingPresence]);
 
@@ -211,7 +217,10 @@ export default function TripSocialPanel({
 
   useEffect(() => {
     if (!open || !userId) return;
-    const iv = setInterval(loadFriends, 30_000);
+    const iv = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadFriends();
+    }, 30_000);
     return () => clearInterval(iv);
   }, [open, userId, loadFriends]);
 
@@ -230,7 +239,10 @@ export default function TripSocialPanel({
       return;
     }
     pollChat(activeGroup.id);
-    chatPollRef.current = setInterval(() => pollChat(activeGroup.id), 3000);
+    chatPollRef.current = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      pollChat(activeGroup.id);
+    }, 3000);
     return () => { if (chatPollRef.current) clearInterval(chatPollRef.current); };
   }, [activeGroup, pollChat]);
 

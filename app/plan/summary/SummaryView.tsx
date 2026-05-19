@@ -497,7 +497,10 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     if (!requestStartRef.current) requestStartRef.current = Date.now();
     const tick = () => setElapsedSec(Math.floor((Date.now() - requestStartRef.current) / 1000));
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      tick();
+    }, 1000);
     return () => clearInterval(id);
   }, [loadingStage]);
 
@@ -809,7 +812,10 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     }
     poll();
     if (chatOpen && chatTab === 'friends') {
-      friendPollRef.current = setInterval(poll, 3000);
+      friendPollRef.current = setInterval(() => {
+        if (document.visibilityState !== 'visible') return;
+        poll();
+      }, 3000);
     }
     return () => { if (friendPollRef.current) clearInterval(friendPollRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
