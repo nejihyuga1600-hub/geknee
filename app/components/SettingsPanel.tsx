@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import InstallEntry from "./InstallEntry";
 import { currentIssueYear, isWrapUpWindow, nextRolloverDate } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
+import { CHAT_SUGGESTIONS_ENABLED } from "@/lib/suggestions/featureFlag";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -205,15 +206,30 @@ function Select({ value, options, onChange }: { value: string; options: { value:
 interface Props {
   open: boolean;
   onClose: () => void;
+  currentTripId?: string;
+  isCurrentUserTripOwner?: boolean;
+  currentTripVoteMode?: 'advisory' | 'auto_majority';
 }
 
-export default function SettingsPanel({ open, onClose }: Props) {
+export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode }: Props) {
   const [s, setS] = useState<AppSettings>(DEFAULTS);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackSending, setFeedbackSending] = useState(false);
   const [mapDownloading, setMapDownloading] = useState<string | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  const [tripVoteMode, setTripVoteMode] = useState<'advisory' | 'auto_majority'>(currentTripVoteMode ?? 'advisory');
+
+  async function updateTripVoteMode(mode: 'advisory' | 'auto_majority') {
+    setTripVoteMode(mode);
+    if (!currentTripId) return;
+    await fetch(`/api/trips/${currentTripId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggestionVoteMode: mode }),
+    });
+  }
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -522,6 +538,46 @@ export default function SettingsPanel({ open, onClose }: Props) {
               </Section>
             );
           })()}
+
+          {/* ── Group voting mode (owner-only, trip-scoped) ── */}
+          {CHAT_SUGGESTIONS_ENABLED && currentTripId && isCurrentUserTripOwner && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: INDIGO, marginBottom: 10 }}>
+                Group voting mode
+              </div>
+              <div style={{ background: CARD, border: `1px solid ${BORD2}`, borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
+                  How votes on AI suggestions get applied to your trip.
+                </div>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="voteMode"
+                    value="advisory"
+                    checked={tripVoteMode === 'advisory'}
+                    onChange={() => updateTripVoteMode('advisory')}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>Advisory (default)</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>Votes show. You accept or reject each one manually.</div>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="voteMode"
+                    value="auto_majority"
+                    checked={tripVoteMode === 'auto_majority'}
+                    onChange={() => updateTripVoteMode('auto_majority')}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>Auto-apply by majority</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>Once 2+ votes are in and most are positive, a 60s countdown starts. Any negative vote cancels.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* ── Help & Feedback ── */}
           <Section title="Help & Feedback">

@@ -30,6 +30,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const trip = await getVerifiedTrip(id, userId);
   if (!trip) return Response.json({ error: "Not found" }, { status: 404 });
 
+  const suggestionVoteModeValue: 'advisory' | 'auto_majority' | undefined =
+    typeof body.suggestionVoteMode === 'string' &&
+    (body.suggestionVoteMode === 'advisory' || body.suggestionVoteMode === 'auto_majority')
+      ? body.suggestionVoteMode
+      : undefined;
+
   const updated = await prisma.tripDraft.update({
     where: { id },
     data: {
@@ -37,6 +43,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       notes:     body.notes     !== undefined ? body.notes     : trip.notes,
       itinerary: body.itinerary !== undefined ? body.itinerary : trip.itinerary,
       itineraryUpdatedAt: body.itinerary !== undefined ? new Date() : trip.itineraryUpdatedAt,
+      ...(suggestionVoteModeValue !== undefined ? { suggestionVoteMode: suggestionVoteModeValue } : {}),
     },
   });
   return Response.json({ trip: updated });

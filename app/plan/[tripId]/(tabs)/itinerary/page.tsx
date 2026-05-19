@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { useSession } from 'next-auth/react';
 import { PhotoToItinerary } from './PhotoToItinerary';
+import SuggestionsSection from '@/app/components/SuggestionsSection';
+import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 
 // Lazy-load the heavy summary view (~1,700 lines, dynamic-imports a Map,
 // chart, BookView, etc). Renders client-side only — matches how the
@@ -33,6 +36,12 @@ export default function ItineraryTabPage() {
   const params = useParams();
   const router = useRouter();
   const tripId = (params?.tripId as string) ?? '';
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+
+  // tripOwner/voteMode for SuggestionsSection
+  const [tripOwnerUserId, setTripOwnerUserId] = useState<string | null>(null);
+  const [tripVoteMode, setTripVoteMode] = useState<'advisory' | 'auto_majority'>('advisory');
 
   // Day count drives the PhotoToItinerary dropdown. Pulled once on mount.
   const [dayCount, setDayCount] = useState<number>(0);
@@ -42,12 +51,14 @@ export default function ItineraryTabPage() {
     let cancelled = false;
     fetch(`/api/trips/${tripId}`)
       .then(r => r.ok ? r.json() : null)
-      .then((d: { trip?: { startDate?: string | null; endDate?: string | null; nights?: number | null } } | null) => {
+      .then((d: { trip?: { startDate?: string | null; endDate?: string | null; nights?: number | null; userId?: string | null; suggestionVoteMode?: string | null } } | null) => {
         if (cancelled || !d?.trip) return;
         const { startDate, endDate, nights } = d.trip;
         if (typeof nights === 'number') {
           setDayCount(nights + 1);
         }
+        setTripOwnerUserId(d.trip.userId ?? null);
+        setTripVoteMode(d.trip.suggestionVoteMode === 'auto_majority' ? 'auto_majority' : 'advisory');
         if (startDate && endDate) {
           const today = new Date().toISOString().slice(0, 10);
           if (today >= startDate && today <= endDate) {
@@ -66,6 +77,15 @@ export default function ItineraryTabPage() {
           we know dayCount so the day dropdown is meaningful. */}
       {tripId && dayCount > 0 && (
         <PhotoToItinerary tripId={tripId} dayCount={dayCount} />
+      )}
+
+      {CHAT_SUGGESTIONS_ENABLED && tripId && currentUserId && (
+        <SuggestionsSection
+          tripId={tripId}
+          currentUserId={currentUserId}
+          isOwner={tripOwnerUserId === currentUserId}
+          voteMode={tripVoteMode}
+        />
       )}
 
       <SummaryView tripIdOverride={tripId} initialMainTab="itinerary" />
