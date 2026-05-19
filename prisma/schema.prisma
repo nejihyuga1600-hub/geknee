@@ -357,3 +357,31 @@ model PushToken {
 
   @@index([userId])
 }
+
+// ── In-app feedback (Settings → Send Feedback) ───────────────────────────────
+// Replaces the prior dead /api/feedback call. Anonymous submissions allowed
+// so unauthenticated visitors can still report bugs.
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?  // null for anonymous feedback
+  email     String?  // captured at submit time so we can reply if the user record changes later
+  message   String
+  page      String?  // route the feedback was submitted from
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ── Trip group chat (replaces disk-based store at data/trip-chats/*.json) ────
+// tripId is caller-supplied (a hash of the trip params, not a TripDraft FK)
+// because chats can pre-date saved trips.
+model TripMessage {
+  id        String   @id @default(cuid())
+  tripId    String
+  authorId  String?
+  author    String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([tripId, createdAt])
+}

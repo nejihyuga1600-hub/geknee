@@ -248,22 +248,21 @@ export default function SettingsPanel({ open, onClose }: Props) {
   async function sendFeedback() {
     if (!feedbackText.trim()) return;
     setFeedbackSending(true);
-    // Will post to /api/feedback once GeKnee email is configured
-    // For now, store locally and show confirmation
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: feedbackText }),
+        body: JSON.stringify({
+          message: feedbackText,
+          page: typeof window !== "undefined" ? window.location.pathname : null,
+        }),
       });
-      if (res.ok || res.status === 404) {
-        // 404 means endpoint not yet set up — still show success to user
+      if (res.ok) {
         setFeedbackSent(true);
         setFeedbackText("");
       }
     } catch {
-      setFeedbackSent(true);
-      setFeedbackText("");
+      // network error — leave the message in the textarea so the user can retry
     } finally {
       setFeedbackSending(false);
     }

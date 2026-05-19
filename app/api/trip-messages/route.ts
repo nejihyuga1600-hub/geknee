@@ -1,42 +1,31 @@
-// Simple file-based friends chat for a trip.
-// Messages stored at data/trip-chats/<tripId>.json
-// tripId = caller-supplied hash of the trip params.
+// Trip group chat — persisted in Postgres via Prisma (TripMessage model).
+// Replaces the prior data/trip-chats/<tripId>.json disk store, which didn't
+// survive serverless cold starts or scale-out.
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'trip-chats');
-
-interface TripMessage {
-  id: string;
-  author: string;
-  content: string;
-  timestamp: number;
-}
-
-async function readMessages(tripId: string): Promise<TripMessage[]> {
-  const file = path.join(DATA_DIR, `${tripId}.json`);
-  try {
-    const raw = await fs.readFile(file, 'utf-8');
-    return JSON.parse(raw) as TripMessage[];
-  } catch {
-    return [];
-  }
-}
-
-async function writeMessages(tripId: string, messages: TripMessage[]) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  const file = path.join(DATA_DIR, `${tripId}.json`);
-  await fs.writeFile(file, JSON.stringify(messages, null, 2), 'utf-8');
-}
+const MAX_PER_TRIP = 200;
+const MAX_CONTENT_LEN = 4000;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tripId = searchParams.get('tripId') ?? '';
   if (!tripId) return Response.json({ messages: [] });
-  const messages = await readMessages(tripId);
+
+  const rows = await prisma.tripMessage.findMany({
+    where: { tripId },
+    orderBy: { createdAt: 'asc' },
+    take: MAX_PER_TRIP,
+  });
+
+  const messages = rows.map(m => ({
+    id: m.id,
+    author: m.author,
+    content: m.content,
+    timestamp: m.createdAt.getTime(),
+  }));
+
   return Response.json({ messages });
 }
 
@@ -46,26 +35,34 @@ export async function POST(req: Request) {
   if (!tripId) return Response.json({ ok: false }, { status: 400 });
 
   const body = await req.json() as { author?: string; content?: string; location?: string };
-  const content  = (body.content  ?? '').trim();
-  const author   = (body.author   ?? 'Friend').trim() || 'Friend';
-  const location = (body.location ?? 'your trip').trim();
+  const content  = (body.content  ?? '').trim().slice(0, MAX_CONTENT_LEN);
+  const author   = ((body.author  ?? 'Friend').trim() || 'Friend').slice(0, 80);
+  const location = (body.location ?? 'your trip').trim().slice(0, 120);
   if (!content) return Response.json({ ok: false }, { status: 400 });
 
-  const messages = await readMessages(tripId);
-  const msg: TripMessage = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    author,
-    content,
-    timestamp: Date.now(),
-  };
-  messages.push(msg);
-  const trimmed = messages.slice(-200);
-  await writeMessages(tripId, trimmed);
+  const session = await auth();
+  const senderId = (session?.user as { id?: string })?.id ?? null;
 
-  // Notify friends of the sender
+  const msg = await prisma.tripMessage.create({
+    data: { tripId, authorId: senderId, author, content },
+  });
+
+  // Cap room size: trim oldest if we just crossed the per-trip limit.
+  const overflow = await prisma.tripMessage.count({ where: { tripId } });
+  if (overflow > MAX_PER_TRIP) {
+    const oldest = await prisma.tripMessage.findMany({
+      where: { tripId },
+      orderBy: { createdAt: 'asc' },
+      take: overflow - MAX_PER_TRIP,
+      select: { id: true },
+    });
+    if (oldest.length) {
+      await prisma.tripMessage.deleteMany({ where: { id: { in: oldest.map(o => o.id) } } });
+    }
+  }
+
+  // Notify friends of the sender (best-effort).
   try {
-    const session = await auth();
-    const senderId = (session?.user as { id?: string })?.id;
     if (senderId) {
       const friendships = await prisma.friendship.findMany({
         where: { status: 'accepted', OR: [{ userId: senderId }, { friendId: senderId }] },
@@ -85,5 +82,13 @@ export async function POST(req: Request) {
     }
   } catch { /* non-critical */ }
 
-  return Response.json({ ok: true, message: msg });
+  return Response.json({
+    ok: true,
+    message: {
+      id: msg.id,
+      author: msg.author,
+      content: msg.content,
+      timestamp: msg.createdAt.getTime(),
+    },
+  });
 }
