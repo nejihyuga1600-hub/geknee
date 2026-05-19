@@ -903,6 +903,25 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     return () => window.removeEventListener('geknee:mobilecity', handler);
   }, [posKey]);
 
+  // M1.2 — Memory-pressure flush. When LocationClient dispatches
+  // geknee:mem-pressure (30s sustained background on mobile), evict our
+  // GLB from drei's useGLTF cache IF this monument is currently off-screen.
+  // On-screen monuments are exempt so the user doesn't return to a blank
+  // viewport. useGLTF.clear disposes geometries + materials, freeing VRAM;
+  // when the user pans back the SW MODELS cache serves the refetch instantly.
+  const glbVisibleRef = useRef(glbVisible);
+  glbVisibleRef.current = glbVisible;
+  useEffect(() => {
+    if (!IS_MOBILE) return;
+    const onPressure = () => {
+      if (glbVisibleRef.current) return;
+      if (skinPath) useGLTF.clear(skinPath);
+      if (model?.path) useGLTF.clear(model.path);
+    };
+    window.addEventListener('geknee:mem-pressure', onPressure);
+    return () => window.removeEventListener('geknee:mem-pressure', onPressure);
+  }, [skinPath, model?.path]);
+
   const handleClick = (e: React.PointerEvent<THREE.Mesh>) => {
     e.stopPropagation();
     if (!info) return;

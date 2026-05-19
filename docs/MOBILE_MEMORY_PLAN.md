@@ -43,20 +43,20 @@ Then in the Canvas (`LocationClient.tsx:2671`):
 
 **Effort:** 30 min. **Mobile gain:** ~100 MB GPU memory freed during background, no battery drain.
 
-### M1.2 Listen for iOS memory warnings ★★
+### M1.2 Listen for iOS memory warnings ★★ ✅ DONE 2026-05-19
 iOS posts `UIApplicationDidReceiveMemoryWarning` when memory is tight. Capacitor doesn't expose this directly, but we can write a tiny plugin OR listen for `pagehide` + visibility together as a proxy.
 
-Cheaper proxy: on `visibilitychange → hidden`, after 30s, proactively clear caches:
-```ts
-const dropCachesIfBackgrounded = () => {
-  if (document.visibilityState !== 'hidden') return;
-  // Drop the drei useGLTF cache for monuments not collected by this user
-  // Drop in-memory chat messages beyond the last 20
-  // Drop notification list to empty
-};
-```
+Shipped:
+- `LocationClient.tsx`: when `renderPaused` flips true, schedule a 30s timer; if still backgrounded, dispatch `geknee:mem-pressure` window event. Resume cancels.
+- `landmark.tsx`: each `Lm` listens for `geknee:mem-pressure`; if its own monument is currently `glbVisible=false`, calls `useGLTF.clear(skinPath)` + `useGLTF.clear(model.path)` to dispose GPU buffers + parsed scene. On-screen monuments are exempt so the user doesn't return to a blank globe.
+- The Service Worker MODELS cache (M3) makes the next refetch nearly instant when the user pans back.
 
-**Effort:** 1 hr. **Mobile gain:** survives OS memory pressure without being killed.
+Future extensions (not in this pass):
+- Trim in-memory chat messages beyond the last 20
+- Clear notification list to empty
+- Wire a proper Capacitor plugin to receive native `UIApplicationDidReceiveMemoryWarning` so we don't have to wait 30s
+
+**Effort:** ~20 min. **Mobile gain:** reclaims ~50-150 MB VRAM after 30s of background; survives OS memory pressure on resume.
 
 ### M1.3 Reduce concurrent loaded monuments on mobile ★★★ ✅ DONE 2026-05-19
 On mobile, only load GLBs for monuments **currently in the camera frustum at zoom**, plus a small ring outside. Don't preload all 19 — load 6-8 visible, lazy-load on pan.
@@ -156,7 +156,7 @@ Run `ANALYZE=true npm run build` to see actual chunk sizes. Identify mobile-host
 3. **M3 SW cache for GLBs** — ✅ DONE 2026-05-19 (public/sw.js MODELS bucket, mobile 10/60MB caps, LRU)
    ⚠ Only registers in production (RegisterSW.tsx skips dev intentionally) — test via `npm run build && npm start` or Vercel deploy.
 4. **M1.3 Frustum-bound monument loading** — ✅ DONE 2026-05-19 (landmark.tsx 1Hz NDC gate on `<GlbModel>` mount)
-5. **M1.2 On-background cache flush** — pending
+5. **M1.2 On-background cache flush** — ✅ DONE 2026-05-19 (30s mem-pressure → useGLTF.clear off-screen)
 6. **M4.3 Bundle audit** — pending
 
 Stop after step 3 and remeasure before continuing. The first three together should drop mobile RAM by 40-60% with no UX regressions.
