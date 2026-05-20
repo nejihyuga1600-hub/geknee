@@ -66,7 +66,7 @@ interface DayMapProps {
   // tells DayMap which profile to use for that segment.
   // null skips routing for that leg and falls back to a straight dashed line
   // — appropriate for flights and ferries.
-  legModes?: Array<'walking' | 'cycling' | 'driving' | null>;
+  legModes?: Array<RouteMode | null>;
   onPlacesResolved?: (names: string[]) => void;
 }
 
@@ -152,6 +152,7 @@ export default function DayMap({
   // Geocode + render route + markers.
   useEffect(() => {
     if (!mapReady) return;
+    unmountedRef.current = false;
 
     const placeTokens = namedPlaces ?? lines.filter(l => /\*\*[A-Z]/.test(l)).slice(0, 20);
     const loadKey = JSON.stringify({ heading, location, placeTokens, placeCandidates });
@@ -159,6 +160,9 @@ export default function DayMap({
     loadKeyRef.current = loadKey;
 
     let cancelled = false;
+    // Per-run polyline array — hoisted to effect scope so the cleanup closure
+    // can flush in-flight polylines even if loadData hasn't returned yet.
+    const legsForThisRun: google.maps.Polyline[] = [];
 
     // Clear previous markers and route lines.
     markersRef.current.forEach(m => m.remove());
@@ -308,10 +312,9 @@ export default function DayMap({
         `;
         el.textContent = String(i + 1);
 
-        // createPurpleMarker accepts { lat, lng } — convert from [lng, lat].
-        const pm = createPurpleMarker(map, { lat: p.coords[1], lng: p.coords[0] }, { label: p.name });
-        // Override the default dot element with our numbered circle.
-        pm.marker.content = el;
+        // Pass the numbered circle as `content` so createPurpleMarker uses it
+        // directly — no default dot is created, avoiding an orphaned DOM node.
+        const pm = createPurpleMarker(map, { lat: p.coords[1], lng: p.coords[0] }, { label: p.name, content: el });
         markersRef.current.push(pm);
       });
 
@@ -321,25 +324,27 @@ export default function DayMap({
       // dashed straight line if the request fails.
       // unmountedRef guards the async loop so we don't write to a torn-down
       // map after the component unmounts mid-iteration.
+      // legsForThisRun (hoisted to effect scope) captures every polyline drawn
+      // in THIS effect run so the cleanup can flush in-flight legs on teardown.
       async function drawLegs() {
         for (let i = 0; i < resolved.length - 1; i++) {
           if (cancelled || unmountedRef.current || !mapRef.current) return;
 
           const a = { lat: resolved[i].coords[1], lng: resolved[i].coords[0] };
           const b = { lat: resolved[i + 1].coords[1], lng: resolved[i + 1].coords[0] };
-          const rawMode = legModes?.[i] ?? null;
+          const routeMode = legModes?.[i] ?? null;
 
-          if (rawMode === null) {
+          if (routeMode === null) {
             // Flight / ferry: geodesic dashed straight line.
             const seg = drawRoute(mapRef.current, [a, b], { dashed: true, geodesic: true });
+            legsForThisRun.push(seg.polyline);
             routeRef.current.push(seg.polyline);
             continue;
           }
 
-          const routeMode = rawMode as RouteMode;
-
           if (!modeUsesDirections(routeMode)) {
             const seg = drawRoute(mapRef.current, [a, b], { dashed: true, geodesic: true });
+            legsForThisRun.push(seg.polyline);
             routeRef.current.push(seg.polyline);
             continue;
           }
@@ -353,11 +358,13 @@ export default function DayMap({
 
           if (directions && directions.points.length > 0) {
             const seg = drawRoute(mapRef.current, directions.points);
+            legsForThisRun.push(seg.polyline);
             routeRef.current.push(seg.polyline);
             setLegRoutedCount(c => c + 1);
             console.log(`[DayMap] leg ${i} ${routeMode} → routed (${directions.points.length} points)`);
           } else {
             const seg = drawRoute(mapRef.current, [a, b], { dashed: true });
+            legsForThisRun.push(seg.polyline);
             routeRef.current.push(seg.polyline);
             console.warn(`[DayMap] leg ${i} ${routeMode} → no route returned, using straight line`);
           }
@@ -374,7 +381,10 @@ export default function DayMap({
     }
 
     loadData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      legsForThisRun.forEach((p) => p.setMap(null));
+    };
   }, [heading, lines, location, namedPlaces, placeCandidates, legModes, mapReady, onPlacesResolved]);
 
   return (
