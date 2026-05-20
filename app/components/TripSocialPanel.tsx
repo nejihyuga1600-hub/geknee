@@ -384,7 +384,15 @@ export default function TripSocialPanel({
   }
 
   function openGroup(location: string) {
-    const id = hashStr(location.toLowerCase().trim());
+    // Prefer the saved trip's actual TripDraft.id over the location hash.
+    // The chat API authorizes through TripMember rows, which are keyed by
+    // TripDraft.id — if we send a hashed id, getTripAccess() finds no
+    // matching member and rejects every POST with 403, silently breaking
+    // chat for invited users (and even the owner once their session
+    // refreshes). Falls back to the hash only when no saved trip exists
+    // for this location (anonymous exploration mode).
+    const savedTrip = trips.find(t => t.location === location);
+    const id = savedTrip?.id ?? hashStr(location.toLowerCase().trim());
     const names = loadGroupNames();
     const name = names[id] ?? location;
     setActiveGroup({ id, name, location });
