@@ -52,7 +52,19 @@ export default function AccountPage() {
 
         <div style={{ display: "grid", gap: 10, marginTop: 28 }}>
           <button
-            onClick={() => signIn("google", { prompt: "select_account", callbackUrl: "/" })}
+            onClick={async () => {
+              // Clear the geknee session cookie BEFORE starting OAuth. Without
+              // this, NextAuth in JWT mode treats the OAuth callback as a
+              // "link new sub to current session user" — which silently keeps
+              // the user on their original identity. Then chain through
+              // accounts.google.com/Logout so Google forgets which account is
+              // active and is forced to render the chooser. continue= lands
+              // us at our normal Google sign-in endpoint with no session
+              // cookie and no Google session → guaranteed clean switch.
+              await signOut({ redirect: false });
+              const ourSignin = `${window.location.origin}/api/auth/signin/google?callbackUrl=${encodeURIComponent("/")}`;
+              window.location.href = `https://accounts.google.com/Logout?continue=${encodeURIComponent(ourSignin)}`;
+            }}
             style={primaryBtn}
           >
             Switch account
