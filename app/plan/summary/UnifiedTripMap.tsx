@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
+import { DARK_STYLE } from '@/lib/googleMaps/darkStyle';
 import { extractDayNumber, isTimeLine, type Section } from './lib/itinerary-parse';
 import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
 
@@ -534,7 +535,7 @@ export default function UnifiedTripMap({
           streetViewControl: false,
           fullscreenControl: false,
           gestureHandling: 'cooperative',
-          styles: DARK_MAP_STYLE,
+          styles: DARK_STYLE,
         });
         mapRef.current = map;
         infoWindowRef.current = new window.google.maps.InfoWindow({ maxWidth: 320 });
@@ -1951,24 +1952,3 @@ function normalizePinKey(s: string): string {
     .trim();
 }
 
-// Dark Mapbox-equivalent style for Google Maps. Pulled from Google's
-// Snazzy Maps "Midnight Commander" preset, trimmed to essentials.
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#1d2c4d' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a3646' }] },
-  { featureType: 'administrative.country', elementType: 'geometry.stroke', stylers: [{ color: '#4b6878' }] },
-  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#304a7d' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#98a5be' }] },
-  // Hide road/highway shield icons (yellow AH47, NH-19 badges) — they
-  // visually compete with our gold quest pins and made the user think
-  // the quest filter was leaking. Safe to remove; route info isn't
-  // needed for trip planning context.
-  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road.highway', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4e6d70' }] },
-];
