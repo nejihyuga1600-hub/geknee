@@ -26,6 +26,8 @@ type Props = {
   lon: number;
   monuments: MonumentMarker[];
   onClose: () => void;
+  // When true, renders inside a parent container instead of fullscreen.
+  // Used by the Atlas shell to embed the map in the bottom sheet's full state.
   embedded?: boolean;
 };
 
@@ -39,6 +41,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const droppedMarkersRef = useRef<PurpleMarker[]>([]);
+  const unmountedRef = useRef(false);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monumentCirclesRef = useRef<google.maps.Circle[]>([]);
   const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
@@ -68,6 +72,12 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     });
   }
 
+  // Per-city pin draft — persisted to localStorage so the user can leave
+  // the map, come back, and find their pins still placed. The trip planner
+  // also reads this key when the user opens a trip for the same city, so
+  // map pins surface as candidate stops without an explicit save step.
+  // Schema { lat, lon, label?, addedAt } is shared with the planner — do
+  // not change the key name or field names without updating both sides.
   type PinDraft = { lat: number; lon: number; label?: string; addedAt: number };
   function draftKey(): string { return `geknee:pin-draft:${name.toLowerCase()}`; }
   function readDraft(): PinDraft[] {
@@ -181,6 +191,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     svc.getDetails(
       { placeId: f.id, fields: ['geometry', 'name'] },
       (place, status) => {
+        if (unmountedRef.current || !mapRef.current) return;
         if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) return;
         const resolved = place.geometry.location;
         const lng = resolved.lng();
@@ -216,6 +227,9 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
           tilt: 45,
           mapId: MAP_ID,
           mapTypeId: 'hybrid',
+          // 'greedy' lets single-finger touch drag pan the map (instead of
+          // scrolling the page), matching the prior Mapbox touch-action:none parity.
+          gestureHandling: 'greedy',
           zoomControl: true,
           zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
           fullscreenControl: false,
@@ -252,6 +266,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
     return () => {
       cancelled = true;
+      unmountedRef.current = true;
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
       if (clickListener) google.maps.event.removeListener(clickListener);
       if (zoomListener) google.maps.event.removeListener(zoomListener);
       droppedMarkersRef.current.forEach(m => m.remove());
@@ -365,7 +381,10 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setSearchOpen(true); setActiveIdx(-1); }}
                 onFocus={() => setSearchOpen(true)}
-                onBlur={() => setTimeout(() => setSearchOpen(false), 180)}
+                onBlur={() => {
+                  if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+                  blurTimerRef.current = setTimeout(() => setSearchOpen(false), 180);
+                }}
                 onKeyDown={onKeyDown}
                 placeholder="Search places · click map to drop pin"
                 aria-label="Search places"
