@@ -2459,19 +2459,32 @@ function GlobeScene() {
           mountains (white=1) pop above — classic Nintendo planet look.
           Glossy candy roughness 0.18 + metalness 0.14.
         */}
-        <Sphere args={[R, 256, 256]} onClick={(e) => {
-          e.stopPropagation();
-          if (dragRef.current?.didDrag) return; // was a drag, not a click
-          if (!globeRef.current) { _triggerGlobeClick(); return; }
-          // Convert world-space hit → globe-local → lat/lon
-          const local = globeRef.current.worldToLocal(e.point.clone());
-          const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
-          const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
-          // Drop the star pin and light up nearby cities
-          setStarPos({ lat, lon, key: Date.now() });
-          // Fly + zoom in the background
-          flyToGlobe(lat, lon, () => zoomCamera(14));
-        }}>
+        <Sphere
+          args={[R, 256, 256]}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (dragRef.current?.didDrag) return; // was a drag, not a click
+            if (!globeRef.current) { _triggerGlobeClick(); return; }
+            // Convert world-space hit → globe-local → lat/lon
+            const local = globeRef.current.worldToLocal(e.point.clone());
+            const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
+            const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
+            // Single click: drop the portal + rotate-to-face only.
+            // Double click adds the zoom (handler below).
+            setStarPos({ lat, lon, key: Date.now() });
+            flyToGlobe(lat, lon, () => {});
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            if (dragRef.current?.didDrag) return;
+            if (!globeRef.current) return;
+            const local = globeRef.current.worldToLocal(e.point.clone());
+            const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
+            const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
+            // Double click: place + fly + zoom. Works on cities AND non-city land.
+            setStarPos({ lat, lon, key: Date.now() });
+            flyToGlobe(lat, lon, () => zoomCamera(14));
+          }}>
           <meshStandardMaterial
             key={matKey}
             map={texture ?? undefined}
@@ -2497,7 +2510,7 @@ function GlobeScene() {
 
         {/* Dropped star pin + nearby city selection pins */}
         {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}
-        {starPos && zoomLevel >= 1 && <NearbyCities key={`nc-${starPos.key}`} lat={starPos.lat} lon={starPos.lon} />}
+        {starPos && <NearbyCities key={`nc-${starPos.key}`} lat={starPos.lat} lon={starPos.lon} />}
 
         {/* Geographic labels floating above surface */}
         <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />
