@@ -14,12 +14,22 @@ The home globe at `app/plan/location/LocationClient.tsx` uses two distinct
 gestures to separate **placing the trip-starting portal** from **zooming
 in to commit.**
 
-| Gesture | Result |
-|---|---|
-| **Single click / tap** anywhere on the globe (city or non-city land) | Drops the purple portal at the hit lat/lon and rotates the globe so the portal faces the camera. **No camera zoom.** Nearby city pins render around the portal. |
-| **Double click / double tap** anywhere on the globe | Drops the portal at the hit lat/lon, rotates to face the camera, AND zooms the camera in to distance 14 (close-in view). Works the same on cities and non-city land. |
+| Gesture | Surface | Result |
+|---|---|---|
+| **Single click / tap** | desktop + mobile | Drops the purple portal at the hit lat/lon and rotates the globe so the portal faces the camera. **No camera zoom.** Nearby city pins render around the portal. |
+| **Double click** | desktop | Drops the portal AND zooms the camera in to distance 14 (close-in view). Works on cities and non-city land. |
+| **Long press (~500ms)** | mobile / touch (Capacitor iOS + Android) | Same effect as desktop double-click — drops the portal + fly + zoom. iOS Haptic Touch and Android long-press both resolve through the underlying `pointerdown` event. |
 
-Mental model: **single tap to look, double tap to dive in.**
+Mental model: **tap to look, double-tap (or hold on touch) to dive in.**
+
+The long-press is implemented in `LocationClient.tsx` via mesh-level
+`onPointerDown` / `onPointerMove` / `onPointerUp` handlers, gated on
+`e.pointerType === 'touch'` so a held mouse on desktop does NOT trigger
+it (desktop keeps the double-click gesture). A move of >8px during the
+hold cancels — that's a drag-to-rotate, not a press. The trailing
+`onClick` that fires when the user releases after a long-press is
+suppressed via `longPressFiredRef` so the portal isn't re-placed without
+zoom right after the hold.
 
 ## What changed (vs the prior behavior)
 
@@ -33,13 +43,21 @@ the cheap, reversible exploratory action; the zoom is the commit.
 
 ## File pointers (where the code lives)
 
-- **Click handlers:** `app/plan/location/LocationClient.tsx:2462-2490`
-  - `<Sphere onClick={...} onDoubleClick={...}>` inside the `GlobeScene`
-    component.
-  - Single-click handler calls `setStarPos(...)` and
-    `flyToGlobe(lat, lon, () => {})` — rotate only.
-  - Double-click handler calls `setStarPos(...)` and
+- **Click handlers:** `<Sphere ...>` inside the `GlobeScene` component
+  in `app/plan/location/LocationClient.tsx`.
+  - `onClick` — single-click. Calls `setStarPos(...)` and
+    `flyToGlobe(lat, lon, () => {})` — rotate only. Early-returns if
+    `longPressFiredRef.current` was just set, to suppress the trailing
+    click after a long-press.
+  - `onDoubleClick` — desktop double-click. Calls `setStarPos(...)` and
     `flyToGlobe(lat, lon, () => zoomCamera(14))` — rotate + zoom.
+  - `onPointerDown` / `onPointerMove` / `onPointerUp` / `onPointerLeave`
+    — touch long-press detector. Starts a 500ms timer on touch-only
+    pointer-down; cancels on move >8px or release; on timer fire,
+    triggers the same place + fly + zoom as `onDoubleClick`.
+  - Long-press refs (`longPressTimerRef`, `longPressStartRef`,
+    `longPressFiredRef`) are declared next to `dragRef` near the top of
+    `GlobeScene`.
 - **Lat/lon conversion:** done inline in each handler — world-space hit
   point → globe-local → spherical coords. The math is duplicated across
   the two handlers (about 4 lines) because pulling it into a helper
@@ -86,9 +104,12 @@ can revisit them, but they're the defaults today:
 5. **Water hits are allowed** (no land-mask check). Clicking the ocean
    drops the portal there. Without nearby cities, the user just gets a
    bare portal — natural signal that there's nothing to commit to.
-6. **Same gesture set on touch.** R3F's `onDoubleClick` resolves
-   correctly for double-tap on iOS/Android via the underlying browser
-   `dblclick` event. No manual tap-timer was needed.
+6. **Touch parity via long-press, not double-tap-only.** Mobile users
+   get a 500ms long-press as the equivalent of desktop double-click.
+   Double-tap on touch also works (R3F resolves it through the
+   browser's `dblclick`), but holding is the dominant pattern on iOS
+   Haptic Touch + Android, so we implemented both. Long-press is gated
+   to `e.pointerType === 'touch'` so a held mouse on desktop is a no-op.
 
 ## Acceptance criteria (verified at ship)
 
@@ -97,11 +118,16 @@ can revisit them, but they're the defaults today:
   camera distance change.
 - Double click on the globe triggers `zoomCamera(14)` — close-in view
   — and works whether or not a portal is already placed.
+- Long-press (~500ms) on touch devices triggers the same place + fly +
+  zoom as desktop double-click. A move of >8px during the press cancels
+  (treated as a drag).
+- The post-release click that follows a long-press does NOT re-place
+  the portal without zoom — suppressed via `longPressFiredRef`.
 - `NearbyCities` city-pin selection appears after portal placement
   regardless of camera distance.
 - The drag guard still suppresses click events that were actually
   globe-rotation drags.
-- Works on touch.
+- Works on touch (iOS + Android via Capacitor).
 
 ## Out of scope (intentionally NOT done)
 
@@ -131,4 +157,4 @@ can revisit them, but they're the defaults today:
 ## Done state
 
 The globe now feels like **look first, commit second.** Tap to place,
-double-tap to dive in.
+double-tap (desktop) or hold (mobile) to dive in.

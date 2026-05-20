@@ -2130,6 +2130,18 @@ function GlobeScene() {
     startX: number; startY: number; axis: 'h' | 'v' | null; didDrag: boolean;
   } | null>(null);
 
+  // ── Long-press = mobile equivalent of desktop double-click zoom ─────────
+  // iOS Haptic Touch + Android long-press are both ~500ms holds. Gated to
+  // touch pointers so a held mouse on desktop doesn't trigger it.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressFiredRef = useRef(false);
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const el = gl.domElement;
     const THRESHOLD = 6;
@@ -2463,6 +2475,9 @@ function GlobeScene() {
           args={[R, 256, 256]}
           onClick={(e) => {
             e.stopPropagation();
+            // Long-press just fired — suppress the post-release click so it
+            // doesn't re-place the portal without zoom right after the hold.
+            if (longPressFiredRef.current) { longPressFiredRef.current = false; return; }
             if (dragRef.current?.didDrag) return; // was a drag, not a click
             if (!globeRef.current) { _triggerGlobeClick(); return; }
             // Convert world-space hit → globe-local → lat/lon
@@ -2470,7 +2485,7 @@ function GlobeScene() {
             const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
             const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
             // Single click: drop the portal + rotate-to-face only.
-            // Double click adds the zoom (handler below).
+            // Double click (desktop) / long-press (mobile) adds the zoom.
             setStarPos({ lat, lon, key: Date.now() });
             flyToGlobe(lat, lon, () => {});
           }}
@@ -2484,6 +2499,49 @@ function GlobeScene() {
             // Double click: place + fly + zoom. Works on cities AND non-city land.
             setStarPos({ lat, lon, key: Date.now() });
             flyToGlobe(lat, lon, () => zoomCamera(14));
+          }}
+          onPointerDown={(e) => {
+            // Mobile long-press = same as desktop double-click. Touch only.
+            if (e.pointerType !== 'touch') return;
+            if (!globeRef.current) return;
+            const local = globeRef.current.worldToLocal(e.point.clone());
+            const lat = Math.asin(Math.max(-1, Math.min(1, local.y / R))) * (180 / Math.PI);
+            const lon = Math.atan2(-local.z, local.x) * (180 / Math.PI);
+            longPressStartRef.current = { x: e.clientX, y: e.clientY };
+            if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = setTimeout(() => {
+              longPressTimerRef.current = null;
+              longPressStartRef.current = null;
+              if (dragRef.current?.didDrag) return;
+              longPressFiredRef.current = true;
+              setStarPos({ lat, lon, key: Date.now() });
+              flyToGlobe(lat, lon, () => zoomCamera(14));
+            }, 500);
+          }}
+          onPointerMove={(e) => {
+            if (!longPressStartRef.current || !longPressTimerRef.current) return;
+            const dx = e.clientX - longPressStartRef.current.x;
+            const dy = e.clientY - longPressStartRef.current.y;
+            // 8px movement cancels the hold (it's a scroll/rotation, not a press)
+            if (dx * dx + dy * dy > 64) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+              longPressStartRef.current = null;
+            }
+          }}
+          onPointerUp={() => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+            longPressStartRef.current = null;
+          }}
+          onPointerLeave={() => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+            longPressStartRef.current = null;
           }}>
           <meshStandardMaterial
             key={matKey}
