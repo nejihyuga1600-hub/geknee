@@ -1,12 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 
 type GeocodeFeature = {
   id: string;
   place_name: string;
-  center: [number, number];
+  center: [number, number] | null;
   text: string;
   place_type: string[];
 };
@@ -25,20 +24,17 @@ type Props = {
   lon: number;
   monuments: MonumentMarker[];
   onClose: () => void;
-  // When true, renders inside a parent container instead of fullscreen.
-  // Used by the Atlas shell to embed the map in the bottom sheet's full state.
   embedded?: boolean;
 };
 
-// Mapbox zoom 0 = whole earth, 7 ≈ country, 10 ≈ city, 14 ≈ neighbourhood.
 const RETURN_TO_GLOBE_ZOOM = 7;
+const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? 'DEMO_MAP_ID';
 
 export default function CityMapView({ name, lat, lon, monuments, onClose, embedded }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const droppedMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeocodeFeature[]>([]);
@@ -46,9 +42,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const [searching, setSearching] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [recents, setRecents] = useState<GeocodeFeature[]>([]);
+  const [mapsError, setMapsError] = useState<string | null>(null);
 
-  // Hydrate recent searches once on mount, scoped per city so the dropdown
-  // shows places the user actually came back to in this destination.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -66,11 +61,6 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     });
   }
 
-  // Per-city pin draft — persisted to localStorage so the user can leave
-  // the map, come back, and find their pins still placed. The trip planner
-  // also reads this key when the user opens a trip for the same city, so
-  // map pins surface as candidate stops without an explicit save step.
-  // Schema is shared with the planner: { lat, lon, label?, addedAt }[]
   type PinDraft = { lat: number; lon: number; label?: string; addedAt: number };
   function draftKey(): string { return `geknee:pin-draft:${name.toLowerCase()}`; }
   function readDraft(): PinDraft[] {
@@ -87,181 +77,99 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   }
   function appendDraft(pin: PinDraft) {
     const cur = readDraft();
-    // Dedup by 5-decimal lat/lon (~1 m precision) so double-clicks don't
-    // create stacked phantom pins.
     const round = (n: number) => Math.round(n * 1e5) / 1e5;
     if (cur.some(p => round(p.lat) === round(pin.lat) && round(p.lon) === round(pin.lon))) return;
     writeDraft([...cur, pin]);
   }
-  function removeDraft(lat: number, lon: number) {
+  function removeDraft(pinLat: number, pinLon: number) {
     const round = (n: number) => Math.round(n * 1e5) / 1e5;
-    writeDraft(readDraft().filter(p => round(p.lat) !== round(lat) || round(p.lon) !== round(lon)));
+    writeDraft(readDraft().filter(p => round(p.lat) !== round(pinLat) || round(p.lon) !== round(pinLon)));
   }
 
-  // Debounced geocoding lookup against the Mapbox places API. Proximity-biased
-  // to the current map center so "park" returns the nearby park, not Park City.
+  // Placeholder geocoding — replaced in task 1.3
   useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token || query.trim().length < 2) {
-      setResults([]);
-      setActiveIdx(-1);
-      return;
-    }
-    setSearching(true);
-    const handle = setTimeout(async () => {
-      try {
-        const map = mapRef.current;
-        const c = map?.getCenter();
-        const proximity = c ? `&proximity=${c.lng},${c.lat}` : '';
-        // POI ranked first because that's what "Google Maps feel" means here —
-        // restaurants, museums, parks, landmarks. Address comes next; admin
-        // boundaries and neighborhoods are noisier so they go last.
-        const types = 'poi,address,place,locality,neighborhood,district';
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&limit=7&types=${types}&autocomplete=true&fuzzyMatch=true&language=en${proximity}`;
-        const res = await fetch(url);
-        if (!res.ok) { setResults([]); return; }
-        const data = await res.json() as { features: GeocodeFeature[] };
-        setResults(data.features ?? []);
-        setActiveIdx(-1);
-      } catch { setResults([]); }
-      finally { setSearching(false); }
-    }, 220);
-    return () => clearTimeout(handle);
+    if (query.trim().length < 2) { setResults([]); setActiveIdx(-1); }
   }, [query]);
 
-  function dropPin(lng: number, latitude: number, label?: string, opts?: { skipPersist?: boolean }) {
+  function dropPin(pinLng: number, pinLat: number, label?: string, opts?: { skipPersist?: boolean }) {
     const map = mapRef.current;
     if (!map) return;
-    const el = document.createElement('div');
-    el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#a78bfa;border:2px solid #fff;box-shadow:0 0 8px rgba(167,139,250,0.8);cursor:pointer;';
-    const popup = label
-      ? new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'geknee-popup' }).setHTML(
-          `<div style="font-family:var(--font-ui),Inter,system-ui,sans-serif;color:#fff;font-size:12px;font-weight:600;padding:6px 10px;background:rgba(13,13,36,0.95);border:1px solid rgba(167,139,250,0.4);border-radius:8px;">${label.replace(/</g, '&lt;')}</div>`
-        )
-      : undefined;
-    const marker = new mapboxgl.Marker({ element: el }).setLngLat([lng, latitude]);
-    if (popup) marker.setPopup(popup);
-    marker.addTo(map);
-    el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      marker.remove();
-      droppedMarkersRef.current = droppedMarkersRef.current.filter(m => m !== marker);
-      removeDraft(latitude, lng);
-    });
-    droppedMarkersRef.current.push(marker);
-    if (!opts?.skipPersist) {
-      appendDraft({ lat: latitude, lon: lng, label, addedAt: Date.now() });
-    }
+    // Placeholder — replaced in task 1.2
+    void label; void opts;
+    appendDraft({ lat: pinLat, lon: pinLng, label, addedAt: Date.now() });
   }
 
   function handleResultClick(f: GeocodeFeature) {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !f.center) return;
     const [lng, latitude] = f.center;
-    map.flyTo({ center: [lng, latitude], zoom: 14, speed: 1.2 });
+    map.panTo({ lat: latitude, lng });
+    map.setZoom(14);
     dropPin(lng, latitude, f.text);
     pushRecent(f);
-    setQuery('');
-    setResults([]);
-    setSearchOpen(false);
-    setActiveIdx(-1);
+    setQuery(''); setResults([]); setSearchOpen(false); setActiveIdx(-1);
     inputRef.current?.blur();
   }
 
   useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token || !containerRef.current) return;
-    mapboxgl.accessToken = token;
+    if (!containerRef.current) return;
+    if (!MAP_ID || MAP_ID === 'DEMO_MAP_ID') {
+      console.warn('[CityMapView] NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID not set — using DEMO_MAP_ID.');
+    }
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      center: [lon, lat],
-      zoom: 12,
-      pitch: 45,
-      bearing: 0,
-      antialias: true,
-    });
-    mapRef.current = map;
+    let map: google.maps.Map;
+    let clickListener: google.maps.MapsEventListener;
+    let zoomListener: google.maps.MapsEventListener;
+    let cancelled = false;
 
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled || !containerRef.current) return;
+        map = new google.maps.Map(containerRef.current, {
+          center: { lat, lng: lon },
+          zoom: 12,
+          tilt: 45,
+          mapId: MAP_ID,
+          mapTypeId: 'hybrid',
+          zoomControl: true,
+          zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
+          fullscreenControl: false,
+          streetViewControl: false,
+          mapTypeControl: false,
+        });
+        mapRef.current = map;
 
-    const onZoom = () => {
-      if (map.getZoom() < RETURN_TO_GLOBE_ZOOM) onCloseRef.current();
-    };
-    map.on('zoomend', onZoom);
+        zoomListener = map.addListener('zoom_changed', () => {
+          const z = map.getZoom();
+          if (z !== undefined && z < RETURN_TO_GLOBE_ZOOM) onCloseRef.current();
+        });
 
-    // Click on empty map area drops a pin. Right-click on a pin removes it
-    // (handler set in dropPin).
-    const onMapClick = (e: mapboxgl.MapMouseEvent) => {
-      dropPin(e.lngLat.lng, e.lngLat.lat);
-    };
-    map.on('click', onMapClick);
+        clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return;
+          dropPin(e.latLng.lng(), e.latLng.lat());
+        });
 
-    map.on('style.load', () => {
-      map.setFog({
-        color: 'rgb(6, 8, 22)',
-        'horizon-blend': 0.25,
-        'space-color': 'rgb(6, 8, 22)',
-        'star-intensity': 0.3,
+        google.maps.event.addListenerOnce(map, 'idle', () => {
+          if (cancelled) return;
+          // Monument rings added in task 1.4; pin restore added in task 1.2
+          void monuments;
+          for (const pin of readDraft()) {
+            dropPin(pin.lon, pin.lat, pin.label, { skipPersist: true });
+          }
+        });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setMapsError(err instanceof Error ? err.message : 'Google Maps failed to load');
       });
 
-      // Surveying a continent at zoom <5 should only show country labels —
-      // mapbox/satellite-streets-v12 starts pulling in regions, states, and
-      // mid-tier cities around zoom 3 which clutters the view at this scale.
-      const COUNTRY_ONLY_BELOW = 5;
-      const layers = map.getStyle().layers ?? [];
-      for (const layer of layers) {
-        if (layer.type !== 'symbol') continue;
-        if (layer.id === 'country-label' || layer.id === 'continent-label') continue;
-        if (
-          layer.id === 'state-label' ||
-          layer.id.startsWith('settlement-') ||
-          layer.id === 'place-label'
-        ) {
-          const currentMin = (layer as { minzoom?: number }).minzoom ?? 0;
-          const currentMax = (layer as { maxzoom?: number }).maxzoom ?? 24;
-          map.setLayerZoomRange(layer.id, Math.max(currentMin, COUNTRY_ONLY_BELOW), currentMax);
-        }
-      }
-
-      if (!map.getLayer('3d-buildings')) {
-        map.addLayer({
-          id: '3d-buildings',
-          source: 'composite',
-          'source-layer': 'building',
-          filter: ['==', 'extrude', 'true'],
-          type: 'fill-extrusion',
-          minzoom: 14,
-          paint: {
-            'fill-extrusion-color': '#cbd5e1',
-            'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['get', 'height']],
-            'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['get', 'min_height']],
-            'fill-extrusion-opacity': 0.85,
-          },
-        });
-      }
-
-      addMonumentRings(map, monuments);
-
-      // Restore any pins the user dropped during a previous visit to this city.
-      // skipPersist:true so we don't write the same pins back to localStorage.
-      for (const pin of readDraft()) {
-        dropPin(pin.lon, pin.lat, pin.label, { skipPersist: true });
-      }
-    });
-
     return () => {
-      map.off('zoomend', onZoom);
-      map.off('click', onMapClick);
-      droppedMarkersRef.current.forEach(m => m.remove());
-      droppedMarkersRef.current = [];
-      map.remove();
+      cancelled = true;
+      if (clickListener) google.maps.event.removeListener(clickListener);
+      if (zoomListener) google.maps.event.removeListener(zoomListener);
       mapRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon, monuments]);
-
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   return (
     <div style={{
@@ -270,19 +178,19 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       animation: 'mapFadeIn 0.3s ease-out',
     }}>
       <style>{`@keyframes mapFadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
-
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {!token && (
+      {mapsError && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: '#fff', fontFamily: 'system-ui', textAlign: 'center', padding: 32,
         }}>
           <div style={{ maxWidth: 520, background: 'rgba(6,8,22,0.85)', border: '1px solid rgba(100,210,255,0.3)', borderRadius: 12, padding: 24 }}>
-            <h2 style={{ fontSize: 18, marginBottom: 10 }}>Mapbox token required</h2>
+            <h2 style={{ fontSize: 18, marginBottom: 10 }}>Map failed to load</h2>
             <p style={{ fontSize: 13, lineHeight: 1.5, color: '#c0ecff' }}>
-              Add <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> to your Vercel environment variables.
+              Check that <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> is set and the Maps JavaScript API is enabled.
             </p>
+            <p style={{ fontSize: 11, color: '#a8a8c0', marginTop: 8 }}>{mapsError}</p>
           </div>
         </div>
       )}
@@ -398,7 +306,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 14, lineHeight: 1,
                   }}
-                >×</button>
+                >{'×'}</button>
               )}
             </div>
             <style>{`@keyframes geknee-spin { to { transform: rotate(360deg); } }`}</style>
@@ -470,34 +378,4 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       })()}
     </div>
   );
-}
-
-// Ground-plane circle rendered by Mapbox natively. Marks collected monuments
-// with their skin-rarity colour — Mapbox's own building extrusions show the
-// actual landmark geometry, so we don't double up with our own GLB.
-function addMonumentRings(map: mapboxgl.Map, monuments: MonumentMarker[]) {
-  if (monuments.length === 0) return;
-  const features = monuments.map((mon) => ({
-    type: 'Feature' as const,
-    geometry: { type: 'Point' as const, coordinates: [mon.lon, mon.lat] },
-    properties: { mk: mon.mk, name: mon.name, ringColor: mon.ringColor },
-  }));
-  if (!map.getSource('monument-points')) {
-    map.addSource('monument-points', { type: 'geojson', data: { type: 'FeatureCollection', features } });
-  }
-  if (!map.getLayer('monument-rings')) {
-    map.addLayer({
-      id: 'monument-rings',
-      type: 'circle',
-      source: 'monument-points',
-      paint: {
-        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 10, 10, 18, 80],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-width': 3,
-        'circle-stroke-color': ['get', 'ringColor'],
-        'circle-stroke-opacity': 0.9,
-        'circle-pitch-alignment': 'map',
-      },
-    });
-  }
 }
