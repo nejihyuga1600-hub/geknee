@@ -111,21 +111,22 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     }
   }
 
-  // Force a Google account picker even when the browser has a Google session
-  // active. Google interprets the OAuth `prompt=select_account consent` combo
-  // inconsistently — when only one account is signed in, it often skips the
-  // picker. The bulletproof workaround is to log the user out of Google
-  // *first*, then chain into our normal Google sign-in endpoint via Google's
-  // `continue` param. With no active Google session, OAuth always shows the
-  // chooser. We also drop our own session cookie first so the post-OAuth
-  // callback can't fall back to a stale signed-in identity.
+  // Force a Google account picker by clearing our session cookie first,
+  // then re-initiating OAuth. The server-side `prompt=select_account` +
+  // `authuser=-1` configured in auth.ts handles forcing Google's chooser
+  // when multiple Google sessions are active. An earlier version chained
+  // through accounts.google.com/Logout?continue= to also clear Google's
+  // own session, but Google rejects external continue= targets with a
+  // generic 400 when there's no Google session to log out from, breaking
+  // every other switch attempt. signOut() before signIn() is what actually
+  // matters — it prevents NextAuth's JWT mode from linking the new OAuth
+  // account to the currently-signed-in user.
   async function handleSwitchGoogle() {
     setError('');
     setLoading(true);
     try {
       await signOut({ redirect: false });
-      const ourSignin = `${window.location.origin}/api/auth/signin/google?callbackUrl=${encodeURIComponent('/')}`;
-      window.location.href = `https://accounts.google.com/Logout?continue=${encodeURIComponent(ourSignin)}`;
+      await signIn('google', { callbackUrl: '/' });
     } catch {
       setError('Account switch failed. Try an incognito window.');
       setLoading(false);
