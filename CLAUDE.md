@@ -67,3 +67,20 @@ Both are installed in Claude Code's MCP config. They cover different halves of t
 Session recording is enabled in `lib/analytics.ts` with `maskAllInputs: true`. Tag any DOM node holding PII with `data-private` to extend masking. Before sharing a replay externally, skim it for anything the mask missed.
 
 Two error sources (Sentry + PostHog error tracking) overlap. **Treat Sentry as the source of truth for exceptions**; PostHog's error view is useful for correlating with behavior but shouldn't drive independent triage.
+
+## Google Maps Platform — ops
+
+- **Budget alarms** (set in Google Cloud Console → Billing → Budgets):
+  - 50% of $200 free credit → email
+  - 100% of free credit → email + Slack
+  - $500/mo absolute → page on-call
+  - $1k/mo absolute → API key auto-disable
+- **Two keys:**
+  - `GOOGLE_PLACES_API_KEY` (server-only): no app restriction, IP-restricted to Vercel egress where possible. Enables: Directions, Geocoding, Places, Weather, Time Zone, Street View Static, Maps Static.
+  - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (client): HTTP-referrer restricted to geknee.com + *.vercel.app + localhost. Enables: Maps JS, Places (client autocomplete).
+- **Cost mitigations in code** (all live as of 2026-05-20):
+  - Session tokens on Places Autocomplete
+  - Field masking on Places getDetails (Basic only)
+  - KV (or in-memory) cache on /api/directions
+  - 1-week immutable CDN cache on /api/streetview
+  - lat/lng coalescing to 2-decimal precision on /api/weather
