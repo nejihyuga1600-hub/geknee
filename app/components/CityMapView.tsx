@@ -29,6 +29,7 @@ type Props = {
   embedded?: boolean;
 };
 
+// Google Maps zoom 7 ≈ country level — mirrors the Mapbox-era close threshold.
 const RETURN_TO_GLOBE_ZOOM = 7;
 const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? 'DEMO_MAP_ID';
 
