@@ -39,6 +39,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const droppedMarkersRef = useRef<PurpleMarker[]>([]);
+  const monumentCirclesRef = useRef<google.maps.Circle[]>([]);
   const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -239,7 +240,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
         google.maps.event.addListenerOnce(map, 'idle', () => {
           if (cancelled) return;
-          addMonumentRings(map, monuments);
+          addMonumentRings(map, monuments, monumentCirclesRef);
           for (const pin of readDraft()) {
             dropPin(pin.lon, pin.lat, pin.label, { skipPersist: true });
           }
@@ -255,6 +256,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       if (zoomListener) google.maps.event.removeListener(zoomListener);
       droppedMarkersRef.current.forEach(m => m.remove());
       droppedMarkersRef.current = [];
+      monumentCirclesRef.current.forEach(c => c.setMap(null));
+      monumentCirclesRef.current = [];
       mapRef.current = null;
       autocompleteRef.current = null;
       placesServiceRef.current = null;
@@ -473,10 +476,17 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
 // Monument rings drawn as Google Maps Circles around collected landmarks.
 // Radius 100m is visible at typical city zoom (12-18) and scales with zoom.
-function addMonumentRings(map: google.maps.Map, monuments: MonumentMarker[]) {
+function addMonumentRings(
+  map: google.maps.Map,
+  monuments: MonumentMarker[],
+  circlesRef: { current: google.maps.Circle[] },
+) {
+  // Clear any previously drawn circles before drawing fresh ones.
+  circlesRef.current.forEach(c => c.setMap(null));
+  circlesRef.current = [];
   if (monuments.length === 0) return;
   for (const mon of monuments) {
-    new google.maps.Circle({
+    const circle = new google.maps.Circle({
       map,
       center: { lat: mon.lat, lng: mon.lon },
       radius: 100, // metres — visible at zoom 12–18
@@ -486,5 +496,6 @@ function addMonumentRings(map: google.maps.Map, monuments: MonumentMarker[]) {
       fillOpacity: 0,
       clickable: false,
     });
+    circlesRef.current.push(circle);
   }
 }
