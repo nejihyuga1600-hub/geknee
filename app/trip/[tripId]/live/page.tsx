@@ -8,6 +8,7 @@ import { GoogleLiveMap } from './GoogleLiveMap';
 import { AddStopModal } from './AddStopModal';
 import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
+import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -238,35 +239,53 @@ export default function LiveTripPage() {
   const nextIdx = activities.findIndex(a => a.time > currentClock);
   const nextActivity = nextIdx >= 0 ? activities[nextIdx] : null;
 
-  // ETA from user → next activity. Uses Mapbox Geocoder + Directions; bails
-  // silently if the token / coordinates aren't available, leaving the
-  // mocked-fallback copy in place.
+  // ETA from user → next activity. Uses /api/geocode + Google Directions.
+  // Throttled: fires at most every 60 s AND only if user moved >50 m.
   const [etaMin, setEtaMin] = useState<number | null>(null);
   const [nextCoords, setNextCoords] = useState<Geo | null>(null);
+  const lastEtaCallRef = useRef<number>(0);
+  const lastEtaPosRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Inline haversine helper (metres) — no extra deps needed.
+  function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+    const R = 6_371_000;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLng = (b.lng - a.lng) * Math.PI / 180;
+    const sin2 = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.asin(Math.sqrt(sin2));
+  }
+
   useEffect(() => {
     setEtaMin(null);
     setNextCoords(null);
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token || !geo || !nextActivity?.place) return;
+    if (!geo || !nextActivity?.place) return;
     let cancelled = false;
-    const proximity = `${geo.lon},${geo.lat}`;
     const placeQuery = trip?.location
       ? `${nextActivity.place} ${trip.location}`
       : nextActivity.place;
-    fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(placeQuery)}.json?access_token=${token}&limit=1&proximity=${proximity}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.features?.[0]?.center) return;
-        const [lon, lat] = d.features[0].center as [number, number];
-        setNextCoords({ lat, lon });
-        return fetch(`https://api.mapbox.com/directions/v5/mapbox/walking/${geo.lon},${geo.lat};${lon},${lat}?access_token=${token}&overview=false`);
-      })
-      .then(r => r ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.routes?.[0]?.duration) return;
-        setEtaMin(Math.round(d.routes[0].duration / 60));
-      })
-      .catch(() => { /* silent */ });
+    const userPos = { lat: geo.lat, lng: geo.lon };
+
+    // Throttle: skip if called within 60 s or user hasn't moved 50 m.
+    const now = Date.now();
+    if (now - lastEtaCallRef.current < 60_000) return;
+    if (lastEtaPosRef.current && haversineMeters(lastEtaPosRef.current, userPos) < 50) return;
+    lastEtaCallRef.current = now;
+    lastEtaPosRef.current = userPos;
+
+    (async () => {
+      const gRes = await fetch(`/api/geocode?address=${encodeURIComponent(placeQuery)}`);
+      if (cancelled || !gRes.ok) return;
+      const place = await gRes.json() as { lat: number; lng: number } | null;
+      if (cancelled || !place) return;
+      setNextCoords({ lat: place.lat, lon: place.lng });
+      const dr = await fetchDirections(
+        { lat: userPos.lat, lng: userPos.lng },
+        { lat: place.lat, lng: place.lng },
+        'walking',
+      );
+      if (cancelled || !dr) return;
+      if (dr.durationSec != null) setEtaMin(Math.round(dr.durationSec / 60));
+    })().catch(() => { /* silent */ });
     return () => { cancelled = true; };
   }, [geo, nextActivity?.place, trip?.location]);
 
