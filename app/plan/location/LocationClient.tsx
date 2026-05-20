@@ -637,14 +637,18 @@ function createEarthTexture(
       const sortedCities = [...cities]
         .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
         .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
-      // City fonts kept smaller than country fonts (so megacities don't
-      // dwarf neighbouring small-country labels). Scaled down 75% with
-      // the country baseline. Tier still varies by log-population so
-      // Tokyo reads larger than Albuquerque.
-      const CITY_MAX_FONT = 13 * SCALE_FACTOR;
-      const CITY_MIN_FONT = 7  * SCALE_FACTOR;
-      const DOT_R = 2.5 * SCALE_FACTOR;
-      const CITY_PAD = 3 * SCALE_FACTOR;
+      // City fonts target ~25% smaller than the country MAX_FONT (22) so
+      // labels feel like a clear sub-hierarchy beneath country names.
+      // Log-population scaling on top still varies Tokyo vs Albuquerque
+      // within the range.
+      const CITY_MAX_FONT = 16 * SCALE_FACTOR;  // 0.75 × country MAX_FONT
+      const CITY_MIN_FONT = 8  * SCALE_FACTOR;  // 0.75 × country MIN_FONT
+      // Pin marker: white-filled circle with a dark rim. Cities have an
+      // exact coordinate, so a visible pin is the visual anchor — the
+      // text label is offset from this point. Bigger than the previous
+      // dot so the pin reads as "this is the place" from any zoom.
+      const DOT_R = 4.5 * SCALE_FACTOR;
+      const CITY_PAD = 4 * SCALE_FACTOR;
 
       for (const city of sortedCities) {
         if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
@@ -678,10 +682,13 @@ function createEarthTexture(
         }
         if (!placedOK) continue;
 
-        // White-ringed dot at the city coord for clarity.
+        // White pin marker. Two-step: dark contrast ring underneath so the
+        // pin pops against light biome fills + satellite imagery, then a
+        // white disc on top. A tiny inner shadow at the centre gives the
+        // pin a small amount of dimensional read without going full 3D.
         ctx.beginPath();
-        ctx.arc(x, y, DOT_R + 1, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.arc(x, y, DOT_R + 1.5 * SCALE_FACTOR, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
         ctx.fill();
         ctx.beginPath();
         ctx.arc(x, y, DOT_R, 0, Math.PI * 2);
@@ -1991,7 +1998,7 @@ function pickBestFact(extract: string): string {
   return best.length > 220 ? best.slice(0, 217) + "…" : best;
 }
 
-function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
+function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: {
   n: string;
   lat: number;
   lon: number;
@@ -2002,6 +2009,15 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
   // monument's surface position — used to draw a leader line from label to
   // monument so the user can still associate the two.
   leaderTo?: [number, number, number];
+  // 1 = mega city, 2 = curated rest, 3 = GeoNames long-tail extras.
+  // Tiers 1 + 2 are baked into the earth texture (see createEarthTexture's
+  // label pass), so the floating <Text> here would double-render. We
+  // suppress the Text for those and keep only the invisible click sprite
+  // so the Wikipedia info-card flow still triggers on tap. Tier 3 extras
+  // aren't baked (33K GeoNames cities would blow the texture build budget)
+  // so they still get a floating Text mesh — they only appear at higher
+  // zoom anyway, where the floater approach is the right tool.
+  tier: 1 | 2 | 3;
 }) {
   const [hovered,      setHovered]      = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
@@ -2096,25 +2112,27 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo }: {
     )}
     <group position={pos} quaternion={orientation}>
       <group ref={textGroupRef}>
-      <Text
-        fontSize={fontSize}
-        color={mobileActive ? "#ffe066" : "#ffffff"}
-        outlineWidth={fontSize * 0.55}
-        outlineColor="#000000"
-        outlineOpacity={0.55}
-        outlineBlur={fontSize * 0.85}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={0.01}
-        sdfGlyphSize={128}
-        renderOrder={3}
-        material-depthWrite={false}
-        material-depthTest={false}
-        material-side={THREE.FrontSide}
-        material-toneMapped={false}
-      >
-        {n}
-      </Text>
+      {tier === 3 && (
+        <Text
+          fontSize={fontSize}
+          color={mobileActive ? "#ffe066" : "#ffffff"}
+          outlineWidth={fontSize * 0.55}
+          outlineColor="#000000"
+          outlineOpacity={0.55}
+          outlineBlur={fontSize * 0.85}
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={0.01}
+          sdfGlyphSize={128}
+          renderOrder={3}
+          material-depthWrite={false}
+          material-depthTest={false}
+          material-side={THREE.FrontSide}
+          material-toneMapped={false}
+        >
+          {n}
+        </Text>
+      )}
       </group>
 
       {showCard && (
@@ -2309,7 +2327,14 @@ function CityLabels({ camDist }: { camDist: number }) {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      const fontSize = minDeg >= 6 ? 0.07 : Math.max(0.045, 0.07 * (minDeg / 6));
+      // Floating-mesh font for tier-3 GeoNames extras only (tier 1/2 are
+      // baked, see the gated <Text> in CityLabel). Targets ~25% smaller
+      // than the baked country labels' rendered size: country baked
+      // MAX_FONT=22 texels ≈ 0.17 world units → 0.17 * 0.75 ≈ 0.128.
+      // Density still trims when neighbours are close. The per-frame
+      // zoom scaling in CityLabel keeps the screen footprint roughly
+      // constant across camDist.
+      const fontSize = minDeg >= 6 ? 0.128 : Math.max(0.085, 0.128 * (minDeg / 6));
 
       // If a collected monument is sitting near this city label, nudge the
       // label slightly NORTH on the sphere so it floats above the monument
@@ -2347,8 +2372,8 @@ function CityLabels({ camDist }: { camDist: number }) {
 
   return (
     <>
-      {visible.map(({ n, lat, lon, pos, orientation, fontSize, leaderTo }) => (
-        <CityLabel key={n} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} leaderTo={leaderTo} />
+      {visible.map(({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }) => (
+        <CityLabel key={n} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} leaderTo={leaderTo} tier={tier as 1 | 2 | 3} />
       ))}
     </>
   );
