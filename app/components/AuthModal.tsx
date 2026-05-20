@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { track } from '@/lib/analytics';
 
 interface AuthModalProps {
@@ -99,6 +99,27 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       await signIn(provider, { callbackUrl: '/' });
     } catch {
       setError('OAuth sign-in failed. Please try again.');
+      setLoading(false);
+    }
+  }
+
+  // Force a Google account picker even when the browser has a Google session
+  // active. Google interprets the OAuth `prompt=select_account consent` combo
+  // inconsistently — when only one account is signed in, it often skips the
+  // picker. The bulletproof workaround is to log the user out of Google
+  // *first*, then chain into our normal Google sign-in endpoint via Google's
+  // `continue` param. With no active Google session, OAuth always shows the
+  // chooser. We also drop our own session cookie first so the post-OAuth
+  // callback can't fall back to a stale signed-in identity.
+  async function handleSwitchGoogle() {
+    setError('');
+    setLoading(true);
+    try {
+      await signOut({ redirect: false });
+      const ourSignin = `${window.location.origin}/api/auth/signin/google?callbackUrl=${encodeURIComponent('/')}`;
+      window.location.href = `https://accounts.google.com/Logout?continue=${encodeURIComponent(ourSignin)}`;
+    } catch {
+      setError('Account switch failed. Try an incognito window.');
       setLoading(false);
     }
   }
@@ -210,6 +231,24 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
           <button style={oauthBtnStyle} disabled={loading} onClick={() => handleOAuth('google')}>
             {GOOGLE_LOGO}
             Continue with Google
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleSwitchGoogle}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: 12,
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              padding: '2px 0',
+              marginTop: -6,
+              alignSelf: 'center',
+            }}
+          >
+            Use a different Google account
           </button>
 
           {/* Apple — only shown when Apple OAuth is configured */}
