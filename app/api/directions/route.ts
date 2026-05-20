@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCached, setCached } from '@/lib/cache/directionsCache';
 
 // Server-side Google Directions wrapper. Hides the server key from the
 // client and lets us add caching later. Used by DayMap, UnifiedTripMap,
@@ -52,6 +53,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid mode' }, { status: 400 });
   }
 
+  // Check server-side cache before hitting Google
+  const cached = await getCached({ lat: oLat, lng: oLng }, { lat: dLat, lng: dLng }, body.mode);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: {
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400',
+        'x-cache': 'HIT',
+      },
+    });
+  }
+
   const origin = `${oLat},${oLng}`;
   const dest   = `${dLat},${dLng}`;
   const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${dest}&mode=${googleMode}&key=${key}`;
@@ -68,11 +80,15 @@ export async function POST(req: Request) {
   const route = data.routes?.[0];
   if (!route) return NextResponse.json({ error: 'no route' }, { status: 404 });
 
-  return NextResponse.json({
+  const payload = {
     polyline: route.overview_polyline?.points ?? '',
     durationSec: route.legs?.[0]?.duration?.value ?? null,
     distanceM:   route.legs?.[0]?.distance?.value ?? null,
-  }, {
+  };
+
+  await setCached({ lat: oLat, lng: oLng }, { lat: dLat, lng: dLng }, body.mode, payload);
+
+  return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400' },
   });
 }
