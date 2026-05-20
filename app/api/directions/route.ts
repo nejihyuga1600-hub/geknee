@@ -33,12 +33,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'origin, destination, mode required' }, { status: 400 });
   }
 
-  const origin = `${body.origin.lat},${body.origin.lng}`;
-  const dest   = `${body.destination.lat},${body.destination.lng}`;
-  const mode   = MODE_MAP[body.mode];
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${dest}&mode=${mode}&key=${key}`;
+  const { lat: oLat, lng: oLng } = body.origin;
+  const { lat: dLat, lng: dLng } = body.destination;
+  if (
+    typeof oLat !== 'number' || !isFinite(oLat) ||
+    typeof oLng !== 'number' || !isFinite(oLng) ||
+    typeof dLat !== 'number' || !isFinite(dLat) ||
+    typeof dLng !== 'number' || !isFinite(dLng)
+  ) {
+    return NextResponse.json({ error: 'lat/lng must be finite numbers' }, { status: 400 });
+  }
 
-  const res = await fetch(url);
+  const googleMode = MODE_MAP[body.mode];
+  if (!googleMode) {
+    return NextResponse.json({ error: 'invalid mode' }, { status: 400 });
+  }
+
+  const origin = `${oLat},${oLng}`;
+  const dest   = `${dLat},${dLng}`;
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${dest}&mode=${googleMode}&key=${key}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+    return NextResponse.json({ error: isTimeout ? 'directions timeout' : 'directions fetch failed' }, { status: isTimeout ? 504 : 502 });
+  }
   if (!res.ok) return NextResponse.json({ error: `directions ${res.status}` }, { status: 502 });
   const data = await res.json() as { routes?: Array<{ overview_polyline?: { points: string }; legs: Array<{ duration: { value: number }; distance: { value: number } }> }> };
   const route = data.routes?.[0];
