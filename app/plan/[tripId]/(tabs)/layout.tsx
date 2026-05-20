@@ -3,7 +3,10 @@
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { NextStepHint } from './NextStepHint';
+
+const InviteFriendsPill = dynamic(() => import('./InviteFriendsPill'), { ssr: false });
 
 const MONO = 'var(--font-mono-display), ui-monospace, monospace';
 
@@ -61,6 +64,11 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
         >
           ← Back to globe
         </Link>
+        {/* Invite-friends pill — persistent across planning / booking /
+            itinerary / vault so the owner can pull collaborators in
+            without detouring through the chat panel. Pops an inline
+            email/username composer; lists current members. */}
+        <InviteFriendsPill />
         {/* Tabs centered between the back pill and the globe home icon. */}
         <div style={{ display: 'flex', gap: 28, flex: 1, alignItems: 'center', height: '100%' }}>
         {tabs.map(t => {
