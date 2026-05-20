@@ -65,19 +65,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId:     process.env.GOOGLE_CLIENT_ID  ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
       checks: ['none'],
+      // Google verifies email ownership before issuing the id_token, so it
+      // is safe to auto-link a Google sub to an existing User row that
+      // shares the email. Without this, the second-time user who first
+      // signed up via credentials (or Apple) is rejected with the cryptic
+      // OAuthAccountNotLinked error. Email collisions across providers
+      // would otherwise still be fine on Google because Google itself
+      // forbids two accounts sharing a verified email.
+      allowDangerousEmailAccountLinking: true,
       // Request gmail.readonly so the email-vault feature can poll the
-      // user's inbox for booking confirmations. access_type=offline +
-      // prompt=consent are both required to receive a refresh_token —
-      // without them Google only issues a 1h access_token and the user
-      // has to re-auth manually each session. select_account forces the
-      // Google account picker to show every sign-in so the user can
-      // switch accounts cleanly instead of Google silently reusing the
-      // last-authenticated account on the same browser.
+      // user's inbox for booking confirmations. access_type=offline is
+      // what triggers a refresh_token. We use prompt=select_account
+      // ALONE (not combined with consent) — Google's documented
+      // behavior for the combined string is inconsistent: with only one
+      // Google session active, the browser often skips the chooser. The
+      // refresh_token is still issued on first consent; subsequent
+      // sign-ins reuse the cached grant. authuser=-1 nudges Google to
+      // present the chooser even with cached cookies.
       authorization: {
         params: {
           scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
           access_type: 'offline',
-          prompt: 'select_account consent',
+          prompt: 'select_account',
+          authuser: '-1',
         },
       },
     }),
@@ -161,6 +171,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
+    // Block the "sign-in-while-signed-in attaches new OAuth sub to current
+    // session user" footgun. In JWT mode NextAuth silently calls
+    // adapter.linkAccount(..., userId: currentSessionUserId) when a fresh
+    // OAuth sub completes while a session cookie is still valid. That's how
+    // we ended up with one user owning two distinct Google subs in
+    // different Gmail accounts. We refuse the sign-in if a User already
+    // exists whose email matches the OAuth profile but whose id differs
+    // from what the OAuth account points at — forcing the client to retry
+    // after signOut(), at which point allowDangerousEmailAccountLinking
+    // takes the safe path.
+    async signIn({ user, account, profile }) {
+      if (!account || account.provider === 'credentials' || account.provider === 'native-handoff') return true;
+      const oauthEmail = (profile as { email?: string } | null)?.email ?? user?.email ?? null;
+      if (!oauthEmail) return true;
+      try {
+        const existing = await prisma.user.findUnique({ where: { email: oauthEmail }, select: { id: true } });
+        if (existing && user?.id && existing.id !== user.id) {
+          console.warn('[auth][signIn] cross-email link blocked', {
+            provider: account.provider,
+            oauthEmail,
+            adapterUserId: user.id,
+            existingUserId: existing.id,
+          });
+          return false;
+        }
+      } catch (e) {
+        console.error('[auth][signIn] cross-email check failed:', (e as Error).message);
+      }
+      return true;
+    },
+
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

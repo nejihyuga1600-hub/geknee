@@ -75,6 +75,14 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     setError('');
     setLoading(true);
     try {
+      // Always start OAuth from a clean session. Without this, NextAuth in
+      // JWT mode treats an OAuth completion as "link this new sub to the
+      // currently signed-in user" — which silently corrupted the Account
+      // table for a user trying to switch Gmail addresses. signOut clears
+      // the session cookie before we hand off to the provider; on the
+      // OAuth callback NextAuth then takes the create-or-find-by-email
+      // path instead of the link-to-current-user path.
+      await signOut({ redirect: false });
       // Capacitor native: open OAuth in SFSafariViewController / Custom Tabs.
       // Google/Apple/Microsoft all reject embedded WebViews (disallowed_useragent),
       // so we route through the system browser, complete the OAuth there, then
