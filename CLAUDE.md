@@ -1,6 +1,6 @@
 # geknee.com — Claude Code
 
-Next.js 16 + React 19 travel AI app. Globe-first UI with Three.js, Prisma + PostgreSQL, Stripe, Mapbox.
+Next.js 16 + React 19 travel AI app. Globe-first UI with Three.js, Prisma + PostgreSQL, Stripe, Google Maps Platform. AI agent's `lib/agent/tools/route_between.ts` still calls Mapbox Directions server-side; client surfaces are all Google Maps.
 
 ## Key directories
 - `app/` — Next.js App Router pages and API routes

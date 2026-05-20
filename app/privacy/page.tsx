@@ -65,7 +65,7 @@ export default function PrivacyPage() {
           <ul>
             <Li><b>Stripe</b> — payment processing. Subject to Stripe&apos;s privacy policy.</Li>
             <Li><b>Anthropic (Claude)</b> — powers the AI trip-planning chat. Trip prompts are sent to Anthropic&apos;s API per their data-use terms; we configure zero-retention where available.</Li>
-            <Li><b>Mapbox</b> — map tiles and location services for the planner UI.</Li>
+            <Li><b>Google Maps Platform</b> — map tiles, places autocomplete, geocoding, and directions across the planner UI.</Li>
             <Li><b>Vercel</b> — hosting, analytics (Speed Insights, Web Analytics), and edge infrastructure.</Li>
             <Li><b>PostHog</b> — product analytics and session replay (with input masking).</Li>
             <Li><b>Sentry</b> — error and performance monitoring.</Li>
