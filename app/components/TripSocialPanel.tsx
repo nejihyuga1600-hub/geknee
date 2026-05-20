@@ -7,6 +7,7 @@ import { track } from '@/lib/analytics';
 import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 
 const FileVault = dynamic(() => import('@/app/components/FileVault'), { ssr: false });
+const SuggestionsSection = dynamic(() => import('@/app/components/SuggestionsSection'), { ssr: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ interface TripDraft {
   startDate?: string | null; endDate?: string | null;
   nights?: number | null; notes?: string | null; updatedAt: string;
   style?: string | null;
+  userId?: string;
+  suggestionVoteMode?: 'advisory' | 'auto_majority';
 }
 
 interface Friend {
@@ -1254,16 +1257,28 @@ export default function TripSocialPanel({
               <div ref={chatEndRef} />
             </div>
 
-            {/* AI suggestions button */}
+            {/* AI suggestions: button to generate + inline list of pending
+                suggestions. Without the inline section, the button looked
+                broken — it generated suggestions on the server but the user
+                stayed in the chat panel and never saw them (SuggestionsSection
+                was previously only mounted on /plan/[tripId]/itinerary). */}
             {(() => {
-              const activeTripDbId = trips.find(t => t.location === activeGroup.location)?.id ?? null;
-              return CHAT_SUGGESTIONS_ENABLED && activeTripDbId ? (
-                <div style={{ padding: '0 14px 8px' }}>
+              const trip = trips.find(t => t.location === activeGroup.location);
+              const activeTripDbId = trip?.id ?? null;
+              if (!CHAT_SUGGESTIONS_ENABLED || !activeTripDbId || !userId) return null;
+              const isOwner = (trip?.userId ?? '') === userId;
+              const voteMode = trip?.suggestionVoteMode ?? 'advisory';
+              return (
+                <div style={{ padding: '0 14px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <button
                     onClick={async () => {
                       const res = await fetch(`/api/trips/${activeTripDbId}/suggest-from-chat`, { method: 'POST' });
                       if (res.status === 429) {
                         alert('Daily AI-suggestion limit reached. Try again tomorrow.');
+                        return;
+                      }
+                      if (res.status === 404) {
+                        alert('AI suggestions are disabled in this environment.');
                         return;
                       }
                       if (!res.ok) {
@@ -1272,13 +1287,18 @@ export default function TripSocialPanel({
                       }
                       window.dispatchEvent(new CustomEvent('suggestions:refresh'));
                     }}
-                    className="mb-2 w-full px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-400/30 text-amber-200 text-sm font-semibold hover:bg-amber-500/20"
                     style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#fde68a', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                   >
                     {String.fromCodePoint(0x2728)} Suggest itinerary changes
                   </button>
+                  <SuggestionsSection
+                    tripId={activeTripDbId}
+                    currentUserId={userId}
+                    isOwner={isOwner}
+                    voteMode={voteMode}
+                  />
                 </div>
-              ) : null;
+              );
             })()}
 
             {/* Chat input */}
