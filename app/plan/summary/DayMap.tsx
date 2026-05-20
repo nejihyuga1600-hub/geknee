@@ -6,6 +6,7 @@ import { DARK_STYLE } from '@/lib/googleMaps/darkStyle';
 import { createPurpleMarker, type PurpleMarker } from '@/lib/googleMaps/marker';
 import { drawRoute, modeUsesDirections, type RouteMode } from '@/lib/googleMaps/route';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
+import { streetViewSrc } from '@/lib/googleMaps/streetView';
 
 // Google Maps per-day map. Replaces the previous Mapbox implementation
 // (dark-v11 style, custom HTML markers, Mapbox Directions for walking route
@@ -77,6 +78,7 @@ export default function DayMap({
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<PurpleMarker[]>([]);
   const routeRef = useRef<google.maps.Polyline[]>([]);
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const unmountedRef = useRef(false);
   const loadKeyRef = useRef('');
 
@@ -133,6 +135,10 @@ export default function DayMap({
         gestureHandling: 'greedy',
       });
       mapRef.current = map;
+      // Single shared InfoWindow — reused across all pin clicks.
+      infoWindowRef.current = new google.maps.InfoWindow();
+      // Close InfoWindow when user clicks the map background.
+      map.addListener('click', () => infoWindowRef.current?.close());
       setMapReady(true);
     }).catch(() => {
       if (!cancelled) setReady(true);
@@ -314,7 +320,30 @@ export default function DayMap({
 
         // Pass the numbered circle as `content` so createPurpleMarker uses it
         // directly — no default dot is created, avoiding an orphaned DOM node.
-        const pm = createPurpleMarker(map, { lat: p.coords[1], lng: p.coords[0] }, { label: p.name, content: el });
+        const pinLat = p.coords[1];
+        const pinLng = p.coords[0];
+        const pm = createPurpleMarker(
+          map,
+          { lat: pinLat, lng: pinLng },
+          {
+            label: p.name,
+            content: el,
+            onClick: () => {
+              if (!infoWindowRef.current || !mapRef.current) return;
+              const svSrc = streetViewSrc(pinLat, pinLng, { size: '300x180' });
+              const content = `
+                <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:300px;">
+                  <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#1a1a2e;">${p.name}</div>
+                  <img src="${svSrc}" alt="${p.name} street view"
+                    width="300" height="180"
+                    style="width:100%;height:auto;border-radius:6px;display:block;background:linear-gradient(135deg,#1d2c4d 0%,#304a7d 100%);"
+                    onerror="this.style.display='none'" />
+                </div>`;
+              infoWindowRef.current.setContent(content);
+              infoWindowRef.current.open({ map: mapRef.current, anchor: pm.marker });
+            },
+          },
+        );
         markersRef.current.push(pm);
       });
 
