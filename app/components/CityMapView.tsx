@@ -238,8 +238,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
         google.maps.event.addListenerOnce(map, 'idle', () => {
           if (cancelled) return;
-          // Monument rings added in task 1.4; pin restore added in task 1.2
-          void monuments;
+          addMonumentRings(map, monuments);
           for (const pin of readDraft()) {
             dropPin(pin.lon, pin.lat, pin.label, { skipPersist: true });
           }
@@ -469,4 +468,22 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       })()}
     </div>
   );
+}
+
+// Monument rings drawn as Google Maps Circles around collected landmarks.
+// Radius 100m is visible at typical city zoom (12-18) and scales with zoom.
+function addMonumentRings(map: google.maps.Map, monuments: MonumentMarker[]) {
+  if (monuments.length === 0) return;
+  for (const mon of monuments) {
+    new google.maps.Circle({
+      map,
+      center: { lat: mon.lat, lng: mon.lon },
+      radius: 100, // metres — visible at zoom 12–18
+      strokeColor: mon.ringColor,
+      strokeOpacity: 0.9,
+      strokeWeight: 3,
+      fillOpacity: 0,
+      clickable: false,
+    });
+  }
 }
