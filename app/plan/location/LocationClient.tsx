@@ -507,21 +507,16 @@ function createEarthTexture(
   drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
     f => STATE_FILTER.has(f.properties.adm0_a3));
 
-  // ── Labels rendered as mesh, not baked ────────────────────────────────────
-  // Earlier passes baked country + city labels straight into the canvas
-  // texture so they rode the sphere with zero levitation. That broke the
-  // zoom-tier visibility rules — baked labels are part of the texture and
-  // cannot fade in/out per camera distance. Labels now go back through the
-  // <GeoLabels> + <CityLabels> mesh path, but positioned FLUSH at the
-  // sphere surface (radius R + tiny epsilon) with depthTest off, so they
-  // visually paint on the globe while still letting per-frame logic show
-  // or hide them by zoom tier.
-  //
-  // The bake block (~190 lines: bbox computation, abbreviation table,
-  // greedy declutter, paintLabel/paintLabelClean helpers) was removed in
-  // this commit. If we ever want zoom-tier baking back (multi-texture
-  // crossfade), the prior implementation is in the git history at c3592b1.
-  if (false as boolean && countriesGeo) {
+  // ── Labels baked into the earth texture (no z-offset, truly laminated) ────
+  // Country + city labels are painted directly onto the equirectangular
+  // canvas so the text rides the sphere surface when the texture is
+  // sampled. There is no Three.js mesh for these labels — they live in
+  // the same pixels as the biome fills and borders. Natural texture-
+  // sampling scaling gives a zoom-tier effect: city labels at small
+  // texel sizes become unreadable at far zoom and gradually reveal as
+  // the user zooms in, mimicking the previous floating-mesh popup-by-
+  // population behavior without per-frame mesh management.
+  if (countriesGeo) {
     // Pull GeKnee's UI font (Inter Tight, declared in app/layout.tsx as
     // var(--font-ui)) at bake time. Canvas font strings can't resolve CSS
     // variables, so we read the computed value from the document root and
@@ -636,18 +631,17 @@ function createEarthTexture(
       const sortedCities = [...cities]
         .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
         .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
-      // City fonts target ~25% smaller than the country MAX_FONT (22) so
-      // labels feel like a clear sub-hierarchy beneath country names.
-      // Log-population scaling on top still varies Tokyo vs Albuquerque
-      // within the range.
-      const CITY_MAX_FONT = 16 * SCALE_FACTOR;  // 0.75 × country MAX_FONT
-      const CITY_MIN_FONT = 8  * SCALE_FACTOR;  // 0.75 × country MIN_FONT
-      // Pin marker: white-filled circle with a dark rim. Cities have an
-      // exact coordinate, so a visible pin is the visual anchor — the
-      // text label is offset from this point. Bigger than the previous
-      // dot so the pin reads as "this is the place" from any zoom.
-      const DOT_R = 4.5 * SCALE_FACTOR;
-      const CITY_PAD = 4 * SCALE_FACTOR;
+      // City fonts trimmed another 25% on top of the prior "25% smaller
+      // than country" pass. Country MAX_FONT = 22; city MAX previously
+      // 16 (75% of country); now 12 (75% of that = 56% of country).
+      // Density tiers by log-population still rank Tokyo above Albuquerque.
+      const CITY_MAX_FONT = 12 * SCALE_FACTOR;
+      const CITY_MIN_FONT = 6  * SCALE_FACTOR;
+      // Pin marker shrunk 50% — the previous size was visually loud and
+      // competed with the text. 2.25 texel radius (4K canvas → 1.1 texel)
+      // is closer to a printed-map dot.
+      const DOT_R = 2.25 * SCALE_FACTOR;
+      const CITY_PAD = 3 * SCALE_FACTOR;
 
       for (const city of sortedCities) {
         if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
@@ -825,32 +819,32 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
 
   return (
     <group position={pos} quaternion={orientation}>
-      {/* Painted on globe — mesh Text positioned flush at sphere surface
-          via the caller's geoPos(lat, lon, R) and oriented tangent so it
-          reads on the surface rather than billboarding to the camera.
-          material-depthTest={false} + renderOrder lets the label draw on
-          top of the sphere mesh without z-fighting. Country labels go
-          weight-medium with no hard outline; state labels stay outlined
-          for legibility against the lighter biome variation. */}
-      <Text
-        fontSize={fontSize}
-        color={mobileActive ? "#ffe066" : "#ffffff"}
-        outlineWidth={kind === "country" ? 0 : fontSize * 0.5}
-        outlineColor="#000000"
-        outlineOpacity={kind === "country" ? 0 : 0.55}
-        outlineBlur={kind === "country" ? fontSize * 0.5 : fontSize * 0.85}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={kind === "country" ? 0.06 : 0.04}
-        sdfGlyphSize={128}
-        renderOrder={2}
-        material-side={THREE.FrontSide}
-        material-depthTest={false}
-        material-depthWrite={false}
-        material-toneMapped={false}
-      >
-        {name.toUpperCase()}
-      </Text>
+      {/* Country labels are baked into the earth canvas texture (see the
+          label pass in createEarthTexture) — they're painted on the globe
+          surface with no z-axis offset. We only keep this <group> for the
+          invisible click sprite below that opens the Wikipedia info card.
+          State labels stay as a mesh until we bake them too. */}
+      {kind === "state" && (
+        <Text
+          fontSize={fontSize}
+          color={mobileActive ? "#ffe066" : "#ffffff"}
+          outlineWidth={fontSize * 0.5}
+          outlineColor="#000000"
+          outlineOpacity={0.55}
+          outlineBlur={fontSize * 0.85}
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={0.04}
+          sdfGlyphSize={128}
+          renderOrder={2}
+          material-side={THREE.FrontSide}
+          material-depthTest={false}
+          material-depthWrite={false}
+          material-toneMapped={false}
+        >
+          {name.toUpperCase()}
+        </Text>
+      )}
 
       {showCard && (
         <Html as="div" zIndexRange={[0, 0]} style={{ pointerEvents: "none", width: 0, height: 0 }}>
@@ -1055,15 +1049,16 @@ function GeoLabels({ countries, states, zoomLevel }: {
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < minDeg) minDeg = deg;
       }
-      // Country labels target ~75% smaller than the original 0.22 mesh
-      // base (which was set when labels still levitated and needed to
-      // shout across the gap). Now that labels paint flush at the
-      // surface they read fine at 0.055 in world units. State labels
-      // get a proportional shrink down to 0.035. Density-driven minimum
-      // floors stay relative so labels still survive close-zoom crush.
-      const base = it.kind === "country" ? 0.055 : 0.035;
+      // Country labels are baked into the texture; the fontSize value
+      // here is unused for the country render path but still consumed
+      // by GeoInfoLabel's invisible click sprite for sizing the
+      // hitbox, so we keep it around. State labels are still mesh-rendered
+      // and target 25% smaller than the equivalent rendered country
+      // label (baked country MAX_FONT 22 texels ≈ 0.169 world units →
+      // states at 0.127). Density crush floor stays proportional.
+      const base = it.kind === "country" ? 0.169 : 0.127;
       const thr  = it.kind === "country" ? 18    : 12;
-      const min  = it.kind === "country" ? 0.030 : 0.022;
+      const min  = it.kind === "country" ? 0.090 : 0.080;
       const fontSize = minDeg >= thr ? base : Math.max(min, base * (minDeg / thr));
       return { ...it, fontSize };
     });
@@ -1071,8 +1066,17 @@ function GeoLabels({ countries, states, zoomLevel }: {
 
   return (
     <>
-      {visibleWithSize.map(({ key, name, pos, lat, lon, kind, orientation, fontSize, isInfoLabel }) => (
-        isInfoLabel
+      {visibleWithSize.map(({ key, name, pos, lat, lon, kind, orientation, fontSize, isInfoLabel }) => {
+        // Country labels are baked into the texture. Only render mesh
+        // Text for STATES (not yet baked). GeoInfoLabel still mounts
+        // for countries so the click-hitbox + info-card flow continues
+        // to work; its own Text is gated on kind === "state".
+        if (kind === "country") {
+          return isInfoLabel
+            ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
+            : null;
+        }
+        return isInfoLabel
           ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
           : (
             <Text
@@ -1081,13 +1085,13 @@ function GeoLabels({ countries, states, zoomLevel }: {
               quaternion={orientation}
               fontSize={fontSize}
               color="#ffffff"
-              outlineWidth={kind === "country" ? 0 : fontSize * 0.5}
+              outlineWidth={fontSize * 0.5}
               outlineColor="#000000"
-              outlineOpacity={kind === "country" ? 0 : 0.55}
-              outlineBlur={kind === "country" ? fontSize * 0.5 : fontSize * 0.85}
+              outlineOpacity={0.55}
+              outlineBlur={fontSize * 0.85}
               anchorX="center"
               anchorY="middle"
-              letterSpacing={kind === "country" ? 0.06 : 0.04}
+              letterSpacing={0.04}
               sdfGlyphSize={128}
               renderOrder={2}
               material-side={THREE.FrontSide}
@@ -1097,8 +1101,8 @@ function GeoLabels({ countries, states, zoomLevel }: {
             >
               {name.toUpperCase()}
             </Text>
-          )
-      ))}
+          );
+      })}
     </>
   );
 }
@@ -2110,40 +2114,36 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
       </line>
     )}
     <group position={pos} quaternion={orientation}>
-      {/* White pin marker — small flat disk facing outward from the
-          sphere, anchored at the city's exact coordinate. Sits behind
-          the label text in render order so the label doesn't get
-          knocked over by the disk's outline. Rendered with depthTest
-          off so it always reads on top of the globe regardless of the
-          camera angle. */}
-      <mesh renderOrder={2}>
-        <circleGeometry args={[fontSize * 0.34, 16]} />
-        <meshBasicMaterial color="#ffffff" depthTest={false} depthWrite={false} transparent opacity={0.95} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 0, -0.0001]} renderOrder={1}>
-        <circleGeometry args={[fontSize * 0.42, 16]} />
-        <meshBasicMaterial color="#000000" depthTest={false} depthWrite={false} transparent opacity={0.7} toneMapped={false} />
-      </mesh>
-      <group ref={textGroupRef} position={[0, fontSize * 1.1, 0]}>
-        <Text
-          fontSize={fontSize}
-          color={mobileActive ? "#ffe066" : "#ffffff"}
-          outlineWidth={fontSize * 0.45}
-          outlineColor="#000000"
-          outlineOpacity={0.55}
-          outlineBlur={fontSize * 0.6}
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={0.01}
-          sdfGlyphSize={128}
-          renderOrder={3}
-          material-depthWrite={false}
-          material-depthTest={false}
-          material-side={THREE.FrontSide}
-          material-toneMapped={false}
-        >
-          {n}
-        </Text>
+      {/* Tier 1 + 2 cities are baked into the earth texture (white pin
+          + label) by createEarthTexture's label pass. We only keep this
+          <group> for the click sprite below; the floating Text + pin
+          meshes here are tier-3-only so the GeoNames long-tail extras
+          still show at higher zoom (those aren't baked because 33K
+          features would blow the texture build budget). */}
+      <group ref={textGroupRef}>
+      {tier === 3 && (
+        <>
+          <Text
+            fontSize={fontSize}
+            color={mobileActive ? "#ffe066" : "#ffffff"}
+            outlineWidth={fontSize * 0.45}
+            outlineColor="#000000"
+            outlineOpacity={0.55}
+            outlineBlur={fontSize * 0.6}
+            anchorX="center"
+            anchorY="middle"
+            letterSpacing={0.01}
+            sdfGlyphSize={128}
+            renderOrder={3}
+            material-depthWrite={false}
+            material-depthTest={false}
+            material-side={THREE.FrontSide}
+            material-toneMapped={false}
+          >
+            {n}
+          </Text>
+        </>
+      )}
       </group>
 
       {showCard && (
