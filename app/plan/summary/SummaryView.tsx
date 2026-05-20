@@ -372,7 +372,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // bookmarks change (after hydration has run for the current key).
   const bookmarksKey = `geknee:bookmarks:${location || 'default'}`;
   const baselineKey  = `geknee:bookmark-baseline:${location || 'default'}`;
-  // Pin-draft handoff: the globe → city Mapbox view writes to
+  // Pin-draft handoff: the globe → city map view writes to
   // geknee:pin-draft:<cityname-lowercase>. Pull those in as bookmarks the
   // first time the user lands on the planner for that city. Each draft
   // pin becomes a single 'other'-category bookmark, prefixed in the id so

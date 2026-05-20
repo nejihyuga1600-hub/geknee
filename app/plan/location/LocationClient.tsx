@@ -2864,9 +2864,9 @@ function GlobeScene() {
       window.dispatchEvent(new CustomEvent("geknee:camdist", { detail: { camDist: rounded } }));
     }
 
-    // Mapbox entry is now an explicit two-tap on the city card (Open map button)
+    // City map entry is now an explicit two-tap on the city card (Open map button)
     // rather than a zoom-distance trigger — the implicit zoom kept firing when
-    // users were just exploring close-up. See memory: project_planner_mapbox_entry.
+    // users were just exploring close-up.
   });
 
   // Key encodes loaded assets so Three.js recreates the material on each upgrade

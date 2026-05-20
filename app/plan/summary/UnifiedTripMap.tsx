@@ -391,7 +391,7 @@ export default function UnifiedTripMap({
   // Build the candidate place list per day, in chronological order.
   // Walk lines in order so we can capture each activity's transit-mode-
   // to-next (the emoji line that follows the headline). That lets the
-  // route polylines pick the right Mapbox profile per leg.
+  // route polylines pick the right Google Directions mode per leg.
   const pins = useMemo<PlacePin[]>(() => {
     const out: PlacePin[] = [];
     daySections.forEach((entry, dayIdx) => {

@@ -176,12 +176,12 @@ export function extractActivityCandidates(headline: string, details: string[] = 
   return out;
 }
 
-// Mapbox Directions profile that matches the transit emoji the LLM emits
+// Google Directions travel mode that matches the transit emoji the LLM emits
 // in its activity transitions. The prompt instructs the model to lead each
 // transit line with one of: 🚶 walk · 🚴 bike · 🚇 subway · 🚌 bus · 🚂🚆 train ·
-// 🚕🚖 taxi · ✈️🛩🛬 flight · ⛵ ferry. Mapbox doesn't have transit/flight/
-// ferry routing, so those collapse to the closest road-based equivalent
-// (driving) or null (no route possible at all).
+// 🚕🚖 taxi · ✈️🛩🛬 flight · ⛵ ferry. Google Directions covers walk/bike/
+// drive/transit; flight + ferry have no routing equivalent so they collapse
+// to a straight-line polyline (drawRoute with { dashed: true, geodesic: true }).
 export type TransitMode = 'walking' | 'cycling' | 'driving' | null;
 
 const _MODE_FROM_EMOJI: Record<string, TransitMode> = {

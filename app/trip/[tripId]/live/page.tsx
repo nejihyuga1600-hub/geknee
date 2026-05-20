@@ -14,7 +14,7 @@ import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
 // flanked by next-stop / weather / crowds context cards and a horizontal
 // day-timeline strip. v0: shipping the visual surface with realistic mock
-// data; geolocation, Mapbox Directions ETA, and Google Places popular-times
+// data; geolocation, Google Directions ETA, and Google Places popular-times
 // hookups land in follow-ups.
 
 interface TripData {

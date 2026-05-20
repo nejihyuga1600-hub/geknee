@@ -1,6 +1,6 @@
 "use client";
 // Decorative cartoon globe for the marketing landing hero. Deliberately
-// lighter than PublicGlobe — no monuments, no Mapbox, no interaction —
+// lighter than PublicGlobe — no monuments, no city map, no interaction —
 // so the home page first-paint stays snappy. The planner is where the
 // heavy globe lives; this is a teaser.
 

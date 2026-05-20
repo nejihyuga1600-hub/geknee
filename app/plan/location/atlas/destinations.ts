@@ -1,6 +1,6 @@
 // Atlas v0 destination resolver. Matches a typed destination string against
 // the monument catalog so Step 0 can record a location without a real
-// geocoder. Mapbox geocoding lands later — for v0, popular landmarks cover
+// geocoder. Full Google Places Autocomplete lives in CityMapView; this list
 // 80% of the search intent and unmatched strings still pass through as
 // free-text destinations (lat/lon left null).
 

@@ -47,7 +47,7 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
 };
 
 // Raw lat/lon for each collectable monument. Consumed by:
-//   - CityMapView (Mapbox ring overlays at real coords)
+//   - CityMapView (Google Maps Circle overlays at real coords)
 //   - /u/[handle] profile page (labels)
 //   - Future: creator geolocation verification
 export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
@@ -86,7 +86,7 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
 };
 
 // Rarity tier colors — used by the ring around collected monuments on the
-// globe and by the ring overlay on Mapbox.
+// globe and by the Google Maps Circle ring overlay in CityMapView.
 export const SKIN_RING_COLOR: Record<string, string> = {
   stone: '#808080',
   bronze: '#cd7f32',

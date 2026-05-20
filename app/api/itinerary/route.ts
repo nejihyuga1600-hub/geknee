@@ -390,7 +390,7 @@ export async function POST(req: Request) {
 //     hundred ms later than the legacy path; the heartbeat covers it.
 //   - Restaurants / venues are grounded in real Google Places hits
 //     instead of model recall.
-//   - Transit times come from real Mapbox routing.
+//   - Transit times come from real Google Directions routing on the client (the server-side route_between agent tool still uses Mapbox until Phase 5 ships).
 async function runViaAgent(body: TripParams, userId: string): Promise<Response> {
   const encoder = new TextEncoder();
   let accumulated = "";

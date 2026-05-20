@@ -1,7 +1,7 @@
 "use client";
 // Read-only spectator globe for public profile pages. Composes the split
 // globe modules (AllLandmarks + Lm + skins bridge) but strips everything
-// that belongs to the planner: no Mapbox swap, no animals, no city labels,
+// that belongs to the planner: no city map swap, no animals, no city labels,
 // no trip flow, no unlock celebration triggering. Visitors can pan/zoom
 // to inspect what the owner has collected, period.
 
@@ -78,7 +78,7 @@ export default function PublicGlobe({ collected, focusMk }: { collected: Collect
       <directionalLight position={[10, 8, 12]} intensity={0.9} />
       <Stars radius={140} depth={60} count={4000} factor={4} saturation={0} fade speed={0.3} />
 
-      {/* Cartoon-globe planet — no Mapbox/terrain, this is a spectator view. */}
+      {/* Cartoon-globe planet — no satellite tiles or terrain, this is a spectator view. */}
       <Sphere args={[10, 96, 96]}>
         <meshStandardMaterial color="#3a7bd5" roughness={0.7} metalness={0.05} />
       </Sphere>
