@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import BudgetTracker from './BudgetTracker';
@@ -470,10 +468,21 @@ export default function LiveTripPage() {
 
       {/* ── Map area (2D Google Maps, centered on selected day) ─────────── */}
       <div style={{ padding: '0 22px', position: 'relative' }}>
+        {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            display: 'grid', placeItems: 'center',
+            color: 'var(--brand-ink-mute)', fontSize: 12, padding: 24, textAlign: 'center',
+            background: 'var(--brand-bg2)',
+          }}>
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY not set — map preview disabled.
+          </div>
+        )}
         <GoogleLiveMap
           city={trip?.location ?? null}
           activities={activities}
           dayKey={selectedDay}
+          geo={geo}
           onMapClick={(coords) => {
             setAddStopCoords(coords);
             setAddStopOpen(true);
@@ -604,272 +613,6 @@ export default function LiveTripPage() {
   );
 }
 
-// ─── Live Map ───────────────────────────────────────────────────────────────
-
-function LiveMap({ city, geo, weather, activities }: { city: string | null; geo: Geo | null; weather: DayWeather | null; activities: Activity[] }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const youAreHereRef = useRef<mapboxgl.Marker | null>(null);
-  const stopMarkersRef = useRef<mapboxgl.Marker[]>([]);
-
-  useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token || !containerRef.current) return;
-    mapboxgl.accessToken = token;
-
-    // Prefer geolocation; fall back to Kyoto until both city geocode and
-    // geolocation arrive.
-    const initialCenter: [number, number] = geo ? [geo.lon, geo.lat] : [135.768, 35.0116];
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: initialCenter,
-      zoom: 13,
-      pitch: 0,
-      attributionControl: false,
-    });
-    mapRef.current = map;
-    map.on('load', () => {
-      // Per-leg route source — same shape as DayMap so the per-leg color
-      // logic and per-mode Directions fetching ports straight over.
-      map.addSource('live-route', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-      map.addLayer({
-        id: 'live-route-line',
-        type: 'line',
-        source: 'live-route',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': [
-            'match', ['coalesce', ['get', 'mode'], 'unknown'],
-            'walking',  '#a78bfa',
-            'cycling',  '#34d399',
-            'driving',  '#fbbf24',
-            /* default */ '#a78bfa',
-          ],
-          'line-width': 4,
-          'line-opacity': 0.85,
-        },
-      });
-    });
-    return () => {
-      youAreHereRef.current?.remove();
-      youAreHereRef.current = null;
-      stopMarkersRef.current.forEach(m => m.remove());
-      stopMarkersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  // Mounted once; recenter via the effect below as geo arrives.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Recenter and drop / move the "you are here" pulsing marker as the
-  // browser geolocation resolves.
-  useEffect(() => {
-    if (!mapRef.current || !geo) return;
-    mapRef.current.flyTo({ center: [geo.lon, geo.lat], zoom: 14, duration: 1200 });
-    if (!youAreHereRef.current) {
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 18px; height: 18px; border-radius: 50%;
-        background: var(--brand-success);
-        box-shadow: 0 0 0 4px rgba(124,255,151,0.25), 0 0 18px rgba(124,255,151,0.55);
-        animation: livePulse 1.6s ease-in-out infinite;
-      `;
-      youAreHereRef.current = new mapboxgl.Marker({ element: el })
-        .setLngLat([geo.lon, geo.lat])
-        .addTo(mapRef.current);
-    } else {
-      youAreHereRef.current.setLngLat([geo.lon, geo.lat]);
-    }
-  }, [geo]);
-
-  // Drop a numbered pin at every activity stop AND draw a Mapbox-routed
-  // line from "you are here" → next stop → following stops. Uses the same
-  // multi-strategy geocoder + per-leg directions pipeline as the planning
-  // DayMap so routes follow streets, not arbitrary diagonals.
-  useEffect(() => {
-    if (!mapRef.current || !city) return;
-    let cancelled = false;
-    const map = mapRef.current;
-
-    async function geocode(addr: string): Promise<[number, number] | null> {
-      try {
-        const r = await fetch(`/api/geocode?address=${encodeURIComponent(addr)}`);
-        if (r.ok) {
-          const c = await r.json() as { lat: number; lng: number } | null;
-          if (c) return [c.lng, c.lat];
-        }
-      } catch { /* fall through */ }
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (!token) return null;
-      try {
-        const u = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${token}&limit=1`;
-        const r = await fetch(u);
-        if (!r.ok) return null;
-        const d = await r.json() as { features?: Array<{ center: [number, number] }> };
-        return d.features?.[0]?.center ?? null;
-      } catch { return null; }
-    }
-
-    async function resolve(name: string, anchor: [number, number]): Promise<[number, number] | null> {
-      const tries = [`${name}, ${city}`, `${name}`];
-      for (const q of tries) {
-        const c = await geocode(q);
-        if (c && Math.abs(c[1] - anchor[1]) < 0.6 && Math.abs(c[0] - anchor[0]) < 0.9) return c;
-      }
-      return null;
-    }
-
-    (async () => {
-      stopMarkersRef.current.forEach(m => m.remove());
-      stopMarkersRef.current = [];
-      const src = map.getSource('live-route') as mapboxgl.GeoJSONSource | undefined;
-      src?.setData({ type: 'FeatureCollection', features: [] });
-
-      const cityCoords = await geocode(city);
-      if (cancelled || !cityCoords) return;
-      const anchor: [number, number] = geo ? [geo.lon, geo.lat] : cityCoords;
-
-      const placeNames = activities.map(a => a.place).filter((p): p is string => !!p);
-      const resolved = (await Promise.all(placeNames.map(n => resolve(n, anchor))))
-        .map((c, i) => c ? { name: placeNames[i], coords: c } : null)
-        .filter((p): p is { name: string; coords: [number, number] } => !!p);
-      if (cancelled || resolved.length === 0) return;
-
-      // Pin every resolved activity. Smaller + semi-transparent so
-      // overlapping pins stay readable. First one (next-up) gets a
-      // subtle bump so it's still spottable; quest-like stops swap to
-      // gold while everything else stays in the purple theme.
-      resolved.forEach((p, i) => {
-        const isMonument = /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(p.name);
-        const isFirst = i === 0;
-        const baseRGB = isMonument ? '251, 191, 36' : '167, 139, 250';
-        const fillAlpha = isFirst ? 0.92 : 0.72;
-        const borderAlpha = isFirst ? 0.95 : 0.55;
-        const size = isFirst ? 22 : 18;
-
-        const el = document.createElement('div');
-        el.style.cssText = `
-          width: ${size}px; height: ${size}px; border-radius: 50%;
-          background: rgba(${baseRGB}, ${fillAlpha});
-          color: #0a0a1f; font-weight: 700; font-size: ${isFirst ? 11 : 10}px;
-          display: flex; align-items: center; justify-content: center;
-          border: 1.5px solid rgba(13,13,36,${borderAlpha});
-          box-shadow: 0 1px 6px rgba(0,0,0,0.35);
-          font-family: var(--font-ui, system-ui), sans-serif;
-        `;
-        el.textContent = String(i + 1);
-        const m = new mapboxgl.Marker({ element: el }).setLngLat(p.coords).addTo(map);
-        stopMarkersRef.current.push(m);
-      });
-
-      // Build the legged route: "you are here" (if available) → first stop
-      // → second → ... Walking profile because live-trip context is almost
-      // always a pedestrian-radius decision.
-      const legPath: [number, number][] = [];
-      if (geo) legPath.push([geo.lon, geo.lat]);
-      legPath.push(...resolved.map(p => p.coords));
-
-      type LegFeature = GeoJSON.Feature<GeoJSON.LineString, { mode: string; legIdx: number }>;
-      const features: LegFeature[] = [];
-      for (let i = 0; i < legPath.length - 1; i++) {
-        features.push({
-          type: 'Feature',
-          properties: { mode: 'walking', legIdx: i },
-          geometry: { type: 'LineString', coordinates: [legPath[i], legPath[i + 1]] },
-        });
-      }
-      src?.setData({ type: 'FeatureCollection', features });
-
-      // Upgrade each leg to a routed walking path, fire-and-forget.
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (token) {
-        for (let i = 0; i < features.length; i++) {
-          const a = legPath[i], b = legPath[i + 1];
-          const u = `https://api.mapbox.com/directions/v5/mapbox/walking/${a[0]},${a[1]};${b[0]},${b[1]}?access_token=${token}&geometries=geojson&overview=full`;
-          fetch(u)
-            .then(r => r.ok ? r.json() as Promise<{ routes?: { geometry: { coordinates: [number, number][] } }[] }> : null)
-            .then(d => {
-              // No cancelled-guard — same React re-render trap as DayMap;
-              // bailing on cancelled was throwing away every routed leg.
-              const routed = d?.routes?.[0]?.geometry?.coordinates;
-              if (!routed || routed.length === 0) return;
-              const stillSrc = mapRef.current?.getSource('live-route') as mapboxgl.GeoJSONSource | undefined;
-              if (!stillSrc) return;
-              features[i] = {
-                type: 'Feature',
-                properties: { mode: 'walking', legIdx: i },
-                geometry: { type: 'LineString', coordinates: routed },
-              };
-              stillSrc.setData({ type: 'FeatureCollection', features: [...features] });
-            })
-            .catch(() => { /* keep straight */ });
-        }
-      }
-
-      // Fit bounds to all pins + you-are-here.
-      const bounds = new mapboxgl.LngLatBounds();
-      legPath.forEach(c => bounds.extend(c));
-      map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 700 });
-    })();
-
-    return () => { cancelled = true; };
-  }, [activities, city, geo]);
-
-  void weather;
-
-  const tokenMissing = !process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <div ref={containerRef} style={{
-        width: '100%',
-        height: 'min(56vh, 480px)',
-        background: 'var(--brand-bg2)',
-        borderBottom: '1px solid var(--brand-border)',
-      }} />
-      {tokenMissing && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'grid', placeItems: 'center',
-          color: 'var(--brand-ink-mute)', fontSize: 12, padding: 24, textAlign: 'center',
-        }}>
-          NEXT_PUBLIC_MAPBOX_TOKEN not set — map preview disabled.
-        </div>
-      )}
-
-      {/* Floating overlays — desktop only (hidden on narrow screens) */}
-      <div style={{
-        position: 'absolute', top: 16, right: 16,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        pointerEvents: 'none',
-      }}>
-        <MiniWeatherCard weather={weather} />
-        <MiniTransitCard />
-      </div>
-
-      {/* NEXT label-pill above the next stop pin (mocked centered) */}
-      <div style={{
-        position: 'absolute', top: '40%', left: '50%',
-        transform: 'translate(-50%, -100%)',
-        background: 'var(--brand-accent)',
-        color: 'var(--brand-bg)',
-        padding: '6px 12px', borderRadius: 999,
-        fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-        fontWeight: 700,
-        whiteSpace: 'nowrap',
-        boxShadow: '0 4px 16px rgba(167,139,250,0.4)',
-        pointerEvents: 'none',
-      }}>
-        NEXT · TEA CEREMONY · 14 MIN
-      </div>
-    </div>
-  );
-}
 
 function MiniWeatherCard({ weather }: { weather: DayWeather | null }) {
   const tempC = weather ? Math.round((weather.tempMin + weather.tempMax) / 2) : null;

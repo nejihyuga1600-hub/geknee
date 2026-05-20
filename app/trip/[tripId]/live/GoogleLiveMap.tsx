@@ -31,6 +31,9 @@ interface GoogleLiveMapProps {
   /** Day number being shown — used as a remount key so each day's geocoding
       pass starts clean. */
   dayKey?: number;
+  /** User's current geolocation. When provided, a pulsing "You are here"
+      marker is shown and the map re-centers on it. */
+  geo?: { lat: number; lon: number } | null;
   /** Fired when the user clicks an empty spot on the map. Coords are passed
       so the parent can open the add-stop modal pre-seeded with a reverse-
       geocoded place suggestion. */
@@ -85,11 +88,13 @@ function pinIcon(n: number): google.maps.Icon {
   };
 }
 
-export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLiveMapProps) {
+export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick }: GoogleLiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  // "You are here" pulsing marker, moved / created as geo arrives.
+  const youAreHereRef = useRef<google.maps.Marker | null>(null);
   // Ref the click callback so we don't have to re-init the map when the
   // parent's onMapClick identity changes. The listener reads .current.
   const onMapClickRef = useRef(onMapClick);
@@ -137,6 +142,8 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
       });
     return () => {
       cancelled = true;
+      youAreHereRef.current?.setMap(null);
+      youAreHereRef.current = null;
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       polylineRef.current?.setMap(null);
@@ -160,6 +167,49 @@ export function GoogleLiveMap({ city, activities, dayKey, onMapClick }: GoogleLi
       strokeColor: colorScheme === 'light' ? '#7c5cf0' : '#a78bfa',
     });
   }, [colorScheme]);
+
+  // Recenter and place/move the pulsing "You are here" marker whenever the
+  // browser geolocation updates. The animation is a CSS keyframe injected
+  // once via a <style> tag on the marker element's ownerDocument.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !geo) return;
+    map.panTo({ lat: geo.lat, lng: geo.lon });
+
+    if (!youAreHereRef.current) {
+      const el = document.createElement('div');
+      el.style.cssText = [
+        'width:18px', 'height:18px', 'border-radius:50%',
+        'background:var(--brand-success,#7cff97)',
+        'box-shadow:0 0 0 4px rgba(124,255,151,0.25),0 0 18px rgba(124,255,151,0.55)',
+        'animation:livePulse 1.6s ease-in-out infinite',
+      ].join(';');
+      // Inject keyframes once into the document so the CSS animation works.
+      if (!document.getElementById('__glm-pulse-kf')) {
+        const s = document.createElement('style');
+        s.id = '__glm-pulse-kf';
+        s.textContent = '@keyframes livePulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:0.5}}';
+        document.head.appendChild(s);
+      }
+      youAreHereRef.current = new google.maps.Marker({
+        position: { lat: geo.lat, lng: geo.lon },
+        map,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+            '<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' width=\'24\' height=\'24\'>' +
+            '<circle cx=\'12\' cy=\'12\' r=\'9\' fill=\'rgba(124,255,151,0.9)\' stroke=\'#fff\' stroke-width=\'2\'/>' +
+            '<circle cx=\'12\' cy=\'12\' r=\'3\' fill=\'#0a1f12\'/>' +
+            '</svg>'),
+          scaledSize: new google.maps.Size(24, 24),
+          anchor: new google.maps.Point(12, 12),
+        },
+        title: 'You are here',
+        zIndex: 200,
+      });
+    } else {
+      youAreHereRef.current.setPosition({ lat: geo.lat, lng: geo.lon });
+    }
+  }, [geo]);
 
   // Re-geocode + re-render markers whenever the day or activities list
   // changes. Each iteration clears the previous markers/polyline first so
