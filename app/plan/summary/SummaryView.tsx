@@ -2345,6 +2345,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                       weatherUnit={weatherUnit}
                       replanning={replanningSection === sectionIdx}
                       onReplan={() => handleReplan(sectionIdx)}
+                      tripId={savedTripDbId ?? undefined}
                     />
                   );
                 })}

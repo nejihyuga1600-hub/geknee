@@ -473,3 +473,33 @@ model ChatSuggestUsage {
   @@unique([userId, tripId, day])
   @@index([day])
 }
+
+// ── Per-item votes on a trip (destinations + bookings) ────────────────────────
+// One row per (trip, voter, item). itemKey is a stable identifier:
+//   - For bookings: the booking's id from trip.bookingSuggestions JSON
+//     (hotel / flight / activity / transport row id).
+//   - For itinerary stops: a short content-hash of "<day>::<stop text>"
+//     since trip.itinerary is currently a markdown blob with no per-stop
+//     ids. The client computes the hash; if the stop text edits, the
+//     old votes naturally drop off (different itemKey).
+// direction is 1 (up) or -1 (down). Voting again with the same direction
+// removes the vote (toggle); voting the opposite direction switches it.
+model TripItemVote {
+  id        String   @id @default(cuid())
+  tripId    String
+  userId    String
+  itemKey   String   // see model docs
+  direction Int      // 1 | -1
+  // Display metadata so the chat-ping message can mention the right thing
+  // without having to re-parse the booking JSON or itinerary markdown.
+  // Kind tells the API which prefix to use ('Booking' vs 'Day N') and
+  // label is the short human name shown in the ping.
+  kind      String   // 'booking' | 'stop'
+  day       Int?     // 1-based day number for itinerary stops; null for bookings
+  label     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, userId, itemKey])
+  @@index([tripId, itemKey])
+}

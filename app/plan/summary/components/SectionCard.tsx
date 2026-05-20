@@ -9,6 +9,31 @@ import { DayImages } from './DayImages';
 import { extractDayNumber, stripDayPrefix, groupLines, type Section } from '../lib/itinerary-parse';
 import { extractActivityPlace, extractActivityCandidates, extractTransitMode, type TransitMode } from '../lib/places';
 import type { EditTarget, RouteStop } from '../lib/types';
+import VoteButtons from '@/app/components/VoteButtons';
+
+// FNV-1a 32-bit content hash. The itinerary is stored as markdown so there's
+// no per-stop id; we hash "<day>::<headline>" to get a stable voteKey for
+// each stop. Editing the stop text → different key → old votes naturally
+// fall off, which is the right behavior for "the plan changed."
+function stopHash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+// Strip markdown bold + time prefix so the chat-ping label is human-readable.
+// "**9:00 AM** Tour the Eiffel Tower" → "Tour the Eiffel Tower".
+function cleanStopLabel(headline: string): string {
+  return headline
+    .replace(/\*\*\d{1,2}:\d{2}\s*[AP]M\*\*/i, '')
+    .replace(/\*\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+}
 
 export interface SectionCardProps {
   section: Section;
@@ -26,12 +51,16 @@ export interface SectionCardProps {
   weatherUnit: 'C' | 'F';
   replanning: boolean;
   onReplan: () => void;
+  // Saved trip id used for the per-stop vote control. When absent, the
+  // votes UI is hidden — unsaved/exploration trips have no chat to ping
+  // and no row to attach votes to anyway.
+  tripId?: string;
 }
 
 export function SectionCard({
   section, sectionIdx, editTarget, editValue,
   onStartEdit, onEditChange, onCommit, onCancel, onAskGenie, location, allStops,
-  weatherDays, weatherUnit, replanning, onReplan,
+  weatherDays, weatherUnit, replanning, onReplan, tripId,
 }: SectionCardProps) {
   const dayNum = extractDayNumber(section.heading);
   const isDay  = dayNum !== null;
@@ -111,22 +140,39 @@ export function SectionCard({
     }
     return groups.map(group =>
       group.type === 'activity' ? (
-        <ActivityBlock
-          key={group.headlineIdx}
-          group={group}
-          sectionIdx={sectionIdx}
-          editTarget={editTarget}
-          editValue={editValue}
-          onStartEdit={onStartEdit}
-          onEditChange={onEditChange}
-          onCommit={onCommit}
-          onCancel={onCancel}
-          onAskGenie={onAskGenie}
-          city={mapLocation}
-          activityNumber={activityNumberMap.get(group.headlineIdx)}
-          nextActivityNumber={nextActivityNumberMap.get(group.headlineIdx)}
-          dayNumber={dayNum ?? undefined}
-        />
+        <div key={group.headlineIdx}>
+          <ActivityBlock
+            group={group}
+            sectionIdx={sectionIdx}
+            editTarget={editTarget}
+            editValue={editValue}
+            onStartEdit={onStartEdit}
+            onEditChange={onEditChange}
+            onCommit={onCommit}
+            onCancel={onCancel}
+            onAskGenie={onAskGenie}
+            city={mapLocation}
+            activityNumber={activityNumberMap.get(group.headlineIdx)}
+            nextActivityNumber={nextActivityNumberMap.get(group.headlineIdx)}
+            dayNumber={dayNum ?? undefined}
+          />
+          {tripId && isDay && dayNum !== null && (() => {
+            const cleanLabel = cleanStopLabel(group.headline);
+            const itemKey = `stop:${dayNum}:${stopHash(cleanLabel)}`;
+            return (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 4px 12px 4px' }}>
+                <VoteButtons
+                  tripId={tripId}
+                  itemKey={itemKey}
+                  kind="stop"
+                  label={cleanLabel}
+                  day={dayNum}
+                  compact
+                />
+              </div>
+            );
+          })()}
+        </div>
       ) : (
         <EditableLine
           key={group.idx}

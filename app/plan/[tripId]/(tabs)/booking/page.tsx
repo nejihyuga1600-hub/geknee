@@ -68,8 +68,9 @@ export default function BookingTabPage() {
       endDate:       trip.endDate ?? '',
       nights:        trip.nights ? String(trip.nights) : '',
       fullItinerary: trip.itinerary ?? undefined,
+      tripId,
     };
-  }, [trip, stylePrefs]);
+  }, [trip, stylePrefs, tripId]);
 
   if (error) {
     return (

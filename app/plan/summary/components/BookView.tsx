@@ -10,6 +10,7 @@ import {
 } from '@/lib/userHome';
 import { AIRPORT_COORDS } from '@/lib/airport-coords';
 import { track } from '@/lib/analytics';
+import VoteButtons from '@/app/components/VoteButtons';
 
 // Locale → ISO 4217 currency map. Mirrors the SummaryView logic; kept
 // inline rather than shared because BookView is its own dynamic import
@@ -703,7 +704,16 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: 16,
       }}>
-        {sortedHotels.map((h, i) => <HotelCard key={i} hotel={h} city={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />)}
+        {sortedHotels.map((h, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            {tripId && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
+                <VoteButtons tripId={tripId} itemKey={`hotel:${h.name}`} kind="booking" label={`Hotel: ${h.name}`} compact />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -1906,7 +1916,14 @@ function ActivitiesSection({ activities, tripId, onItineraryAdjusted }: {
         gap: 14,
       }}>
         {activities.map((a, i) => (
-          <ActivityCard key={i} activity={a} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <ActivityCard activity={a} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            {tripId && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
+                <VoteButtons tripId={tripId} itemKey={`activity:${a.name}`} kind="booking" label={`Activity: ${a.name}`} compact />
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </section>
