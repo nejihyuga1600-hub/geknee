@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
+import { createPurpleMarker } from '@/lib/googleMaps/marker';
+import type { PurpleMarker } from '@/lib/googleMaps/marker';
 
 type GeocodeFeature = {
   id: string;
@@ -35,6 +37,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const mapRef = useRef<google.maps.Map | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const droppedMarkersRef = useRef<PurpleMarker[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeocodeFeature[]>([]);
@@ -94,9 +97,18 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   function dropPin(pinLng: number, pinLat: number, label?: string, opts?: { skipPersist?: boolean }) {
     const map = mapRef.current;
     if (!map) return;
-    // Placeholder — replaced in task 1.2
-    void label; void opts;
-    appendDraft({ lat: pinLat, lon: pinLng, label, addedAt: Date.now() });
+    const pm = createPurpleMarker(map, { lat: pinLat, lng: pinLng }, {
+      label,
+      onRightClick: () => {
+        pm.remove();
+        droppedMarkersRef.current = droppedMarkersRef.current.filter(m => m !== pm);
+        removeDraft(pinLat, pinLng);
+      },
+    });
+    droppedMarkersRef.current.push(pm);
+    if (!opts?.skipPersist) {
+      appendDraft({ lat: pinLat, lon: pinLng, label, addedAt: Date.now() });
+    }
   }
 
   function handleResultClick(f: GeocodeFeature) {
@@ -166,6 +178,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       cancelled = true;
       if (clickListener) google.maps.event.removeListener(clickListener);
       if (zoomListener) google.maps.event.removeListener(zoomListener);
+      droppedMarkersRef.current.forEach(m => m.remove());
+      droppedMarkersRef.current = [];
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
