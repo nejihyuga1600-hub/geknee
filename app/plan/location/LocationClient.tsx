@@ -207,29 +207,54 @@ function fitFontSize(
   return ctx.measureText(text).width <= maxWidthPx * 1.05 ? minPx : null;
 }
 
-// Render text with a soft black halo for readability against either the
-// cartoon biome fills or the satellite imagery. Mirrors the SDF Text mesh
-// outline aesthetic (wide soft + tight crisp).
+// Render text with a soft black halo for readability against the cartoon
+// biome fills or satellite imagery. Used for CITY labels where the
+// background varies wildly across the dot's neighbourhood. Country
+// labels use paintLabelClean instead — they read on top of a single
+// biome fill and an outline makes them feel cluttered.
 function paintLabel(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number, y: number,
   fontSize: number,
   fontFamily: string,
+  weight: number = 600,
 ): void {
-  ctx.font = `700 ${fontSize}px ${fontFamily}`;
+  ctx.font = `${weight} ${fontSize}px ${fontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
-  ctx.strokeStyle = "rgba(0,0,0,0.65)";
-  ctx.lineWidth = fontSize * 0.42;
-  ctx.strokeText(text, x, y);
-  ctx.strokeStyle = "rgba(0,0,0,0.85)";
-  ctx.lineWidth = Math.max(2, fontSize * 0.16);
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.lineWidth = Math.max(2, fontSize * 0.22);
   ctx.strokeText(text, x, y);
   ctx.fillStyle = "#ffffff";
   ctx.fillText(text, x, y);
+}
+
+// Country labels: clean white type, no hard outline. A faint translucent
+// drop shadow keeps it legible where the biome fill happens to be light
+// (Antarctica, sand) without making the label feel sticker-y.
+function paintLabelClean(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number, y: number,
+  fontSize: number,
+  fontFamily: string,
+  weight: number = 500,
+): void {
+  ctx.font = `${weight} ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = Math.max(2, fontSize * 0.18);
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x, y);
+  // Reset shadow so it doesn't bleed onto subsequent paint passes.
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
 }
 
 // ─── Canvas Earth texture ─────────────────────────────────────────────────────
@@ -474,7 +499,20 @@ function createEarthTexture(
   //   5. Repeat for cities — smaller fonts, tiered by population, same
   //      registry so a city label can't collide with a country label.
   if (countriesGeo) {
-    const fontFamily = '"Helvetica Neue", system-ui, sans-serif';
+    // Pull GeKnee's UI font (Inter Tight, declared in app/layout.tsx as
+    // var(--font-ui)) at bake time. Canvas font strings can't resolve CSS
+    // variables, so we read the computed value from the document root and
+    // fall back to a chain that still feels modern if the font hasn't
+    // loaded yet. Inter Tight is the brand-aligned label font; matches
+    // the rest of the chrome.
+    let uiFont = '"Inter Tight", "Inter", system-ui, sans-serif';
+    try {
+      if (typeof document !== 'undefined') {
+        const v = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim();
+        if (v) uiFont = `${v}, "Inter Tight", "Inter", system-ui, sans-serif`;
+      }
+    } catch { /* SSR or detached document — fall through */ }
+    const fontFamily = uiFont;
     const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
 
     type Candidate = {
@@ -499,15 +537,16 @@ function createEarthTexture(
     // proportionally bigger label without dwarfing its neighbours. Tuned
     // for an 8K canvas; mobile 4K canvas halves the budgets and that
     // halves the rendered size — labels stay legible on both.
-    // Sizing is set in canvas-texel pixels then mapped onto the sphere by
-    // the renderer. At W=8192 viewed on a typical 1000px viewport the
-    // half-sphere spans ~4096 texels across ~600 screen px → ~7 texels
-    // per screen pixel. A 140-texel max-font therefore reads as ~20 screen
-    // px at default zoom, which matches the prior SDF Text mesh footprint.
+    // Sizing in canvas-texel pixels. Smaller than before — the previous
+    // values read as "children's project" oversized; modern map labels
+    // should sit quietly on top of the geometry. At W=8192 / ~1000px
+    // viewport the half-sphere covers ~7 texels per screen pixel, so a
+    // 90-texel MAX_FONT renders as ~13 screen px at default zoom — about
+    // the size of a small UI label, which is the intended vibe.
     const SCALE_FACTOR = W / 8192;
-    const MAX_FONT = 140 * SCALE_FACTOR;
-    const MIN_FONT = 50  * SCALE_FACTOR;
-    const PAD = 10 * SCALE_FACTOR;
+    const MAX_FONT = 90 * SCALE_FACTOR;
+    const MIN_FONT = 28 * SCALE_FACTOR;
+    const PAD = 8 * SCALE_FACTOR;
     const WIDTH_BUDGET_FRAC = 0.78;
     const MIN_AREA_FOR_LABEL = (W * H) * 0.0005;
 
@@ -535,7 +574,10 @@ function createEarthTexture(
       const labelH = chosen.size * 1.1;
       if (!tryPlaceLabel(placed, c.cx, c.cy, measuredW, labelH, PAD)) continue;
 
-      paintLabel(ctx, chosen.text, c.cx, c.cy, chosen.size, fontFamily);
+      // Country labels use the clean (no hard outline) paint at weight 500.
+      // Inter Tight 500 is the brand's UI body weight; reads as a label
+      // rather than a sticker.
+      paintLabelClean(ctx, chosen.text, c.cx, c.cy, chosen.size, fontFamily, 500);
     }
 
     // ── City labels — paint after countries so they layer on top, sorted
@@ -547,13 +589,13 @@ function createEarthTexture(
       const sortedCities = [...cities]
         .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
         .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
-      // City fonts are smaller than country MAX_FONT so a megacity name
+      // City fonts kept smaller than country fonts so a megacity name
       // doesn't dwarf a small country's name. Tier scales by log-population
       // so Tokyo reads larger than Albuquerque without burying it.
-      const CITY_MAX_FONT = 70 * SCALE_FACTOR;
-      const CITY_MIN_FONT = 36 * SCALE_FACTOR;
-      const DOT_R = 6 * SCALE_FACTOR;
-      const CITY_PAD = 6 * SCALE_FACTOR;
+      const CITY_MAX_FONT = 48 * SCALE_FACTOR;
+      const CITY_MIN_FONT = 22 * SCALE_FACTOR;
+      const DOT_R = 4 * SCALE_FACTOR;
+      const CITY_PAD = 5 * SCALE_FACTOR;
 
       for (const city of sortedCities) {
         if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
