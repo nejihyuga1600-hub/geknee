@@ -127,11 +127,38 @@ const COUNTRY_ABBREVIATIONS: Record<string, string> = {
   "Democratic People's Republic of Korea": "North Korea",
 };
 
-// Pixel bbox of the largest polygon ring of a GeoFeature on an
-// equirectangular canvas of size W x H. Returns the centroid, width,
-// height, and area in canvas pixels — the label baker uses this to
-// size text against the country's actual screen footprint instead
-// of an angular-distance heuristic.
+// Area-weighted centroid (signed shoelace) of a polygon ring in
+// (lon, lat) space. The unweighted vertex average used previously
+// pulled the label toward whichever coastline had the most digitized
+// vertices — for Norway and Chile that landed the label well off the
+// country's visual center. The shoelace centroid sits on the ring's
+// true geometric center of mass, which reads as the right spot when
+// the label hits the sphere.
+function ringCentroidLonLat(ring: number[][]): [number, number] {
+  let A = 0, cx = 0, cy = 0;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = ring[i];
+    const [x1, y1] = ring[(i + 1) % n];
+    const f = x0 * y1 - x1 * y0;
+    A += f;
+    cx += (x0 + x1) * f;
+    cy += (y0 + y1) * f;
+  }
+  A *= 0.5;
+  if (Math.abs(A) < 1e-9) {
+    // Degenerate ring — fall back to vertex mean so callers still get a point.
+    let sx = 0, sy = 0;
+    for (const p of ring) { sx += p[0]; sy += p[1]; }
+    return [sx / n, sy / n];
+  }
+  return [cx / (6 * A), cy / (6 * A)];
+}
+
+// Pixel bbox + centroid of the largest polygon ring of a GeoFeature on an
+// equirectangular canvas of size W x H. The label baker uses this to size
+// text against the country's actual screen footprint and to anchor the
+// text at the visual center of the country.
 function featurePixelBox(f: GeoFeature, W: number, H: number): {
   cx: number; cy: number; w: number; h: number; area: number;
 } | null {
@@ -147,17 +174,14 @@ function featurePixelBox(f: GeoFeature, W: number, H: number): {
     if (poly[0] && poly[0].length > bestRing.length) bestRing = poly[0] as number[][];
   if (!bestRing.length) return null;
   let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-  let sumLon = 0, sumLat = 0;
   for (const pt of bestRing) {
     if (pt[0] < minLon) minLon = pt[0]; if (pt[0] > maxLon) maxLon = pt[0];
     if (pt[1] < minLat) minLat = pt[1]; if (pt[1] > maxLat) maxLat = pt[1];
-    sumLon += pt[0]; sumLat += pt[1];
   }
   // Antimeridian-crossing features produce huge bboxes; skip — labels would
   // render across both canvas edges and look broken.
   if (maxLon - minLon > 180) return null;
-  const cLon = sumLon / bestRing.length;
-  const cLat = sumLat / bestRing.length;
+  const [cLon, cLat] = ringCentroidLonLat(bestRing);
   const cx = (cLon + 180) / 360 * W;
   const cy = (90 - cLat) / 180 * H;
   const w = (maxLon - minLon) / 360 * W;
@@ -537,18 +561,34 @@ function createEarthTexture(
     // proportionally bigger label without dwarfing its neighbours. Tuned
     // for an 8K canvas; mobile 4K canvas halves the budgets and that
     // halves the rendered size — labels stay legible on both.
-    // Sizing in canvas-texel pixels. Smaller than before — the previous
-    // values read as "children's project" oversized; modern map labels
-    // should sit quietly on top of the geometry. At W=8192 / ~1000px
-    // viewport the half-sphere covers ~7 texels per screen pixel, so a
-    // 90-texel MAX_FONT renders as ~13 screen px at default zoom — about
-    // the size of a small UI label, which is the intended vibe.
+    // Country label sizing system. Three concerns layered:
+    //
+    //   1. The user-facing baseline is 75% smaller than the previous pass
+    //      (MAX_FONT was 90; now 22). That alone made every country read
+    //      as the same size, which is wrong — Russia's label should feel
+    //      bigger than Belgium's. So:
+    //
+    //   2. Each country picks a target font from a log-scaled curve over
+    //      its canvas-pixel area. log scaling matches how country sizes
+    //      actually distribute (Russia is ~600× Belgium's area; linear
+    //      scaling buries everything mid-tier). The curve maps:
+    //         areaRef ≥ AREA_MAX  → MAX_FONT
+    //         areaRef ≤ AREA_MIN  → MIN_FONT
+    //         in between          → log-interpolated
+    //
+    //   3. The picked font is still subject to fit-to-bbox shrinking
+    //      after abbreviation lookup. So a wide-bbox country with a long
+    //      name (DR Congo) gets the abbreviation; a narrow country whose
+    //      name still won't fit at MIN_FONT gets skipped (better than a
+    //      blurry sub-pixel label).
     const SCALE_FACTOR = W / 8192;
-    const MAX_FONT = 90 * SCALE_FACTOR;
-    const MIN_FONT = 28 * SCALE_FACTOR;
-    const PAD = 8 * SCALE_FACTOR;
-    const WIDTH_BUDGET_FRAC = 0.78;
-    const MIN_AREA_FOR_LABEL = (W * H) * 0.0005;
+    const MAX_FONT = 22 * SCALE_FACTOR;
+    const MIN_FONT = 10 * SCALE_FACTOR;
+    const PAD = 6 * SCALE_FACTOR;
+    const WIDTH_BUDGET_FRAC = 0.80;
+    const MIN_AREA_FOR_LABEL = (W * H) * 0.00012;
+    const AREA_MAX = (W * H) * 0.05;     // Russia / antarctica scale
+    const AREA_MIN = (W * H) * 0.0008;   // Belgium-ish scale
 
     for (const c of candidates) {
       if (c.area < MIN_AREA_FOR_LABEL) continue;
@@ -558,10 +598,18 @@ function createEarthTexture(
       tryNames.push(c.rawName);
 
       const widthBudget = c.boxW * WIDTH_BUDGET_FRAC;
-      // Cap max-font by bbox height too — a tall narrow country (Chile, Norway)
-      // shouldn't have a label as tall as its widest neighbour.
-      const heightCap = Math.min(MAX_FONT, c.boxH * 0.62);
-      const maxFont = Math.max(MIN_FONT, Math.min(heightCap, Math.sqrt(c.area) * 0.34));
+      // Log-scaled tier from country area. Russia ≈ AREA_MAX → MAX_FONT.
+      // Belgium ≈ AREA_MIN → MIN_FONT. Lux below AREA_MIN was already
+      // dropped above by MIN_AREA_FOR_LABEL.
+      const t = Math.min(1, Math.max(0,
+        (Math.log(c.area) - Math.log(AREA_MIN)) /
+        (Math.log(AREA_MAX) - Math.log(AREA_MIN))
+      ));
+      const tierFont = MIN_FONT + (MAX_FONT - MIN_FONT) * t;
+      // Cap by bbox height too — a tall narrow country shouldn't get a label
+      // as tall as its widest neighbour.
+      const heightCap = c.boxH * 0.55;
+      const maxFont = Math.min(tierFont, Math.max(MIN_FONT, heightCap));
 
       let chosen: { text: string; size: number } | null = null;
       for (const candidate of tryNames) {
@@ -589,13 +637,14 @@ function createEarthTexture(
       const sortedCities = [...cities]
         .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
         .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
-      // City fonts kept smaller than country fonts so a megacity name
-      // doesn't dwarf a small country's name. Tier scales by log-population
-      // so Tokyo reads larger than Albuquerque without burying it.
-      const CITY_MAX_FONT = 48 * SCALE_FACTOR;
-      const CITY_MIN_FONT = 22 * SCALE_FACTOR;
-      const DOT_R = 4 * SCALE_FACTOR;
-      const CITY_PAD = 5 * SCALE_FACTOR;
+      // City fonts kept smaller than country fonts (so megacities don't
+      // dwarf neighbouring small-country labels). Scaled down 75% with
+      // the country baseline. Tier still varies by log-population so
+      // Tokyo reads larger than Albuquerque.
+      const CITY_MAX_FONT = 13 * SCALE_FACTOR;
+      const CITY_MIN_FONT = 7  * SCALE_FACTOR;
+      const DOT_R = 2.5 * SCALE_FACTOR;
+      const CITY_PAD = 3 * SCALE_FACTOR;
 
       for (const city of sortedCities) {
         if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
