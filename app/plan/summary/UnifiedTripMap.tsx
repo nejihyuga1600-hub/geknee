@@ -12,6 +12,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { DARK_STYLE } from '@/lib/googleMaps/darkStyle';
+import { fetchDirections } from '@/lib/googleMaps/directionsClient';
+import { modeUsesDirections, type RouteMode } from '@/lib/googleMaps/route';
 import { extractDayNumber, isTimeLine, type Section } from './lib/itinerary-parse';
 import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
 
@@ -948,13 +950,11 @@ export default function UnifiedTripMap({
       }
 
       // ── Per-day route lines ─────────────────────────────────────────
-      // Walk the resolved pins by day, fetch a Mapbox Directions route
+      // Walk the resolved pins by day, fetch a Google Directions route
       // per consecutive leg, and draw a polyline colored by the day.
-      // Skipped when activeFilter === a single day (we still draw lines
-      // for that day) or when consecutive pins are missing geo. All
-      // requests fan out in parallel so this doesn't block first paint.
-      const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (MAPBOX_TOKEN) {
+      // Skipped when consecutive pins are missing geo. All requests fan
+      // out in parallel so this doesn't block first paint.
+      {
         const byDay = new Map<number, typeof visibleResolved>();
         for (const p of visibleResolved) {
           if (!p.resolved) continue;
@@ -968,32 +968,36 @@ export default function UnifiedTripMap({
           for (let i = 0; i < dayPins.length - 1; i++) {
             const from = dayPins[i].resolved!;
             const to = dayPins[i + 1].resolved!;
-            const mode: LegMode = dayPins[i].legModeToNext ?? 'walking';
+            const mode: RouteMode = dayPins[i].legModeToNext ?? 'walking';
             // Color the leg by mode within the day's hue: quest legs
             // get a gold tint, otherwise use the day color.
             const legColor = dayPins[i].isQuest || dayPins[i + 1].isQuest ? QUEST_COLOR : dayColor;
-            const url =
-              `https://api.mapbox.com/directions/v5/mapbox/${mode}/` +
-              `${from.lng},${from.lat};${to.lng},${to.lat}` +
-              `?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
             legPromises.push(
-              fetch(url)
-                .then((r) => r.ok ? r.json() : null)
-                .then((d: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> } | null) => {
-                  if (cancelled || !d?.routes?.[0] || !mapRef.current || !window.google?.maps) return;
-                  const path = d.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
-                  const line = new window.google.maps.Polyline({
-                    path,
-                    map: mapRef.current,
-                    strokeColor: legColor,
-                    strokeOpacity: 0.85,
-                    strokeWeight: 4,
-                    geodesic: false,
-                    zIndex: 5,
-                  });
-                  polylinesRef.current.push(line);
-                })
-                .catch(() => { /* swallow individual leg failures */ }),
+              (async () => {
+                let polylinePath: Array<{ lat: number; lng: number }>;
+                if (!modeUsesDirections(mode)) {
+                  // flight/ferry: straight-line fallback
+                  polylinePath = [{ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }];
+                } else {
+                  const dr = await fetchDirections(
+                    { lat: from.lat, lng: from.lng },
+                    { lat: to.lat, lng: to.lng },
+                    mode as Exclude<RouteMode, 'flight' | 'ferry'>,
+                  );
+                  polylinePath = dr?.points ?? [{ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }];
+                }
+                if (cancelled || !mapRef.current || !window.google?.maps) return;
+                const line = new window.google.maps.Polyline({
+                  path: polylinePath,
+                  map: mapRef.current,
+                  strokeColor: legColor,
+                  strokeOpacity: 0.85,
+                  strokeWeight: 4,
+                  geodesic: false,
+                  zIndex: 5,
+                });
+                polylinesRef.current.push(line);
+              })().catch(() => { /* swallow individual leg failures */ }),
             );
           }
         }
