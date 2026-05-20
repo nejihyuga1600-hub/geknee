@@ -19,6 +19,8 @@ const TAG_COLORS: Record<string, string> = {
 
 interface TripFile {
   id: string; name: string; url: string; size: number; tag: string; createdAt: string;
+  visibility: 'public' | 'private';
+  isOwner: boolean;
   user: { name: string | null; image: string | null };
 }
 
@@ -34,6 +36,7 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
   const [uploading,  setUploading]  = useState(false);
   const [filterTag,  setFilterTag]  = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string>('other');
+  const [selectedVis, setSelectedVis] = useState<'public' | 'private'>('public');
   const [error,      setError]      = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,17 +61,28 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
       const form = new FormData();
       form.append('file', file);
       form.append('tag', selectedTag);
+      form.append('visibility', selectedVis);
       const res  = await fetch(`/api/trips/${tripId}/files`, { method: 'POST', body: form });
       const data = await res.json() as { file?: TripFile; error?: string };
       if (data.error) { setError(data.error); return; }
       if (data.file)  setFiles(prev => [data.file!, ...prev]);
     } catch { setError('Upload failed — check your connection.'); }
     finally  { setUploading(false); }
-  }, [tripId, selectedTag]);
+  }, [tripId, selectedTag, selectedVis]);
 
   const handleDelete = useCallback(async (fileId: string) => {
     await fetch(`/api/trips/${tripId}/files/${fileId}`, { method: 'DELETE' });
     setFiles(prev => prev.filter(f => f.id !== fileId));
+  }, [tripId]);
+
+  const toggleVisibility = useCallback(async (fileId: string, next: 'public' | 'private') => {
+    const res = await fetch(`/api/trips/${tripId}/files/${fileId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visibility: next }),
+    });
+    if (!res.ok) return;
+    setFiles(prev => prev.map(f => (f.id === fileId ? { ...f, visibility: next } : f)));
   }, [tripId]);
 
   const displayed = filterTag === 'all' ? files : files.filter(f => f.tag === filterTag);
@@ -86,6 +100,18 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
           }}
         >
           {Object.entries(TAG_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select
+          value={selectedVis}
+          onChange={e => setSelectedVis(e.target.value as 'public' | 'private')}
+          title="Who can see this file"
+          style={{
+            background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 8, color: '#e2e8f0', fontSize: 12, padding: '7px 10px', outline: 'none',
+          }}
+        >
+          <option value="public">Public &mdash; everyone in trip</option>
+          <option value="private">Private &mdash; only me</option>
         </select>
         <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
         <button
@@ -147,9 +173,24 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
               </a>
               <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
                 {fmtSize(f.size)} &middot; {f.user.name ?? 'You'}
+                {f.visibility === 'private' && (
+                  <span style={{ marginLeft: 6, color: '#fbbf24' }}>&middot; Private</span>
+                )}
               </span>
             </div>
-            {f.user && currentUserId && (
+            {f.isOwner && (
+              <button
+                onClick={() => toggleVisibility(f.id, f.visibility === 'public' ? 'private' : 'public')}
+                title={f.visibility === 'public' ? 'Make private (only you)' : 'Make public (whole trip)'}
+                style={{
+                  background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)',
+                  cursor: 'pointer', fontSize: 12, lineHeight: 1, flexShrink: 0, padding: '2px 4px',
+                }}
+              >
+                {f.visibility === 'public' ? String.fromCodePoint(0x1F513) : String.fromCodePoint(0x1F512)}
+              </button>
+            )}
+            {f.isOwner && (
               <button
                 onClick={() => handleDelete(f.id)}
                 title="Delete"

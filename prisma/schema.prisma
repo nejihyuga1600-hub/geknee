@@ -219,6 +219,11 @@ model TripFile {
   storagePath String // path in bucket for deletion
   size      Int      // bytes
   tag       String   @default("other") // passport | booking | insurance | photo | other
+  // public | private — chosen by the uploader on upload. Public files are
+  // visible to every TripMember of `tripId`; private files are visible only
+  // to the uploader. Toggle is per-file because a passport scan and a group
+  // booking confirmation may need different audiences inside the same trip.
+  visibility String  @default("public")
   createdAt DateTime @default(now())
 
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
