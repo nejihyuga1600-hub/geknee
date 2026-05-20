@@ -85,12 +85,162 @@ function sharpenCanvas(ctx: CanvasRenderingContext2D, w: number, h: number, amou
   ctx.putImageData(img, 0, 0);
 }
 
+// ─── Country-name abbreviation table ──────────────────────────────────────────
+// Long country names get the abbreviated form before any further shrink-to-fit
+// kicks in. Anything not in this table is rendered as-is and shrunk only if
+// it would spill out of its country's bounding box.
+const COUNTRY_ABBREVIATIONS: Record<string, string> = {
+  "Democratic Republic of the Congo": "DR Congo",
+  "Dem. Rep. Congo": "DR Congo",
+  "Republic of the Congo": "Congo",
+  "Congo (Brazzaville)": "Congo",
+  "Bosnia and Herzegovina": "Bosnia",
+  "Bosnia and Herz.": "Bosnia",
+  "Central African Republic": "C.A.R.",
+  "Central African Rep.": "C.A.R.",
+  "Equatorial Guinea": "Eq. Guinea",
+  "Eq. Guinea": "Eq. Guinea",
+  "United Arab Emirates": "UAE",
+  "United Kingdom": "UK",
+  "United States of America": "United States",
+  "Czech Republic": "Czechia",
+  "Papua New Guinea": "PNG",
+  "São Tomé and Príncipe": "São Tomé",
+  "Sao Tome and Principe": "São Tomé",
+  "Saint Vincent and the Grenadines": "St. Vincent",
+  "Saint Kitts and Nevis": "St. Kitts",
+  "Trinidad and Tobago": "Trinidad",
+  "North Macedonia": "N. Macedonia",
+  "South Sudan": "S. Sudan",
+  "Solomon Islands": "Solomon Is.",
+  "Falkland Islands": "Falklands",
+  "Antigua and Barbuda": "Antigua",
+  "Dominican Republic": "Dominican Rep.",
+  "Dominican Rep.": "Dominican Rep.",
+  "Western Sahara": "W. Sahara",
+  "Côte d'Ivoire": "Ivory Coast",
+  "Ivory Coast": "Ivory Coast",
+  "Russian Federation": "Russia",
+  "Korea, Republic of": "South Korea",
+  "Republic of Korea": "South Korea",
+  "Korea, Democratic People's Republic of": "North Korea",
+  "Democratic People's Republic of Korea": "North Korea",
+};
+
+// Pixel bbox of the largest polygon ring of a GeoFeature on an
+// equirectangular canvas of size W x H. Returns the centroid, width,
+// height, and area in canvas pixels — the label baker uses this to
+// size text against the country's actual screen footprint instead
+// of an angular-distance heuristic.
+function featurePixelBox(f: GeoFeature, W: number, H: number): {
+  cx: number; cy: number; w: number; h: number; area: number;
+} | null {
+  if (!f.geometry) return null;
+  const polys: number[][][][] =
+    f.geometry.type === "Polygon"
+      ? [f.geometry.coordinates as number[][][]]
+      : f.geometry.type === "MultiPolygon"
+      ? f.geometry.coordinates as number[][][][]
+      : [];
+  let bestRing: number[][] = [];
+  for (const poly of polys)
+    if (poly[0] && poly[0].length > bestRing.length) bestRing = poly[0] as number[][];
+  if (!bestRing.length) return null;
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  let sumLon = 0, sumLat = 0;
+  for (const pt of bestRing) {
+    if (pt[0] < minLon) minLon = pt[0]; if (pt[0] > maxLon) maxLon = pt[0];
+    if (pt[1] < minLat) minLat = pt[1]; if (pt[1] > maxLat) maxLat = pt[1];
+    sumLon += pt[0]; sumLat += pt[1];
+  }
+  // Antimeridian-crossing features produce huge bboxes; skip — labels would
+  // render across both canvas edges and look broken.
+  if (maxLon - minLon > 180) return null;
+  const cLon = sumLon / bestRing.length;
+  const cLat = sumLat / bestRing.length;
+  const cx = (cLon + 180) / 360 * W;
+  const cy = (90 - cLat) / 180 * H;
+  const w = (maxLon - minLon) / 360 * W;
+  const h = (maxLat - minLat) / 180 * H;
+  return { cx, cy, w, h, area: w * h };
+}
+
+// Greedy non-overlapping placement of baked labels. Mutates the shared
+// `placed` array so the country + city baking passes share one overlap
+// registry — keeps city names from colliding with country names.
+function tryPlaceLabel(
+  placed: Array<{ x: number; y: number; w: number; h: number }>,
+  x: number, y: number, w: number, h: number,
+  pad: number,
+): boolean {
+  const left = x - w / 2 - pad, right = x + w / 2 + pad;
+  const top  = y - h / 2 - pad, bot   = y + h / 2 + pad;
+  for (const p of placed) {
+    if (left < p.x + p.w / 2 &&
+        right > p.x - p.w / 2 &&
+        top  < p.y + p.h / 2 &&
+        bot  > p.y - p.h / 2) return false;
+  }
+  placed.push({ x, y, w: w + pad * 2, h: h + pad * 2 });
+  return true;
+}
+
+// Pick a font size that fits `text` within `maxWidthPx`, between min and max.
+// Returns the chosen size, or null when even at minPx the text overflows
+// the box by >5%. Caller can then abbreviate, multi-line, or skip.
+function fitFontSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidthPx: number,
+  minPx: number,
+  maxPx: number,
+  fontFamily: string,
+): number | null {
+  let size = maxPx;
+  while (size >= minPx) {
+    ctx.font = `700 ${size}px ${fontFamily}`;
+    const w = ctx.measureText(text).width;
+    if (w <= maxWidthPx) return size;
+    size = Math.floor(size * 0.92);
+  }
+  ctx.font = `700 ${minPx}px ${fontFamily}`;
+  return ctx.measureText(text).width <= maxWidthPx * 1.05 ? minPx : null;
+}
+
+// Render text with a soft black halo for readability against either the
+// cartoon biome fills or the satellite imagery. Mirrors the SDF Text mesh
+// outline aesthetic (wide soft + tight crisp).
+function paintLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number, y: number,
+  fontSize: number,
+  fontFamily: string,
+): void {
+  ctx.font = `700 ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  ctx.strokeStyle = "rgba(0,0,0,0.65)";
+  ctx.lineWidth = fontSize * 0.42;
+  ctx.strokeText(text, x, y);
+  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+  ctx.lineWidth = Math.max(2, fontSize * 0.16);
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x, y);
+}
+
 // ─── Canvas Earth texture ─────────────────────────────────────────────────────
+type LabelCity = { n: string; lat: number; lon: number; p?: number };
+
 function createEarthTexture(
   countriesGeo: GeoCollection | null,
   statesGeo: GeoCollection | null,
   terrainBitmap?: ImageBitmap | null,
   maxTexSize = 8192,
+  cities: LabelCity[] = [],
 ): THREE.CanvasTexture {
   const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
@@ -308,6 +458,150 @@ function createEarthTexture(
   drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
     f => STATE_FILTER.has(f.properties.adm0_a3));
 
+  // ── Baked country + city labels ──────────────────────────────────────────
+  // Painted directly onto the equirectangular canvas so the text rides the
+  // sphere surface when the texture is sampled — no levitating Three.js
+  // Text meshes, no z-fighting, and the label curves along its latitude
+  // line for free (each canvas row is one latitude band on the sphere).
+  //
+  // Pipeline:
+  //   1. Build a list of candidate country labels with pixel bboxes.
+  //   2. Sort by polygon pixel area DESC (biggest country wins overlap conflicts).
+  //   3. For each, pick an abbreviation if available, then shrink-to-fit
+  //      against 0.78 * bbox width. Falls back to a single-letter min cap
+  //      before skipping entirely.
+  //   4. Greedy place against a shared `placed` registry.
+  //   5. Repeat for cities — smaller fonts, tiered by population, same
+  //      registry so a city label can't collide with a country label.
+  if (countriesGeo) {
+    const fontFamily = '"Helvetica Neue", system-ui, sans-serif';
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+    type Candidate = {
+      name: string; rawName: string; cx: number; cy: number;
+      boxW: number; boxH: number; area: number;
+    };
+    const candidates: Candidate[] = [];
+    for (const f of countriesGeo.features) {
+      const rawName = (f.properties?.NAME || f.properties?.ADMIN || f.properties?.name) as string | undefined;
+      if (!rawName) continue;
+      const box = featurePixelBox(f, W, H);
+      if (!box) continue;
+      // Tiny countries below ~0.06% of canvas area get a dot/leader line
+      // (or just no label) — labelling them inside their bbox always
+      // overflows. Pushed into candidates with a 0 area so they sort last
+      // and the greedy pass naturally skips when neighbours win first.
+      candidates.push({ name: rawName, rawName, cx: box.cx, cy: box.cy, boxW: box.w, boxH: box.h, area: box.area });
+    }
+    candidates.sort((a, b) => b.area - a.area);
+
+    // Per-feature font caps scale with sqrt(area) so a huge country gets a
+    // proportionally bigger label without dwarfing its neighbours. Tuned
+    // for an 8K canvas; mobile 4K canvas halves the budgets and that
+    // halves the rendered size — labels stay legible on both.
+    // Sizing is set in canvas-texel pixels then mapped onto the sphere by
+    // the renderer. At W=8192 viewed on a typical 1000px viewport the
+    // half-sphere spans ~4096 texels across ~600 screen px → ~7 texels
+    // per screen pixel. A 140-texel max-font therefore reads as ~20 screen
+    // px at default zoom, which matches the prior SDF Text mesh footprint.
+    const SCALE_FACTOR = W / 8192;
+    const MAX_FONT = 140 * SCALE_FACTOR;
+    const MIN_FONT = 50  * SCALE_FACTOR;
+    const PAD = 10 * SCALE_FACTOR;
+    const WIDTH_BUDGET_FRAC = 0.78;
+    const MIN_AREA_FOR_LABEL = (W * H) * 0.0005;
+
+    for (const c of candidates) {
+      if (c.area < MIN_AREA_FOR_LABEL) continue;
+      const tryNames: string[] = [];
+      const abbr = COUNTRY_ABBREVIATIONS[c.rawName];
+      if (abbr && abbr !== c.rawName) tryNames.push(abbr);
+      tryNames.push(c.rawName);
+
+      const widthBudget = c.boxW * WIDTH_BUDGET_FRAC;
+      // Cap max-font by bbox height too — a tall narrow country (Chile, Norway)
+      // shouldn't have a label as tall as its widest neighbour.
+      const heightCap = Math.min(MAX_FONT, c.boxH * 0.62);
+      const maxFont = Math.max(MIN_FONT, Math.min(heightCap, Math.sqrt(c.area) * 0.34));
+
+      let chosen: { text: string; size: number } | null = null;
+      for (const candidate of tryNames) {
+        const size = fitFontSize(ctx, candidate, widthBudget, MIN_FONT, maxFont, fontFamily);
+        if (size != null) { chosen = { text: candidate, size }; break; }
+      }
+      if (!chosen) continue;
+
+      const measuredW = ctx.measureText(chosen.text).width;
+      const labelH = chosen.size * 1.1;
+      if (!tryPlaceLabel(placed, c.cx, c.cy, measuredW, labelH, PAD)) continue;
+
+      paintLabel(ctx, chosen.text, c.cx, c.cy, chosen.size, fontFamily);
+    }
+
+    // ── City labels — paint after countries so they layer on top, sorted
+    //   by population so megacities win overlap conflicts. Dotted by a
+    //   small filled circle at the actual coordinate so the user can
+    //   tell where each label is anchored even when its text is offset.
+    if (cities.length > 0) {
+      const CITY_MIN_POP = 0; // accept curated list which omits `p`
+      const sortedCities = [...cities]
+        .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
+        .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
+      // City fonts are smaller than country MAX_FONT so a megacity name
+      // doesn't dwarf a small country's name. Tier scales by log-population
+      // so Tokyo reads larger than Albuquerque without burying it.
+      const CITY_MAX_FONT = 70 * SCALE_FACTOR;
+      const CITY_MIN_FONT = 36 * SCALE_FACTOR;
+      const DOT_R = 6 * SCALE_FACTOR;
+      const CITY_PAD = 6 * SCALE_FACTOR;
+
+      for (const city of sortedCities) {
+        if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
+        const x = (city.lon + 180) / 360 * W;
+        const y = (90 - city.lat) / 180 * H;
+        // Bigger fonts for high-pop cities; clamp into the working range.
+        const pop = city.p ?? 1_000_000;
+        const popFactor = Math.min(1, Math.max(0.5, Math.log10(Math.max(pop, 10_000) / 10_000) / 3));
+        const size = Math.max(CITY_MIN_FONT, CITY_MAX_FONT * popFactor);
+
+        ctx.font = `600 ${size}px ${fontFamily}`;
+        const textW = ctx.measureText(city.n).width;
+        const labelH = size * 1.1;
+
+        // Try placing the label slightly below the dot first, then to the
+        // right, then above — first non-colliding wins. Mimics how paper
+        // atlases offset city names from their dots.
+        const offsets: Array<[number, number]> = [
+          [0, size * 0.95],          // below
+          [textW * 0.55 + DOT_R * 2, 0], // right
+          [0, -size * 0.95],         // above
+          [-(textW * 0.55 + DOT_R * 2), 0], // left
+        ];
+        let placedOK = false;
+        let lx = x, ly = y;
+        for (const [dx, dy] of offsets) {
+          const tx = x + dx, ty = y + dy;
+          if (tryPlaceLabel(placed, tx, ty, textW, labelH, CITY_PAD)) {
+            lx = tx; ly = ty; placedOK = true; break;
+          }
+        }
+        if (!placedOK) continue;
+
+        // White-ringed dot at the city coord for clarity.
+        ctx.beginPath();
+        ctx.arc(x, y, DOT_R + 1, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, DOT_R, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+
+        paintLabel(ctx, city.n, lx, ly, size, fontFamily);
+      }
+    }
+  }
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
   return tex;
@@ -434,25 +728,32 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
 
   return (
     <group position={pos} quaternion={orientation}>
-      <Text
-        fontSize={fontSize}
-        color={mobileActive ? "#ffe066" : "#ffffff"}
-        outlineWidth={fontSize * 0.55}
-        outlineColor="#000000"
-        outlineOpacity={0.55}
-        outlineBlur={fontSize * 0.85}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={kind === "country" ? 0.10 : 0.04}
-        sdfGlyphSize={128}
-        renderOrder={2}
-        material-side={THREE.FrontSide}
-        material-depthTest={false}
-        material-depthWrite={false}
-        material-toneMapped={false}
-      >
-        {name.toUpperCase()}
-      </Text>
+      {/* Country labels are now baked directly into the earth canvas texture
+          (see createEarthTexture's label pass) so they ride the sphere
+          surface instead of levitating as an SDF mesh. We keep this group
+          only for the invisible click sprite that opens the Wikipedia card.
+          State labels DO still render text here — states aren't baked. */}
+      {kind === "state" && (
+        <Text
+          fontSize={fontSize}
+          color={mobileActive ? "#ffe066" : "#ffffff"}
+          outlineWidth={fontSize * 0.55}
+          outlineColor="#000000"
+          outlineOpacity={0.55}
+          outlineBlur={fontSize * 0.85}
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={0.04}
+          sdfGlyphSize={128}
+          renderOrder={2}
+          material-side={THREE.FrontSide}
+          material-depthTest={false}
+          material-depthWrite={false}
+          material-toneMapped={false}
+        >
+          {name.toUpperCase()}
+        </Text>
+      )}
 
       {showCard && (
         <Html as="div" zIndexRange={[0, 0]} style={{ pointerEvents: "none", width: 0, height: 0 }}>
@@ -663,8 +964,17 @@ function GeoLabels({ countries, states, zoomLevel }: {
 
   return (
     <>
-      {visibleWithSize.map(({ key, name, pos, lat, lon, kind, orientation, fontSize, isInfoLabel }) => (
-        isInfoLabel
+      {visibleWithSize.map(({ key, name, pos, lat, lon, kind, orientation, fontSize, isInfoLabel }) => {
+        // Country labels are baked into the earth texture now; only render
+        // a Three.js Text for STATES that aren't interactive cards. The
+        // interactive country/state info-card paths still go through
+        // GeoInfoLabel — its child Text is gated on kind === "state".
+        if (kind === "country") {
+          return isInfoLabel
+            ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
+            : null;
+        }
+        return isInfoLabel
           ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
           : (
             <Text
@@ -679,7 +989,7 @@ function GeoLabels({ countries, states, zoomLevel }: {
               outlineBlur={fontSize * 0.85}
               anchorX="center"
               anchorY="middle"
-              letterSpacing={kind === "country" ? 0.10 : 0.04}
+              letterSpacing={0.04}
               sdfGlyphSize={128}
               renderOrder={2}
               material-side={THREE.FrontSide}
@@ -689,8 +999,8 @@ function GeoLabels({ countries, states, zoomLevel }: {
             >
               {name.toUpperCase()}
             </Text>
-          )
-      ))}
+          );
+      })}
     </>
   );
 }
@@ -2211,14 +2521,20 @@ function GlobeScene() {
     if (countries && states && texture) _triggerGlobeReady();
   }, [countries, states, texture]);
 
-  // Rebuild canvas texture whenever GeoJSON borders or terrain image change
+  // Rebuild canvas texture whenever GeoJSON borders or terrain image change.
+  // Now also re-bakes when the curated CITIES list arrives — labels are
+  // painted into the texture itself instead of levitating as Three.js Text
+  // meshes (see createEarthTexture). Extra GeoNames cities deliberately
+  // skipped here — 33K extras × measureText per rebake would blow past
+  // the 50ms texture-build budget. The curated CITIES (~500) carry most
+  // of the label intent and stay snappy.
   useEffect(() => {
     // Match the mobile cap used for the terrain bitmap below — keeps GPU
     // upload at ~32MB on iOS WKWebView instead of the 128MB+ that an 8K
     // canvas implies. Phones can't perceive the difference (sphere shows
     // only ~0.05% of texels on-screen at any moment).
     const texCap = isMobile ? 4096 : 8192;
-    const tex = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap));
+    const tex = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES);
     tex.minFilter  = THREE.LinearMipmapLinearFilter;
     tex.magFilter  = THREE.LinearFilter;
     tex.anisotropy = gl.capabilities.getMaxAnisotropy();
