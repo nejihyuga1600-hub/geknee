@@ -149,8 +149,7 @@ export default function DayMap({
     };
   }, [isVisible]);
 
-  // Geocode + render route + markers — still using Mapbox geocode fallback
-  // (will be replaced in tasks 2.2-2.4).
+  // Geocode + render route + markers.
   useEffect(() => {
     if (!mapReady) return;
 
@@ -417,6 +416,7 @@ export default function DayMap({
     </div>
   );
 }
+
 
 
 
