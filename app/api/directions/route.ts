@@ -20,8 +20,11 @@ const MODE_MAP: Record<Body['mode'], string> = {
 };
 
 export async function POST(req: Request) {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) return NextResponse.json({ error: 'GOOGLE_MAPS_API_KEY not configured' }, { status: 500 });
+  const key =
+    process.env.GOOGLE_MAPS_API_KEY ??
+    process.env.GOOGLE_PLACES_API_KEY ??
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!key) return NextResponse.json({ error: 'No Google Maps API key configured (GOOGLE_MAPS_API_KEY / GOOGLE_PLACES_API_KEY)' }, { status: 500 });
 
   let body: Body;
   try {
