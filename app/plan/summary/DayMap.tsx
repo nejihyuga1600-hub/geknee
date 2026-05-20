@@ -186,7 +186,6 @@ export default function DayMap({
           }
         }
       } catch { /* network */ }
-      // TODO 2.4: Mapbox geocoding fallback removed in task 2.4
       return null;
     }
 
@@ -418,5 +417,6 @@ export default function DayMap({
     </div>
   );
 }
+
 
 
