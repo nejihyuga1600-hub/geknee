@@ -622,6 +622,59 @@ function createEarthTexture(
       paintLabelClean(ctx, chosen.text, c.cx, c.cy, chosen.size, fontFamily, 500);
     }
 
+    // ── State labels — same bake path as countries but at ~25% smaller
+    //   font, filtered to STATE_COUNTRIES, and sharing the same `placed`
+    //   registry so state names can't overlap country names or each
+    //   other. Skips state labels small enough that they'd undercut the
+    //   bbox legibility floor (Hawaii, Singapore, Rhode Island, etc).
+    if (statesGeo) {
+      const STATE_MAX_FONT = 17 * SCALE_FACTOR;  // ~75% of country MAX
+      const STATE_MIN_FONT = 8  * SCALE_FACTOR;
+      const STATE_MIN_AREA = (W * H) * 0.00006;
+      const STATE_AREA_MAX = (W * H) * 0.01;
+      const STATE_AREA_MIN = (W * H) * 0.0003;
+
+      type StateCandidate = { name: string; cx: number; cy: number; boxW: number; boxH: number; area: number };
+      const states: StateCandidate[] = [];
+      for (const f of statesGeo.features) {
+        const sname = (f.properties?.name || f.properties?.NAME) as string | undefined;
+        const admin = (f.properties?.admin || f.properties?.adm0_name || '') as string;
+        if (!sname || !STATE_COUNTRIES.has(admin)) continue;
+        const box = featurePixelBox(f, W, H);
+        if (!box) continue;
+        states.push({ name: sname, cx: box.cx, cy: box.cy, boxW: box.w, boxH: box.h, area: box.area });
+      }
+      states.sort((a, b) => b.area - a.area);
+
+      for (const s of states) {
+        if (s.area < STATE_MIN_AREA) continue;
+        const widthBudget = s.boxW * WIDTH_BUDGET_FRAC;
+        const t = Math.min(1, Math.max(0,
+          (Math.log(s.area) - Math.log(STATE_AREA_MIN)) /
+          (Math.log(STATE_AREA_MAX) - Math.log(STATE_AREA_MIN))
+        ));
+        const tierFont = STATE_MIN_FONT + (STATE_MAX_FONT - STATE_MIN_FONT) * t;
+        const heightCap = s.boxH * 0.50;
+        const maxFont = Math.min(tierFont, Math.max(STATE_MIN_FONT, heightCap));
+        const size = fitFontSize(ctx, s.name, widthBudget, STATE_MIN_FONT, maxFont, fontFamily);
+        if (size == null) continue;
+        const measuredW = ctx.measureText(s.name).width;
+        const labelH = size * 1.1;
+        if (!tryPlaceLabel(placed, s.cx, s.cy, measuredW, labelH, PAD)) continue;
+        // States rendered slightly more subdued than countries — lighter
+        // weight + soft halo so they read as a secondary tier.
+        ctx.font = `400 ${size}px ${fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = Math.max(2, size * 0.16);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillText(s.name, s.cx, s.cy);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+      }
+    }
+
     // ── City labels — paint after countries so they layer on top, sorted
     //   by population so megacities win overlap conflicts. Dotted by a
     //   small filled circle at the actual coordinate so the user can
@@ -819,32 +872,11 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
 
   return (
     <group position={pos} quaternion={orientation}>
-      {/* Country labels are baked into the earth canvas texture (see the
-          label pass in createEarthTexture) — they're painted on the globe
-          surface with no z-axis offset. We only keep this <group> for the
-          invisible click sprite below that opens the Wikipedia info card.
-          State labels stay as a mesh until we bake them too. */}
-      {kind === "state" && (
-        <Text
-          fontSize={fontSize}
-          color={mobileActive ? "#ffe066" : "#ffffff"}
-          outlineWidth={fontSize * 0.5}
-          outlineColor="#000000"
-          outlineOpacity={0.55}
-          outlineBlur={fontSize * 0.85}
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={0.04}
-          sdfGlyphSize={128}
-          renderOrder={2}
-          material-side={THREE.FrontSide}
-          material-depthTest={false}
-          material-depthWrite={false}
-          material-toneMapped={false}
-        >
-          {name.toUpperCase()}
-        </Text>
-      )}
+      {/* Country AND state labels are now both baked into the earth
+          canvas texture (see createEarthTexture's label + state pass).
+          This <group> only carries the invisible click sprite below
+          that opens the Wikipedia info card on tap — no visible Text
+          mesh ever renders here. */}
 
       {showCard && (
         <Html as="div" zIndexRange={[0, 0]} style={{ pointerEvents: "none", width: 0, height: 0 }}>
@@ -1067,41 +1099,15 @@ function GeoLabels({ countries, states, zoomLevel }: {
   return (
     <>
       {visibleWithSize.map(({ key, name, pos, lat, lon, kind, orientation, fontSize, isInfoLabel }) => {
-        // Country labels are baked into the texture. Only render mesh
-        // Text for STATES (not yet baked). GeoInfoLabel still mounts
-        // for countries so the click-hitbox + info-card flow continues
-        // to work; its own Text is gated on kind === "state".
-        if (kind === "country") {
-          return isInfoLabel
-            ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
-            : null;
-        }
-        return isInfoLabel
-          ? <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />
-          : (
-            <Text
-              key={key}
-              position={pos}
-              quaternion={orientation}
-              fontSize={fontSize}
-              color="#ffffff"
-              outlineWidth={fontSize * 0.5}
-              outlineColor="#000000"
-              outlineOpacity={0.55}
-              outlineBlur={fontSize * 0.85}
-              anchorX="center"
-              anchorY="middle"
-              letterSpacing={0.04}
-              sdfGlyphSize={128}
-              renderOrder={2}
-              material-side={THREE.FrontSide}
-              material-depthTest={false}
-              material-depthWrite={false}
-              material-toneMapped={false}
-            >
-              {name.toUpperCase()}
-            </Text>
-          );
+        // ALL country and state labels are baked into the earth texture.
+        // The only thing rendered for them here is the GeoInfoLabel
+        // click-hitbox sprite (when isInfoLabel is true), which fires
+        // the Wikipedia info card on tap. Non-info-label sections (eg
+        // countries with state subdivisions, states that have city
+        // labels covering them) get no mesh at all — the baked label
+        // on the texture is the entire visible affordance.
+        if (!isInfoLabel) return null;
+        return <GeoInfoLabel key={key} name={name} pos={pos} lat={lat} lon={lon} orientation={orientation} fontSize={fontSize} kind={kind} />;
       })}
     </>
   );
@@ -2114,37 +2120,15 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
       </line>
     )}
     <group position={pos} quaternion={orientation}>
-      {/* Tier 1 + 2 cities are baked into the earth texture (white pin
-          + label) by createEarthTexture's label pass. We only keep this
-          <group> for the click sprite below; the floating Text + pin
-          meshes here are tier-3-only so the GeoNames long-tail extras
-          still show at higher zoom (those aren't baked because 33K
-          features would blow the texture build budget). */}
-      <group ref={textGroupRef}>
-      {tier === 3 && (
-        <>
-          <Text
-            fontSize={fontSize}
-            color={mobileActive ? "#ffe066" : "#ffffff"}
-            outlineWidth={fontSize * 0.45}
-            outlineColor="#000000"
-            outlineOpacity={0.55}
-            outlineBlur={fontSize * 0.6}
-            anchorX="center"
-            anchorY="middle"
-            letterSpacing={0.01}
-            sdfGlyphSize={128}
-            renderOrder={3}
-            material-depthWrite={false}
-            material-depthTest={false}
-            material-side={THREE.FrontSide}
-            material-toneMapped={false}
-          >
-            {n}
-          </Text>
-        </>
-      )}
-      </group>
+      {/* All curated cities are baked into the earth texture. The
+          tier-3 GeoNames long-tail extras used to render a floating
+          Text mesh here, but those are being removed per the user's
+          ask to make all labels "land printed" — the 33K-feature
+          extras are too dense to bake without blowing the texture
+          build budget, so they're dropped entirely. The <group> and
+          textGroupRef stay so the per-frame zoom-scale animation
+          continues to work for any future visible children. */}
+      <group ref={textGroupRef} />
 
       {showCard && (
         <Html as="div" zIndexRange={[0, 0]} style={{ pointerEvents: "none", width: 0, height: 0 }}>
