@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { DARK_STYLE } from '@/lib/googleMaps/darkStyle';
 import { createPurpleMarker, type PurpleMarker } from '@/lib/googleMaps/marker';
+import { drawRoute, modeUsesDirections, type RouteMode } from '@/lib/googleMaps/route';
+import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 
 // Google Maps per-day map. Replaces the previous Mapbox implementation
 // (dark-v11 style, custom HTML markers, Mapbox Directions for walking route
@@ -315,8 +317,55 @@ export default function DayMap({
         markersRef.current.push(pm);
       });
 
-      // TODO 2.3: route drawing — replace with fetchDirections+drawRoute in next task
+      // Route line — one segment per leg. For flight/ferry legs (legModes[i]
+      // === null) draw a geodesic dashed straight line. For routable modes,
+      // call fetchDirections and draw the decoded polyline; fall back to a
+      // dashed straight line if the request fails.
+      // unmountedRef guards the async loop so we don't write to a torn-down
+      // map after the component unmounts mid-iteration.
+      async function drawLegs() {
+        for (let i = 0; i < resolved.length - 1; i++) {
+          if (cancelled || unmountedRef.current || !mapRef.current) return;
 
+          const a = { lat: resolved[i].coords[1], lng: resolved[i].coords[0] };
+          const b = { lat: resolved[i + 1].coords[1], lng: resolved[i + 1].coords[0] };
+          const rawMode = legModes?.[i] ?? null;
+
+          if (rawMode === null) {
+            // Flight / ferry: geodesic dashed straight line.
+            const seg = drawRoute(mapRef.current, [a, b], { dashed: true, geodesic: true });
+            routeRef.current.push(seg.polyline);
+            continue;
+          }
+
+          const routeMode = rawMode as RouteMode;
+
+          if (!modeUsesDirections(routeMode)) {
+            const seg = drawRoute(mapRef.current, [a, b], { dashed: true, geodesic: true });
+            routeRef.current.push(seg.polyline);
+            continue;
+          }
+
+          const directions = await fetchDirections(
+            a, b,
+            routeMode as Exclude<RouteMode, 'flight' | 'ferry'>,
+          );
+
+          if (cancelled || unmountedRef.current || !mapRef.current) return;
+
+          if (directions && directions.points.length > 0) {
+            const seg = drawRoute(mapRef.current, directions.points);
+            routeRef.current.push(seg.polyline);
+            setLegRoutedCount(c => c + 1);
+            console.log(`[DayMap] leg ${i} ${routeMode} → routed (${directions.points.length} points)`);
+          } else {
+            const seg = drawRoute(mapRef.current, [a, b], { dashed: true });
+            routeRef.current.push(seg.polyline);
+            console.warn(`[DayMap] leg ${i} ${routeMode} → no route returned, using straight line`);
+          }
+        }
+      }
+      drawLegs();
       // Fit bounds to markers.
       const bounds = new google.maps.LatLngBounds();
       resolved.forEach(p => bounds.extend({ lat: p.coords[1], lng: p.coords[0] }));
@@ -369,4 +418,5 @@ export default function DayMap({
     </div>
   );
 }
+
 
