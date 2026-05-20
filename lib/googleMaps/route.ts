@@ -30,12 +30,12 @@ export function modeToGoogleTravelMode(mode: RouteMode): string {
 export function drawRoute(
   map: google.maps.Map,
   points: Array<{ lat: number; lng: number }>,
-  opts: { color?: string; weight?: number; dashed?: boolean } = {},
+  opts: { color?: string; weight?: number; dashed?: boolean; geodesic?: boolean } = {},
 ): RouteSegment {
   const path = points.map((p) => new google.maps.LatLng(p.lat, p.lng));
   const polyline = new google.maps.Polyline({
     path,
-    geodesic: false,
+    geodesic: opts.geodesic ?? false,
     strokeColor: opts.color ?? '#a78bfa',
     strokeOpacity: opts.dashed ? 0 : 0.9,
     strokeWeight: opts.weight ?? 4,
