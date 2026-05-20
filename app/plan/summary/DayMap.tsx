@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { DARK_STYLE } from '@/lib/googleMaps/darkStyle';
-import type { PurpleMarker } from '@/lib/googleMaps/marker';
+import { createPurpleMarker, type PurpleMarker } from '@/lib/googleMaps/marker';
 
 // Google Maps per-day map. Replaces the previous Mapbox implementation
 // (dark-v11 style, custom HTML markers, Mapbox Directions for walking route
@@ -281,8 +281,39 @@ export default function DayMap({
         return;
       }
 
-      // TODO 2.2: markers — replace with createPurpleMarker in next task
-      // Placeholder: no markers yet (will be added in 2.2)
+      // Add numbered pin markers. Gold for monument-ish names so the visual
+      // matches the per-row gold treatment in ActivityBlock.
+      resolved.forEach((p, i) => {
+        const isMonument = /monument|quest|⚠|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(p.name);
+        const isFirst = i === 0;
+        // Smaller + semi-transparent so overlapping pins stay readable
+        // through each other. First pin (next-up) gets a subtle size +
+        // opacity bump so it's still spottable. Quest stops keep the
+        // gold tint; everything else stays in the purple theme.
+        const baseRGB = isMonument ? '251, 191, 36' : '167, 139, 250';
+        const fillAlpha = isFirst ? 0.92 : 0.72;
+        const borderAlpha = isFirst ? 0.95 : 0.55;
+        const size = isFirst ? 22 : 18;
+
+        const el = document.createElement('div');
+        el.style.cssText = `
+          width: ${size}px; height: ${size}px; border-radius: 50%;
+          background: rgba(${baseRGB}, ${fillAlpha});
+          color: #0a0a1f;
+          border: 1.5px solid rgba(10, 10, 31, ${borderAlpha});
+          box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+          font-size: ${isFirst ? 11 : 10}px; font-weight: 700;
+          display: flex; align-items: center; justify-content: center;
+          font-family: ui-monospace, monospace;
+        `;
+        el.textContent = String(i + 1);
+
+        // createPurpleMarker accepts { lat, lng } — convert from [lng, lat].
+        const pm = createPurpleMarker(map, { lat: p.coords[1], lng: p.coords[0] }, { label: p.name });
+        // Override the default dot element with our numbered circle.
+        pm.marker.content = el;
+        markersRef.current.push(pm);
+      });
 
       // TODO 2.3: route drawing — replace with fetchDirections+drawRoute in next task
 
@@ -338,3 +369,4 @@ export default function DayMap({
     </div>
   );
 }
+
