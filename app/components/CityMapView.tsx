@@ -38,6 +38,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const droppedMarkersRef = useRef<PurpleMarker[]>([]);
+  const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeocodeFeature[]>([]);
@@ -89,10 +91,54 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     writeDraft(readDraft().filter(p => round(p.lat) !== round(pinLat) || round(p.lon) !== round(pinLon)));
   }
 
-  // Placeholder geocoding — replaced in task 1.3
+  // Debounced Places Autocomplete, proximity-biased to current city.
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); setActiveIdx(-1); }
-  }, [query]);
+    const svc = autocompleteRef.current;
+    if (!svc || query.trim().length < 2) {
+      setResults([]);
+      setActiveIdx(-1);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      const map = mapRef.current;
+      const center = map ? map.getCenter() : null;
+      const locationBias: google.maps.places.LocationBias = center
+        ? { center: { lat: center.lat(), lng: center.lng() }, radius: 50000 }
+        : { center: { lat, lng: lon }, radius: 50000 };
+
+      svc.getPlacePredictions(
+        { input: query, locationBias },
+        (predictions, status) => {
+          setSearching(false);
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK &&
+            status !== google.maps.places.PlacesServiceStatus.ZERO_RESULTS
+          ) {
+            setResults([]);
+            setActiveIdx(-1);
+            return;
+          }
+          const features: GeocodeFeature[] = (predictions ?? []).map((p) => {
+            const types = p.types ?? [];
+            const placeType = types.includes('establishment') ? ['poi']
+              : types.includes('street_address') || types.includes('route') ? ['address']
+              : ['place'];
+            return {
+              id: p.place_id,
+              place_name: p.description,
+              center: null,
+              text: p.structured_formatting?.main_text ?? p.description,
+              place_type: placeType,
+            };
+          });
+          setResults(features);
+          setActiveIdx(-1);
+        }
+      );
+    }, 220);
+    return () => clearTimeout(handle);
+  }, [query, lat, lon]);
 
   function dropPin(pinLng: number, pinLat: number, label?: string, opts?: { skipPersist?: boolean }) {
     const map = mapRef.current;
@@ -113,14 +159,39 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
 
   function handleResultClick(f: GeocodeFeature) {
     const map = mapRef.current;
-    if (!map || !f.center) return;
-    const [lng, latitude] = f.center;
-    map.panTo({ lat: latitude, lng });
-    map.setZoom(14);
-    dropPin(lng, latitude, f.text);
-    pushRecent(f);
-    setQuery(''); setResults([]); setSearchOpen(false); setActiveIdx(-1);
-    inputRef.current?.blur();
+    if (!map) return;
+
+    // Already resolved (from recents) — use immediately.
+    if (f.center) {
+      const [lng, latitude] = f.center;
+      map.panTo({ lat: latitude, lng });
+      map.setZoom(14);
+      dropPin(lng, latitude, f.text);
+      pushRecent(f);
+      setQuery(''); setResults([]); setSearchOpen(false); setActiveIdx(-1);
+      inputRef.current?.blur();
+      return;
+    }
+
+    // Resolve place_id → lat/lng via PlacesService on select (cost-efficient).
+    const svc = placesServiceRef.current;
+    if (!svc) return;
+    svc.getDetails(
+      { placeId: f.id, fields: ['geometry', 'name'] },
+      (place, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) return;
+        const resolved = place.geometry.location;
+        const lng = resolved.lng();
+        const latitude = resolved.lat();
+        const enriched: GeocodeFeature = { ...f, center: [lng, latitude], text: place.name ?? f.text };
+        map.panTo({ lat: latitude, lng });
+        map.setZoom(14);
+        dropPin(lng, latitude, enriched.text);
+        pushRecent(enriched);
+        setQuery(''); setResults([]); setSearchOpen(false); setActiveIdx(-1);
+        inputRef.current?.blur();
+      }
+    );
   }
 
   useEffect(() => {
@@ -150,6 +221,10 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
           mapTypeControl: false,
         });
         mapRef.current = map;
+
+        // Initialise Places services once map is ready.
+        autocompleteRef.current = new google.maps.places.AutocompleteService();
+        placesServiceRef.current = new google.maps.places.PlacesService(map);
 
         zoomListener = map.addListener('zoom_changed', () => {
           const z = map.getZoom();
@@ -181,6 +256,8 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       droppedMarkersRef.current.forEach(m => m.remove());
       droppedMarkersRef.current = [];
       mapRef.current = null;
+      autocompleteRef.current = null;
+      placesServiceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon, monuments]);
