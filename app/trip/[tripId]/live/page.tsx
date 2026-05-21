@@ -9,6 +9,7 @@ import { AddStopModal } from './AddStopModal';
 import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
+import { fetchWeather, type WeatherResult } from '@/lib/googleMaps/weatherClient';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -130,6 +131,7 @@ export default function LiveTripPage() {
   const [loadingTrip, setLoadingTrip] = useState(true);
   const [now, setNow] = useState<Date>(() => new Date());
   const [weather, setWeather] = useState<DayWeather[] | null>(null);
+  const [currentWeather, setCurrentWeather] = useState<WeatherResult | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
 
   useEffect(() => {
@@ -144,15 +146,22 @@ export default function LiveTripPage() {
   // detection requests location. Live trip view falls back to the
   // trip's anchor city for the mock map center; no GPS recenter.
 
-  // Weather lookup keyed off the trip's location. Uses the existing
-  // /api/weather endpoint (OpenWeather forecast cached 1h).
+  // Current-conditions banner above the live map.
+  // Geocode the anchor city then call /api/weather?days=0 for current conditions.
+  // Re-fetches when the trip location changes. Falls back silently on any error.
   useEffect(() => {
     if (!trip?.location) return;
     let cancelled = false;
-    fetch(`/api/weather?city=${encodeURIComponent(trip.location)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled && Array.isArray(d?.days)) setWeather(d.days as DayWeather[]); })
-      .catch(() => { /* silent */ });
+    (async () => {
+      try {
+        const gr = await fetch(`/api/geocode?address=${encodeURIComponent(trip.location!)}`);
+        if (!gr.ok || cancelled) return;
+        const gd = await gr.json() as { lat?: number; lng?: number } | null;
+        if (!gd?.lat || !gd?.lng || cancelled) return;
+        const w = await fetchWeather(gd.lat, gd.lng, 0);
+        if (!cancelled) setCurrentWeather(w);
+      } catch { /* silent */ }
+    })();
     return () => { cancelled = true; };
   }, [trip?.location]);
 
