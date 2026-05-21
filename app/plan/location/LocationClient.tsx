@@ -576,8 +576,11 @@ function createEarthTexture(
     //      name still won't fit at MIN_FONT gets skipped (better than a
     //      blurry sub-pixel label).
     const SCALE_FACTOR = W / 8192;
-    const MAX_FONT = 22 * SCALE_FACTOR;
-    const MIN_FONT = 10 * SCALE_FACTOR;
+    // Bumped 22 → 27 (~25% larger) per user request — country names read
+    // bigger now that they're the only labels visible above the "Local"
+    // zoom tier.
+    const MAX_FONT = 27 * SCALE_FACTOR;
+    const MIN_FONT = 12 * SCALE_FACTOR;
     const PAD = 6 * SCALE_FACTOR;
     const WIDTH_BUDGET_FRAC = 0.80;
     const MIN_AREA_FOR_LABEL = (W * H) * 0.00012;
