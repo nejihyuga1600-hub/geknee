@@ -27,7 +27,7 @@ const buttonStyle: CSSProperties = {
   fontWeight: 500, fontSize: 15,
 };
 
-export default function MobileCallbackPage() {
+export default function MobileCallbackClient() {
   return (
     <Suspense fallback={<MobileCallbackFallback />}>
       <MobileCallbackInner />

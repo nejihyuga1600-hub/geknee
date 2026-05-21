@@ -50,6 +50,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       notes:     body.notes     !== undefined ? body.notes     : trip.notes,
       itinerary: body.itinerary !== undefined ? body.itinerary : trip.itinerary,
       itineraryUpdatedAt: body.itinerary !== undefined ? new Date() : trip.itineraryUpdatedAt,
+      // Owner-only: persist resolved IANA timezone (set once at destination-lock)
+      ...(isOwner && typeof body.timezone === 'string' ? { timezone: body.timezone } : {}),
       ...(suggestionVoteModeValue !== undefined ? { suggestionVoteMode: suggestionVoteModeValue } : {}),
     },
   });

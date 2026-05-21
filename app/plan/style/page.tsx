@@ -3,6 +3,7 @@ import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ScrollReveal } from '../../components/ScrollReveal';
+import { fetchTimezone } from '@/lib/googleMaps/timezoneClient';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -1543,7 +1544,7 @@ function StyleForm() {
 
   const canSubmit = !!prefs.purpose && !!prefs.budget;
 
-  function submit() {
+  async function submit() {
     if (!canSubmit) return;
     const q = new URLSearchParams({
       location,
@@ -1560,6 +1561,15 @@ function StyleForm() {
     if (destAirport.trim()) q.set('travelingTo', destAirport.trim());
     if (multiCity && extraCities.length > 0) {
       q.set('stops', JSON.stringify(extraCities.map(city => ({ city }))));
+    }
+    // Resolve destination timezone before navigating so SummaryView can
+    // persist it when the TripDraft is created. Non-blocking: if the fetch
+    // fails we log a warning and continue without setting the field.
+    try {
+      const tz = await fetchTimezone(startCity.lat, startCity.lon);
+      if (tz?.ianaId) q.set('timezone', tz.ianaId);
+    } catch (e) {
+      console.warn('[timezone] resolve failed, proceeding without tz', e);
     }
     router.push(`/plan/summary?${q.toString()}`);
   }

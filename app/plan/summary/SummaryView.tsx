@@ -165,6 +165,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   const stopsRaw      = params.get('stops')       ?? '';
   const travelingFrom = params.get('travelingFrom') ?? '';
   const travelingTo   = params.get('travelingTo')   ?? '';
+  const timezoneParam = params.get('timezone')      ?? null;  // IANA id resolved at destination-lock
 
   // ── Route / multi-stop ───────────────────────────────────────────────────────
   const parsedStops: RouteStop[] = useMemo(() => {
@@ -924,6 +925,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
             nights: nights ? parseInt(nights) : null,
             style: JSON.stringify({ purpose, style: travelStyle, budget, interests, constraints }),
             itinerary: fullItinerary,
+            ...(timezoneParam ? { timezone: timezoneParam } : {}),
           }),
         });
         const d = await r.json();
