@@ -1902,6 +1902,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 {panelTab === 'recs' && savedTripId && (
                   <RecPanel
                     tripId={savedTripId}
+                    location={location}
                     onPick={async (rec) => {
                       // Resolve the rec name on the planning map, biased to
                       // the trip destination — NOT the user's geolocation.

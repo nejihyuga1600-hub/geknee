@@ -11,6 +11,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Sparkle } from '@/lib/icons';
+import StreetViewThumb from '@/app/components/StreetViewThumb';
+import { useGeocode } from '@/app/hooks/useGeocode';
 
 interface Rec {
   id: string;
@@ -26,6 +28,8 @@ interface Props {
   tripId: string;
   /** Called with the rec — parent geocodes via Google Places + drives the map. */
   onPick: (rec: Rec) => void;
+  /** Trip destination city — used as geocoding hint for StreetView thumbs. */
+  location?: string;
 }
 
 const CATEGORY_TINT: Record<Rec['category'], { fg: string; bg: string }> = {
@@ -36,7 +40,7 @@ const CATEGORY_TINT: Record<Rec['category'], { fg: string; bg: string }> = {
   neighborhood: { fg: '#7cff97', bg: 'rgba(124,255,151,0.10)' },
 };
 
-export function RecPanel({ tripId, onPick }: Props) {
+export function RecPanel({ tripId, onPick, location }: Props) {
   const [recs, setRecs] = useState<Rec[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,61 +142,7 @@ export function RecPanel({ tripId, onPick }: Props) {
           overflowY: 'auto', minHeight: 0, flex: '1 1 auto',
         }}>
           {recs.map(rec => (
-            <li key={rec.id}>
-              <button
-                onClick={() => onPick(rec)}
-                style={recBtnStyle}
-                className="rec-pick"
-              >
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono-display), monospace',
-                    fontSize: 8, letterSpacing: '0.16em',
-                    padding: '2px 6px', borderRadius: 999,
-                    background: CATEGORY_TINT[rec.category].bg,
-                    color: CATEGORY_TINT[rec.category].fg,
-                    textTransform: 'uppercase', fontWeight: 700,
-                    flexShrink: 0,
-                  }}>
-                    {rec.category === 'off-beat' ? 'Off-beat' : rec.category}
-                  </span>
-                  {rec.priceTier && (
-                    <span style={{
-                      fontFamily: 'var(--font-mono-display), monospace',
-                      fontSize: 9, color: 'var(--brand-ink-mute)',
-                    }}>
-                      {'$'.repeat(rec.priceTier)}
-                    </span>
-                  )}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-display), Georgia, serif',
-                  fontSize: 14, fontWeight: 600,
-                  color: 'var(--brand-ink)', lineHeight: 1.2,
-                  marginBottom: 4,
-                }}>
-                  {rec.name}
-                </div>
-                <div style={{
-                  fontSize: 11, lineHeight: 1.4,
-                  color: 'var(--brand-ink-dim)',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                }}>
-                  {rec.blurb}
-                </div>
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 10, fontStyle: 'italic',
-                  color: CATEGORY_TINT[rec.category].fg,
-                  lineHeight: 1.3,
-                }}>
-                  <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> {rec.whyItFits}
-                </div>
-              </button>
-            </li>
+            <RecChip key={rec.id} rec={rec} location={location} onPick={onPick} />
           ))}
         </ul>
       )}
@@ -208,6 +158,78 @@ export function RecPanel({ tripId, onPick }: Props) {
         }
       `}</style>
     </div>
+  );
+}
+
+function RecChip({ rec, location, onPick }: { rec: Rec; location?: string; onPick: (rec: Rec) => void }) {
+  const { coord } = useGeocode(rec.name, location);
+  const tint = CATEGORY_TINT[rec.category];
+  return (
+    <li key={rec.id}>
+      <button
+        onClick={() => onPick(rec)}
+        style={recBtnStyle}
+        className="rec-pick"
+      >
+        {coord && (
+          <div style={{ width: 60, marginBottom: 8 }}>
+            <StreetViewThumb
+              lat={coord.lat}
+              lng={coord.lng}
+              alt={rec.name}
+              aspectRatio="1/1"
+            />
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+          <span style={{
+            fontFamily: 'var(--font-mono-display), monospace',
+            fontSize: 8, letterSpacing: '0.16em',
+            padding: '2px 6px', borderRadius: 999,
+            background: tint.bg,
+            color: tint.fg,
+            textTransform: 'uppercase', fontWeight: 700,
+            flexShrink: 0,
+          }}>
+            {rec.category === 'off-beat' ? 'Off-beat' : rec.category}
+          </span>
+          {rec.priceTier && (
+            <span style={{
+              fontFamily: 'var(--font-mono-display), monospace',
+              fontSize: 9, color: 'var(--brand-ink-mute)',
+            }}>
+              {'$'.repeat(rec.priceTier)}
+            </span>
+          )}
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display), Georgia, serif',
+          fontSize: 14, fontWeight: 600,
+          color: 'var(--brand-ink)', lineHeight: 1.2,
+          marginBottom: 4,
+        }}>
+          {rec.name}
+        </div>
+        <div style={{
+          fontSize: 11, lineHeight: 1.4,
+          color: 'var(--brand-ink-dim)',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}>
+          {rec.blurb}
+        </div>
+        <div style={{
+          marginTop: 6,
+          fontSize: 10, fontStyle: 'italic',
+          color: tint.fg,
+          lineHeight: 1.3,
+        }}>
+          <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> {rec.whyItFits}
+        </div>
+      </button>
+    </li>
   );
 }
 
