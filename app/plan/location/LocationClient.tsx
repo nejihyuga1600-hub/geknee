@@ -284,18 +284,35 @@ function paintLabelClean(
 // ─── Canvas Earth texture ─────────────────────────────────────────────────────
 type LabelCity = { n: string; lat: number; lon: number; p?: number };
 
+// Returns two textures: the base earth sphere (biome + borders + country
+// labels) and a transparent label overlay (state + city + pin labels).
+// The overlay is rendered on a separate sphere with opacity faded by
+// camera distance — state + city labels only show at the "Local" zoom
+// tier (camDist ≤ 10), invisible above camDist ≥ 13. Overlay can be
+// rendered at higher resolution than the base so labels stay crisp at
+// zoom-in.
 function createEarthTexture(
   countriesGeo: GeoCollection | null,
   statesGeo: GeoCollection | null,
   terrainBitmap?: ImageBitmap | null,
   maxTexSize = 8192,
   cities: LabelCity[] = [],
-): THREE.CanvasTexture {
+  overlayScale = 1,
+): { base: THREE.CanvasTexture; overlay: THREE.CanvasTexture } {
   const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
+  // Overlay canvas — same lon/lat mapping, optionally higher resolution
+  // for crisp state + city labels at zoom-in. Cap at 16384 to stay within
+  // WebGL MAX_TEXTURE_SIZE on most GPUs.
+  const OW = Math.min(W * overlayScale, 16384);
+  const OH = OW / 2;
+  const overlayCanvas = document.createElement("canvas");
+  overlayCanvas.width = OW;
+  overlayCanvas.height = OH;
+  const overlayCtx = overlayCanvas.getContext("2d")!;
   // miter joins + butt caps render crisper polygon corners than round.
   ctx.lineJoin = "miter";
   ctx.miterLimit = 4;
@@ -587,6 +604,122 @@ function createEarthTexture(
     const AREA_MAX = (W * H) * 0.05;     // Russia / antarctica scale
     const AREA_MIN = (W * H) * 0.0008;   // Belgium-ish scale
 
+    // Overlay coordinate scale — placed[] is in BASE coords, but state +
+    // city draw calls go to overlayCtx using these scaled positions so
+    // the high-res overlay canvas stays in pixel-perfect alignment with
+    // the base. OS = 1 when overlay matches base; 2 when overlay is 2×.
+    const OS = OW / W;
+
+    // ── State labels — drawn ONTO the OVERLAY canvas (fades in at Local
+    //   zoom). Placed BEFORE countries so a country label can slide off
+    //   its centroid when a state name sits there. Sizing + bbox + halo
+    //   identical to the prior in-base-texture pass; only difference is
+    //   the target canvas + scaled coordinates.
+    if (statesGeo) {
+      const STATE_MAX_FONT = 17 * SCALE_FACTOR;  // ~75% of country MAX
+      const STATE_MIN_FONT = 8  * SCALE_FACTOR;
+      const STATE_MIN_AREA = (W * H) * 0.00006;
+      const STATE_AREA_MAX = (W * H) * 0.01;
+      const STATE_AREA_MIN = (W * H) * 0.0003;
+
+      type StateCandidate = { name: string; cx: number; cy: number; boxW: number; boxH: number; area: number };
+      const states: StateCandidate[] = [];
+      for (const f of statesGeo.features) {
+        const sname = (f.properties?.name || f.properties?.NAME) as string | undefined;
+        const admin = (f.properties?.admin || f.properties?.adm0_name || '') as string;
+        if (!sname || !STATE_COUNTRIES.has(admin)) continue;
+        const box = featurePixelBox(f, W, H);
+        if (!box) continue;
+        states.push({ name: sname, cx: box.cx, cy: box.cy, boxW: box.w, boxH: box.h, area: box.area });
+      }
+      states.sort((a, b) => b.area - a.area);
+
+      for (const s of states) {
+        if (s.area < STATE_MIN_AREA) continue;
+        const widthBudget = s.boxW * WIDTH_BUDGET_FRAC;
+        const t = Math.min(1, Math.max(0,
+          (Math.log(s.area) - Math.log(STATE_AREA_MIN)) /
+          (Math.log(STATE_AREA_MAX) - Math.log(STATE_AREA_MIN))
+        ));
+        const tierFont = STATE_MIN_FONT + (STATE_MAX_FONT - STATE_MIN_FONT) * t;
+        const heightCap = s.boxH * 0.50;
+        const maxFont = Math.min(tierFont, Math.max(STATE_MIN_FONT, heightCap));
+        const size = fitFontSize(ctx, s.name, widthBudget, STATE_MIN_FONT, maxFont, fontFamily);
+        if (size == null) continue;
+        const measuredW = ctx.measureText(s.name).width;
+        const labelH = size * 1.1;
+        if (!tryPlaceLabel(placed, s.cx, s.cy, measuredW, labelH, PAD)) continue;
+        overlayCtx.font = `400 ${size * OS}px ${fontFamily}`;
+        overlayCtx.textAlign = 'center';
+        overlayCtx.textBaseline = 'middle';
+        overlayCtx.shadowColor = 'rgba(0,0,0,0.5)';
+        overlayCtx.shadowBlur = Math.max(2, size * OS * 0.16);
+        overlayCtx.fillStyle = 'rgba(255,255,255,0.85)';
+        overlayCtx.fillText(s.name, s.cx * OS, s.cy * OS);
+        overlayCtx.shadowColor = 'transparent';
+        overlayCtx.shadowBlur = 0;
+      }
+    }
+
+    // ── City labels — drawn ONTO the OVERLAY canvas. Place BEFORE
+    //   countries so the country label yields when a city pin overlaps
+    //   the country's centroid. Pin marker + label both at scaled
+    //   overlay coords; placed[] stays in base coords for cross-tier
+    //   overlap math.
+    if (cities.length > 0) {
+      const sortedCities = [...cities]
+        .filter(c => (c.p ?? 0) >= 0)
+        .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
+      const CITY_MAX_FONT = 12 * SCALE_FACTOR;
+      const CITY_MIN_FONT = 6  * SCALE_FACTOR;
+      const DOT_R = 2.25 * SCALE_FACTOR;
+      const CITY_PAD = 3 * SCALE_FACTOR;
+
+      for (const city of sortedCities) {
+        if (city.lat > 85 || city.lat < -85) continue;
+        const x = (city.lon + 180) / 360 * W;
+        const y = (90 - city.lat) / 180 * H;
+        const pop = city.p ?? 1_000_000;
+        const popFactor = Math.min(1, Math.max(0.5, Math.log10(Math.max(pop, 10_000) / 10_000) / 3));
+        const size = Math.max(CITY_MIN_FONT, CITY_MAX_FONT * popFactor);
+
+        ctx.font = `600 ${size}px ${fontFamily}`;  // for measureText in base coords
+        const textW = ctx.measureText(city.n).width;
+        const labelH = size * 1.1;
+
+        const offsets: Array<[number, number]> = [
+          [0, size * 0.95],
+          [textW * 0.55 + DOT_R * 2, 0],
+          [0, -size * 0.95],
+          [-(textW * 0.55 + DOT_R * 2), 0],
+        ];
+        let placedOK = false;
+        let lx = x, ly = y;
+        for (const [dx, dy] of offsets) {
+          const tx = x + dx, ty = y + dy;
+          if (tryPlaceLabel(placed, tx, ty, textW, labelH, CITY_PAD)) {
+            lx = tx; ly = ty; placedOK = true; break;
+          }
+        }
+        if (!placedOK) continue;
+
+        overlayCtx.beginPath();
+        overlayCtx.arc(x * OS, y * OS, (DOT_R + 1.5 * SCALE_FACTOR) * OS, 0, Math.PI * 2);
+        overlayCtx.fillStyle = "rgba(0,0,0,0.85)";
+        overlayCtx.fill();
+        overlayCtx.beginPath();
+        overlayCtx.arc(x * OS, y * OS, DOT_R * OS, 0, Math.PI * 2);
+        overlayCtx.fillStyle = "#ffffff";
+        overlayCtx.fill();
+        paintLabel(overlayCtx, city.n, lx * OS, ly * OS, size * OS, fontFamily);
+      }
+    }
+
+    // ── Country labels — drawn on the BASE canvas. Runs LAST so it can
+    //   yield to placed city + state positions. If the centroid is
+    //   blocked, the label tries four offset positions (N/S/E/W shift
+    //   ~22% of bbox) before giving up entirely. Centroid is still the
+    //   strong preference; offsets only kick in when needed.
     for (const c of candidates) {
       if (c.area < MIN_AREA_FOR_LABEL) continue;
       const tryNames: string[] = [];
@@ -595,16 +728,11 @@ function createEarthTexture(
       tryNames.push(c.rawName);
 
       const widthBudget = c.boxW * WIDTH_BUDGET_FRAC;
-      // Log-scaled tier from country area. Russia ≈ AREA_MAX → MAX_FONT.
-      // Belgium ≈ AREA_MIN → MIN_FONT. Lux below AREA_MIN was already
-      // dropped above by MIN_AREA_FOR_LABEL.
       const t = Math.min(1, Math.max(0,
         (Math.log(c.area) - Math.log(AREA_MIN)) /
         (Math.log(AREA_MAX) - Math.log(AREA_MIN))
       ));
       const tierFont = MIN_FONT + (MAX_FONT - MIN_FONT) * t;
-      // Cap by bbox height too — a tall narrow country shouldn't get a label
-      // as tall as its widest neighbour.
       const heightCap = c.boxH * 0.55;
       const maxFont = Math.min(tierFont, Math.max(MIN_FONT, heightCap));
 
@@ -617,20 +745,33 @@ function createEarthTexture(
 
       const measuredW = ctx.measureText(chosen.text).width;
       const labelH = chosen.size * 1.1;
-      if (!tryPlaceLabel(placed, c.cx, c.cy, measuredW, labelH, PAD)) continue;
 
-      // Country labels use the clean (no hard outline) paint at weight 500.
-      // Inter Tight 500 is the brand's UI body weight; reads as a label
-      // rather than a sticker.
-      paintLabelClean(ctx, chosen.text, c.cx, c.cy, chosen.size, fontFamily, 500);
+      // Try centroid first, then offset positions within the country bbox.
+      // Lets the country label slide off a city pin instead of vanishing.
+      const offsets: Array<[number, number]> = [
+        [0, 0],                                    // centroid (preferred)
+        [0, -c.boxH * 0.22],                       // shift north
+        [0,  c.boxH * 0.22],                       // shift south
+        [-c.boxW * 0.22, 0],                       // shift west
+        [ c.boxW * 0.22, 0],                       // shift east
+      ];
+      let placedAt: [number, number] | null = null;
+      for (const [dx, dy] of offsets) {
+        const tx = c.cx + dx, ty = c.cy + dy;
+        if (tryPlaceLabel(placed, tx, ty, measuredW, labelH, PAD)) {
+          placedAt = [tx, ty]; break;
+        }
+      }
+      if (!placedAt) continue;
+
+      paintLabelClean(ctx, chosen.text, placedAt[0], placedAt[1], chosen.size, fontFamily, 500);
     }
 
-    // ── State labels — same bake path as countries but at ~25% smaller
-    //   font, filtered to STATE_COUNTRIES, and sharing the same `placed`
-    //   registry so state names can't overlap country names or each
-    //   other. Skips state labels small enough that they'd undercut the
-    //   bbox legibility floor (Hawaii, Singapore, Rhode Island, etc).
-    if (statesGeo) {
+    // (the prior in-base-texture state + city blocks lived here. They
+    // were moved above the country pass so the country labels could
+    // yield to placed city + state positions, and their draws now go
+    // to overlayCtx instead of ctx. Deleted in same commit.)
+    if (false as boolean && statesGeo) {
       const STATE_MAX_FONT = 17 * SCALE_FACTOR;  // ~75% of country MAX
       const STATE_MIN_FONT = 8  * SCALE_FACTOR;
       const STATE_MIN_AREA = (W * H) * 0.00006;
@@ -751,7 +892,9 @@ function createEarthTexture(
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
-  return tex;
+  const overlayTex = new THREE.CanvasTexture(overlayCanvas);
+  overlayTex.needsUpdate = true;
+  return { base: tex, overlay: overlayTex };
 }
 function featureCentroid(f: GeoFeature): [number, number] | null {
   if (!f.geometry) return null;
@@ -2620,6 +2763,13 @@ function GlobeScene() {
   const [terrainBitmap, setTerrainBitmap] = useState<ImageBitmap   | null>(null);
   const [bumpMap,       setBumpMap]       = useState<THREE.Texture  | null>(null);
   const [texture,       setTexture]       = useState<THREE.CanvasTexture | null>(null);
+  // Separate label overlay texture (states + cities + pins). Painted onto
+  // its own transparent sphere with opacity controlled per-frame so the
+  // labels only show at the "Local" zoom tier (camDist ≤ 10), fading out
+  // by camDist ≥ 13. The overlay canvas is rendered at higher resolution
+  // than the base so labels stay crisp when the user zooms in.
+  const [overlayTexture, setOverlayTexture] = useState<THREE.CanvasTexture | null>(null);
+  const overlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   // 0 = countries only | 1 = + states | 2 = + cities
   const [zoomLevel, setZoomLevel] = useState(0);
   const zoomLevelRef = useRef(0);
@@ -2647,14 +2797,38 @@ function GlobeScene() {
     // canvas implies. Phones can't perceive the difference (sphere shows
     // only ~0.05% of texels on-screen at any moment).
     const texCap = isMobile ? 4096 : 8192;
-    const tex = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES);
+    // Overlay canvas scale: mobile keeps 1:1 (memory-constrained), desktop
+    // renders the label overlay at 2× so the state + city labels stay
+    // crisp when the user zooms in to the "Local" tier where they fade in.
+    const overlayScale = isMobile ? 1 : 2;
+    const { base: tex, overlay: ovTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
     tex.minFilter  = THREE.LinearMipmapLinearFilter;
     tex.magFilter  = THREE.LinearFilter;
     tex.anisotropy = gl.capabilities.getMaxAnisotropy();
     tex.needsUpdate = true;
+    ovTex.minFilter  = THREE.LinearMipmapLinearFilter;
+    ovTex.magFilter  = THREE.LinearFilter;
+    ovTex.anisotropy = gl.capabilities.getMaxAnisotropy();
+    ovTex.needsUpdate = true;
     setTexture(tex);
-    return () => { tex.dispose(); };
+    setOverlayTexture(ovTex);
+    return () => { tex.dispose(); ovTex.dispose(); };
   }, [countries, states, terrainBitmap, gl]);
+
+  // Per-frame opacity ramp for the label overlay. Cities + states show at
+  // full opacity at the "Local" tier (camDist ≤ 10), fade out toward
+  // "Country" tier (camDist ≥ 13), invisible above. Tier thresholds
+  // mirror the zoom-badge definitions in AtlasShell.
+  useFrame(() => {
+    const m = overlayMaterialRef.current;
+    if (!m) return;
+    const d = camDistRef.current;
+    let opacity: number;
+    if (d <= 10) opacity = 1;
+    else if (d >= 13) opacity = 0;
+    else opacity = (13 - d) / 3;
+    if (Math.abs(m.opacity - opacity) > 0.001) m.opacity = opacity;
+  });
 
   // Load all async resources once on mount
   useEffect(() => {
@@ -2983,6 +3157,25 @@ function GlobeScene() {
             displacementBias={bumpMap ? -0.12 : 0}
           />
         </Sphere>
+
+        {/* Label overlay sphere — concentric with the earth at R*1.0008
+            (just above the surface, enough to dodge z-fighting without
+            visible levitation). Carries the state + city + pin labels.
+            Opacity is controlled by the useFrame hook above, ramping
+            from 0 at far zoom to 1 at the "Local" tier (camDist ≤ 10).
+            meshBasicMaterial so scene lighting doesn't tint the labels. */}
+        {overlayTexture && (
+          <Sphere args={[R * 1.0008, 128, 128]}>
+            <meshBasicMaterial
+              ref={overlayMaterialRef}
+              map={overlayTexture}
+              transparent
+              opacity={0}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </Sphere>
+        )}
 
 
         {/* Sparkle burst during fly-to animation (desktop only) */}
