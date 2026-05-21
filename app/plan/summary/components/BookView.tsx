@@ -11,6 +11,8 @@ import {
 import { AIRPORT_COORDS } from '@/lib/airport-coords';
 import { track } from '@/lib/analytics';
 import VoteButtons from '@/app/components/VoteButtons';
+import StreetViewThumb from '@/app/components/StreetViewThumb';
+import { useGeocode } from '@/app/hooks/useGeocode';
 
 // Locale → ISO 4217 currency map. Mirrors the SummaryView logic; kept
 // inline rather than shared because BookView is its own dynamic import
@@ -764,6 +766,7 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
   const [adjusting, setAdjusting] = useState(false);
   const [adjusted, setAdjusted] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const { coord: svCoord } = useGeocode(hotel.name, city);
   async function addToItinerary() {
     if (!tripId || adjusting) return;
     setAdjusting(true); setAdjustError(null);
@@ -937,6 +940,15 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
                 transition: 'opacity 200ms ease',
               }}
             />
+          ) : svCoord ? (
+            <div style={{ position: 'absolute', inset: 0 }}>
+              <StreetViewThumb
+                lat={svCoord.lat}
+                lng={svCoord.lng}
+                alt={hotel.name}
+                aspectRatio="16/10"
+              />
+            </div>
           ) : (
             String.fromCodePoint(0x25EC)
           )}
