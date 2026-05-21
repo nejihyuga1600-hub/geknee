@@ -10,6 +10,8 @@ type GeocodeFeature = {
   center: [number, number] | null;
   text: string;
   place_type: string[];
+  /** Carried from Places API (New) for toPlace() resolution; absent on recents. */
+  _prediction?: google.maps.places.PlacePrediction;
 };
 
 type MonumentMarker = {
@@ -44,8 +46,13 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const unmountedRef = useRef(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monumentCirclesRef = useRef<google.maps.Circle[]>([]);
-  const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
-  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  // M1 — session token: reused across autocomplete→fetchFields pairs to collapse
+  // per-request SKU charges into one session SKU charge (~$970/mo savings at 6k trips/mo).
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+
+  function makeNewSession() {
+    sessionTokenRef.current = new google.maps.places.AutocompleteSessionToken();
+  }
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeocodeFeature[]>([]);
@@ -103,53 +110,63 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     writeDraft(readDraft().filter(p => round(p.lat) !== round(pinLat) || round(p.lon) !== round(pinLon)));
   }
 
-  // Debounced Places Autocomplete, proximity-biased to current city.
+  // Debounced Places API (New) Autocomplete, proximity-biased to current city.
+  // M1: session token passed to each fetchAutocompleteSuggestions call so that
+  // the subsequent fetchFields call closes the session under one billing event.
   useEffect(() => {
-    const svc = autocompleteRef.current;
-    if (!svc || query.trim().length < 2) {
+    if (query.trim().length < 2) {
       setResults([]);
       setActiveIdx(-1);
       return;
     }
     setSearching(true);
-    const handle = setTimeout(() => {
+    const handle = setTimeout(async () => {
       const map = mapRef.current;
       const center = map ? map.getCenter() : null;
-      const locationBias: google.maps.places.LocationBias = center
+      const locationBias = center
         ? { center: { lat: center.lat(), lng: center.lng() }, radius: 50000 }
         : { center: { lat, lng: lon }, radius: 50000 };
 
-      svc.getPlacePredictions(
-        { input: query, locationBias },
-        (predictions, status) => {
-          setSearching(false);
-          if (
-            status !== google.maps.places.PlacesServiceStatus.OK &&
-            status !== google.maps.places.PlacesServiceStatus.ZERO_RESULTS
-          ) {
-            setResults([]);
-            setActiveIdx(-1);
-            return;
-          }
-          const features: GeocodeFeature[] = (predictions ?? []).map((p) => {
-            const types = p.types ?? [];
-            const placeType = types.includes('establishment') ? ['poi']
-              : types.includes('street_address') || types.includes('route') ? ['address']
-              : ['place'];
-            return {
-              id: p.place_id,
-              place_name: p.description,
-              center: null,
-              text: p.structured_formatting?.main_text ?? p.description,
-              place_type: placeType,
-            };
-          });
-          setResults(features);
-          setActiveIdx(-1);
-        }
-      );
+      // Ensure a session token exists before the first fetch.
+      if (!sessionTokenRef.current) makeNewSession();
+
+      try {
+        const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: query,
+          sessionToken: sessionTokenRef.current!,
+          locationBias,
+        });
+
+        const predictions = suggestions
+          .map((s) => s.placePrediction)
+          .filter((p): p is google.maps.places.PlacePrediction => !!p);
+
+        const features: GeocodeFeature[] = predictions.map((p) => {
+          const types: string[] = (p.types as string[] | undefined) ?? [];
+          const placeType = types.includes('establishment') ? ['poi']
+            : types.includes('street_address') || types.includes('route') ? ['address']
+            : ['place'];
+          return {
+            id: p.placeId,
+            place_name: p.text.text,
+            center: null,
+            text: p.mainText?.text ?? p.text.text,
+            place_type: placeType,
+            // Carry prediction ref so handleResultClick can call toPlace().
+            _prediction: p,
+          };
+        });
+        setResults(features);
+        setActiveIdx(-1);
+      } catch {
+        setResults([]);
+        setActiveIdx(-1);
+      } finally {
+        setSearching(false);
+      }
     }, 220);
     return () => clearTimeout(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, lat, lon]);
 
   function dropPin(pinLng: number, pinLat: number, label?: string, opts?: { skipPersist?: boolean }) {
@@ -185,26 +202,32 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       return;
     }
 
-    // Resolve place_id → lat/lng via PlacesService on select (cost-efficient).
-    const svc = placesServiceRef.current;
-    if (!svc) return;
-    svc.getDetails(
-      { placeId: f.id, fields: ['geometry', 'name'] },
-      (place, status) => {
+    // Resolve place → lat/lng via Places API (New) toPlace().fetchFields().
+    // M1: same session token from the autocomplete call closes the billing session.
+    // M2: field mask restricted to Basic Data only (displayName + location — free tier).
+    const prediction = f._prediction;
+    if (!prediction) return;
+    (async () => {
+      try {
+        const place = prediction.toPlace();
+        await place.fetchFields({ fields: ['displayName', 'location'] });
         if (unmountedRef.current || !mapRef.current) return;
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) return;
-        const resolved = place.geometry.location;
-        const lng = resolved.lng();
-        const latitude = resolved.lat();
-        const enriched: GeocodeFeature = { ...f, center: [lng, latitude], text: place.name ?? f.text };
+        const loc = place.location as google.maps.LatLng | null;
+        if (!loc) return;
+        const lng = loc.lng();
+        const latitude = loc.lat();
+        const label: string = (place.displayName as string | undefined) ?? f.text;
+        const enriched: GeocodeFeature = { ...f, center: [lng, latitude], text: label };
         map.panTo({ lat: latitude, lng });
         map.setZoom(14);
         dropPin(lng, latitude, enriched.text);
         pushRecent(enriched);
         setQuery(''); setResults([]); setSearchOpen(false); setActiveIdx(-1);
         inputRef.current?.blur();
-      }
-    );
+        // Session closes after fetchFields — start a fresh one for the next typeahead.
+        makeNewSession();
+      } catch { /* silently drop failed resolution */ }
+    })();
   }
 
   useEffect(() => {
@@ -238,9 +261,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         });
         mapRef.current = map;
 
-        // Initialise Places services once map is ready.
-        autocompleteRef.current = new google.maps.places.AutocompleteService();
-        placesServiceRef.current = new google.maps.places.PlacesService(map);
+        // Places API (New) needs no service object — calls are static methods / instance methods.
 
         zoomListener = map.addListener('zoom_changed', () => {
           const z = map.getZoom();
@@ -275,8 +296,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       monumentCirclesRef.current.forEach(c => c.setMap(null));
       monumentCirclesRef.current = [];
       mapRef.current = null;
-      autocompleteRef.current = null;
-      placesServiceRef.current = null;
+      sessionTokenRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon, monuments]);
