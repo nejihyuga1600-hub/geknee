@@ -2823,10 +2823,19 @@ function GlobeScene() {
     const m = overlayMaterialRef.current;
     if (!m) return;
     const d = camDistRef.current;
+    // Hard cutoff at the Country/Local tier boundary (camDist 13). Cities
+    // are FULLY visible the moment the user enters Local tier (camDist
+    // ≤ 13 per AtlasShell's badge math) and FULLY invisible at Country
+    // tier and above. A 0.3-unit fade between 12.7 and 13.0 keeps the
+    // transition from popping visually without making the user zoom
+    // further in to read city names. Prior 10 → 13 linear ramp meant
+    // half-opacity ghost cities at the badge's "Country" label and
+    // demanded a full 3-unit zoom to reach full visibility — both
+    // points the user called out.
     let opacity: number;
-    if (d <= 10) opacity = 1;
-    else if (d >= 13) opacity = 0;
-    else opacity = (13 - d) / 3;
+    if (d <= 12.7) opacity = 1;
+    else if (d >= 13.0) opacity = 0;
+    else opacity = (13.0 - d) / 0.3;
     if (Math.abs(m.opacity - opacity) > 0.001) m.opacity = opacity;
   });
 
