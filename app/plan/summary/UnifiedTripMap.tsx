@@ -16,6 +16,7 @@ import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 import { modeUsesDirections, type RouteMode } from '@/lib/googleMaps/route';
 import { extractDayNumber, isTimeLine, type Section } from './lib/itinerary-parse';
 import { extractActivityCandidates, extractActivityPlace, extractTransitMode } from './lib/places';
+import { fetchWeather, type WeatherResult } from '@/lib/googleMaps/weatherClient';
 
 const QUEST_RE = /\[\s*MONUMENT\s*QUEST\s*\]/i;
 
@@ -251,6 +252,24 @@ export default function UnifiedTripMap({
   // the panel after success.
   const [pinnedRecIds, setPinnedRecIds] = useState<Set<string>>(new Set());
 
+  // Fetch 7-day forecast once on mount — geocode the anchor city first
+  // then call /api/weather. Render nothing if either step fails.
+  useEffect(() => {
+    if (!location) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const gr = await fetch(`/api/geocode?address=${encodeURIComponent(location)}`);
+        if (!gr.ok || cancelled) return;
+        const gd = await gr.json() as { lat?: number; lng?: number } | null;
+        if (!gd?.lat || !gd?.lng || cancelled) return;
+        const w = await fetchWeather(gd.lat, gd.lng, 7);
+        if (!cancelled) setWeatherData(w);
+      } catch { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, [location]);
+
   async function fetchRecs(opts?: { force?: boolean }) {
     if (!tripId) return;
     const cacheKey = `geknee:recs:${tripId}`;
@@ -351,6 +370,7 @@ export default function UnifiedTripMap({
   // place card. Populated as markers are created. Lets the in-itinerary
   // step-number click resolve to a specific pin via window event.
   const pinHandlersRef = useRef<Map<string, () => void>>(new Map());
+  const [weatherData, setWeatherData] = useState<WeatherResult | null>(null);
   const [ready, setReady] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1448,6 +1468,16 @@ export default function UnifiedTripMap({
                 >
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 6 }} />
                   Day {d} ({count})
+                  {weatherData?.forecast[d - 1] && (
+                    <span style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3, opacity: 0.85 }}>
+                      {weatherData.forecast[d - 1].iconUrl && (
+                        <img src={weatherData.forecast[d - 1].iconUrl!} alt="" width={14} height={14} style={{ display: 'block' }} />
+                      )}
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
+                        {weatherData.forecast[d - 1].highC != null ? Math.round(weatherData.forecast[d - 1].highC!) : '--'}°/{weatherData.forecast[d - 1].lowC != null ? Math.round(weatherData.forecast[d - 1].lowC!) : '--'}°
+                      </span>
+                    </span>
+                  )}
                 </button>
               );
             })}
