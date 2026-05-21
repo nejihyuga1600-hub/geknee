@@ -7,6 +7,8 @@ import type { ActivityGroup } from '../lib/itinerary-parse';
 import type { EditTarget } from '../lib/types';
 import { extractPlace, fetchPlaceImage, imgCache } from '../lib/places';
 import { Walk, Bike, Subway, Bus, Taxi, Train, Ferry, Plane } from '@/lib/icons';
+import StreetViewThumb from '@/app/components/StreetViewThumb';
+import { useGeocode } from '@/app/hooks/useGeocode';
 
 // Single activity row inside a day-card section. Numbered pin (lavender or
 // gold for monument quests), headline as an EditableLine, always-visible
@@ -295,6 +297,7 @@ export function ActivityBlock({
   city, activityNumber, nextActivityNumber, dayNumber,
 }: ActivityBlockProps) {
   const place = extractPlace(group.headline);
+  const { coord: svCoord } = useGeocode(place ?? group.headline, city);
   const duration = parseDuration(group.headline);
   const cost = parseCost(group.details, group.headline);
   const transit = parseTransit(group.details, nextActivityNumber);
@@ -410,6 +413,16 @@ export function ActivityBlock({
           );
         })() : (
           <div style={{ width: 22, flexShrink: 0 }} />
+        )}
+        {svCoord && (
+          <div style={{ width: 80, flexShrink: 0 }}>
+            <StreetViewThumb
+              lat={svCoord.lat}
+              lng={svCoord.lng}
+              alt={place ?? group.headline}
+              aspectRatio="1/1"
+            />
+          </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <EditableLine
