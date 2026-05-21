@@ -10,6 +10,7 @@ import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 import { fetchWeather, type WeatherResult } from '@/lib/googleMaps/weatherClient';
+import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -33,6 +34,7 @@ interface TripData {
   // for this trip (either auto on flight detection or explicit via the
   // "Download offline" CTA). UI suppresses the CTA when this is set.
   offlineMapPrefetched?: boolean;
+  timezone?: string | null;
 }
 
 interface DayWeather {
@@ -201,7 +203,12 @@ export default function LiveTripPage() {
   })();
 
   const cityName = (trip?.location ?? 'YOUR CITY').toUpperCase();
-  const clockText = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const tripTz = useTripTimezone(trip?.timezone);
+  const clockText = new Intl.DateTimeFormat(undefined, {
+    timeZone: tripTz,
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(now);
 
   // The user can toggle which day they're previewing — defaults to the
   // calendar-current day. Map + activity list both flip when this changes,
@@ -578,6 +585,7 @@ export default function LiveTripPage() {
           etaMin={etaMin}
           leaveBy={leaveByText}
           coords={nextCoords}
+          tripTimezone={trip?.timezone}
         />
       </div>
 
@@ -701,13 +709,15 @@ function MiniTransitCard() {
 // ─── Hero LEAVE-BY card ─────────────────────────────────────────────────────
 
 function LeaveByCard({
-  next, etaMin, leaveBy, coords,
+  next, etaMin, leaveBy, coords, tripTimezone,
 }: {
   next: Activity | null;
   etaMin: number | null;
   leaveBy: { leaveAt: Date; minsToLeave: number } | null;
   coords: Geo | null;
+  tripTimezone?: string | null;
 }) {
+  const tripTz = useTripTimezone(tripTimezone);
   // Pull a clean place-name pair out of the activity body so we can render
   // "<verb> at <Place>" with the place in italic accent.
   const split = (() => {
@@ -732,7 +742,11 @@ function LeaveByCard({
     if (!next) return 'No more activities scheduled for today. Soak it in.';
     const eta = etaMin != null ? `${etaMin} min walk` : 'walk time pending';
     const leaveAt = leaveBy
-      ? leaveBy.leaveAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+      ? new Intl.DateTimeFormat(undefined, {
+          timeZone: tripTz,
+          hour: 'numeric',
+          minute: '2-digit',
+        }).format(leaveBy.leaveAt)
       : null;
     return leaveAt
       ? `${eta} from your current spot. Leaving by ${leaveAt} gives you a ~5 min buffer.`
