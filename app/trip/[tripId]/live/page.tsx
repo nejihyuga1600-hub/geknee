@@ -9,7 +9,7 @@ import { AddStopModal } from './AddStopModal';
 import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
-import { fetchWeather, type WeatherResult } from '@/lib/googleMaps/weatherClient';
+import { fetchWeather, type WeatherResult, type WeatherDay } from '@/lib/googleMaps/weatherClient';
 import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
@@ -35,16 +35,6 @@ interface TripData {
   // "Download offline" CTA). UI suppresses the CTA when this is set.
   offlineMapPrefetched?: boolean;
   timezone?: string | null;
-}
-
-interface DayWeather {
-  date: string;
-  tempMin: number;
-  tempMax: number;
-  condition: string;
-  icon: string;
-  iconUrl: string;
-  pop: number;
 }
 
 interface Geo { lat: number; lon: number }
@@ -132,7 +122,6 @@ export default function LiveTripPage() {
   const [trip, setTrip] = useState<TripData | null>(null);
   const [loadingTrip, setLoadingTrip] = useState(true);
   const [now, setNow] = useState<Date>(() => new Date());
-  const [weather, setWeather] = useState<DayWeather[] | null>(null);
   const [currentWeather, setCurrentWeather] = useState<WeatherResult | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
 
@@ -149,7 +138,7 @@ export default function LiveTripPage() {
   // trip's anchor city for the mock map center; no GPS recenter.
 
   // Current-conditions banner above the live map.
-  // Geocode the anchor city then call /api/weather?days=0 for current conditions.
+  // Geocode the anchor city then call /api/weather?days=7 so we get both current (banner) and forecast (alert card).
   // Re-fetches when the trip location changes. Falls back silently on any error.
   useEffect(() => {
     if (!trip?.location) return;
@@ -160,7 +149,7 @@ export default function LiveTripPage() {
         if (!gr.ok || cancelled) return;
         const gd = await gr.json() as { lat?: number; lng?: number } | null;
         if (!gd?.lat || !gd?.lng || cancelled) return;
-        const w = await fetchWeather(gd.lat, gd.lng, 0);
+        const w = await fetchWeather(gd.lat, gd.lng, 7);
         if (!cancelled) setCurrentWeather(w);
       } catch { /* silent */ }
     })();
@@ -596,7 +585,7 @@ export default function LiveTripPage() {
         gap: 14, padding: '20px 22px 0',
       }}>
         <NextStopCard next={activities[nextIdx + 1] ?? null} />
-        <WeatherAlertCard weather={weather?.[0] ?? null} />
+        <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} />
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
       </div>
 
@@ -649,31 +638,6 @@ export default function LiveTripPage() {
   );
 }
 
-
-function MiniWeatherCard({ weather }: { weather: DayWeather | null }) {
-  const tempC = weather ? Math.round((weather.tempMin + weather.tempMax) / 2) : null;
-  const cond = weather?.condition ?? 'Loading…';
-  const popPct = weather ? Math.round(weather.pop * 100) : 0;
-  return (
-    <div style={{
-      pointerEvents: 'auto',
-      background: 'rgba(13,13,36,0.85)', backdropFilter: 'blur(12px)',
-      border: '1px solid var(--brand-border)', borderRadius: 12,
-      padding: '10px 14px', minWidth: 160,
-    }}>
-      <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em', color: 'var(--brand-ink-mute)', marginBottom: 4 }}>
-        WEATHER
-      </div>
-      <div style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 400, color: 'var(--brand-accent-2)' }}>
-        {tempC === null ? '—' : `${tempC}°`}{' '}
-        {weather && <img src={weather.iconUrl} alt={weather.condition} style={{ width: 24, height: 24, verticalAlign: 'middle' }} />}
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)' }}>
-        {cond}{popPct >= 30 ? ` · ${popPct}% rain` : ''}
-      </div>
-    </div>
-  );
-}
 
 function MiniTransitCard() {
   const [mode, setMode] = useState<'walk' | 'bus'>('walk');
@@ -880,8 +844,8 @@ function NextStopCard({ next }: { next: Activity | null }) {
   );
 }
 
-function WeatherAlertCard({ weather }: { weather: DayWeather | null }) {
-  if (!weather) {
+function WeatherAlertCard({ day }: { day: WeatherDay | null }) {
+  if (!day) {
     return (
       <CardShell accent="var(--brand-gold)" label="WEATHER ALERT">
         <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: 'var(--brand-ink)' }}>Loading…</div>
@@ -891,17 +855,21 @@ function WeatherAlertCard({ weather }: { weather: DayWeather | null }) {
       </CardShell>
     );
   }
-  const popPct = Math.round(weather.pop * 100);
+  const popPct = day.precipPct;
+  const cond = day.conditionsText || 'Clear';
   const headline = popPct >= 60
-    ? `${weather.condition} · expect rain`
+    ? `${cond} · expect rain`
     : popPct >= 30
-      ? `${weather.condition} · light rain possible`
-      : weather.condition;
+      ? `${cond} · light rain possible`
+      : cond;
+  const tempLine = (day.highC !== null && day.lowC !== null)
+    ? `${Math.round(day.highC)}°/${Math.round(day.lowC)}° today`
+    : '';
   const detail = popPct >= 60
     ? 'Pack a layer and waterproof your camera bag.'
     : popPct >= 30
-      ? 'Bring a layer. Most temple gardens stay open in light rain.'
-      : `${weather.tempMax}°/${weather.tempMin}° today — sunset wraps the day in honey light.`;
+      ? 'Bring a layer. Most outdoor stops stay open in light rain.'
+      : tempLine ? `${tempLine} — sunset wraps the day in honey light.` : 'Clear conditions ahead.';
   return (
     <CardShell accent="var(--brand-gold)" label="WEATHER ALERT">
       <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: 'var(--brand-ink)', textTransform: 'capitalize' }}>
