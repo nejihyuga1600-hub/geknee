@@ -49,13 +49,66 @@ export async function POST(req: Request) {
     ? `\nCurrent page context:\n${body.pageContext}`
     : "";
 
+
+  // Inject weather forecast into system prompt when trip location is known.
+  // Server-side geocode + weather fetch with 3s timeout. Silent on any error.
+  let weatherSection = "";
+  if (location) {
+    try {
+      const geoKey =
+        process.env.GOOGLE_MAPS_API_KEY ??
+        process.env.GOOGLE_PLACES_API_KEY ??
+        process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (geoKey) {
+        const geoRes = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${geoKey}`,
+          { signal: AbortSignal.timeout(3000) },
+        );
+        if (geoRes.ok) {
+          const geoData = await geoRes.json() as { results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }> };
+          const coords = geoData.results?.[0]?.geometry?.location;
+          if (coords) {
+            const lat = Math.round(coords.lat * 100) / 100;
+            const lng = Math.round(coords.lng * 100) / 100;
+            const curRes = await fetch(
+              `https://weather.googleapis.com/v1/currentConditions:lookup?location.latitude=${lat}&location.longitude=${lng}&key=${geoKey}`,
+              { signal: AbortSignal.timeout(3000) },
+            );
+            const fctRes = await fetch(
+              `https://weather.googleapis.com/v1/forecast/days:lookup?location.latitude=${lat}&location.longitude=${lng}&days=7&key=${geoKey}`,
+              { signal: AbortSignal.timeout(3000) },
+            );
+            if (curRes.ok) {
+              const cur = await curRes.json() as { temperature?: { degrees: number }; weatherCondition?: { description?: { text: string } } };
+              const curTemp = cur.temperature?.degrees != null ? Math.round(cur.temperature.degrees) : null;
+              const curCond = cur.weatherCondition?.description?.text ?? "";
+              if (curTemp != null) weatherSection += `[Current weather at destination: ${curTemp}°C, ${curCond}]
+`;
+            }
+            if (fctRes.ok) {
+              const fct = await fctRes.json() as { forecastDays?: Array<{ displayDate?: { month: number; day: number }; maxTemperature?: { degrees: number }; minTemperature?: { degrees: number }; daytimeForecast?: { weatherCondition?: { description?: { text: string } } } }> };
+              const days = (fct.forecastDays ?? []).slice(0, 7).map((d) => {
+                const label = d.displayDate ? `${d.displayDate.month}/${d.displayDate.day}` : "?";
+                const hi = d.maxTemperature?.degrees != null ? Math.round(d.maxTemperature.degrees) : "?";
+                const lo = d.minTemperature?.degrees != null ? Math.round(d.minTemperature.degrees) : "?";
+                const cond = d.daytimeForecast?.weatherCondition?.description?.text ?? "";
+                return `${label}: ${hi}/${lo}°C ${cond}`;
+              });
+              if (days.length > 0) weatherSection += `[7-day forecast: ${days.join("; ")}]
+`;
+            }
+          }
+        }
+      }
+    } catch { /* silent -- chat must not fail because weather did */ }
+  }
   const system = `You are GeKnee, a magical, friendly travel genie embedded in a travel planning app. You assist travelers at every stage of their trip — from choosing a destination to booking and beyond.
 
 Trip details (if known):
 - Destination: ${location || "not yet chosen"}
 - Duration: ${nights ? nights + " nights" : "not yet set"}
 - Purpose: ${purpose || "not specified"} | Style: ${style || "not specified"} | Budget: ${budget || "not specified"}
-${pageSection}${itinerarySection}
+${weatherSection}${pageSection}${itinerarySection}
 
 Guidelines:
 - Be warm, enthusiastic, and concise (2-4 sentences or a short list)
