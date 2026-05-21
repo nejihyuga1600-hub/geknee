@@ -9,7 +9,13 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Vercel runs Amazon Linux 2 / Node 24 (rhel-openssl-3.0.x). Pinning
+  // binaryTargets means we only ship the Linux engine in the lambda
+  // bundle — without this, Prisma also includes the Windows + macOS
+  // engines (~20MB each) just in case, blowing the function size cap.
+  // "native" stays so local Windows + macOS dev still works.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 // ── NextAuth required models ───────────────────────────────────────────────────
@@ -141,6 +147,12 @@ model TripDraft {
   // Stale after ~14 days; the booking endpoint re-fetches automatically.
   bookingSuggestions   String?
   bookingSuggestionsAt DateTime?
+
+  // IANA timezone resolved from the destination's lat/lng via the Google
+  // Time Zone API at destination-lock (style -> summary transition). Used
+  // to render activity times in the trip's local timezone rather than the
+  // viewer's browser timezone. Null on trips created before this column.
+  timezone             String?
 
   // Group voting mode for chat-aware AI suggestions. "advisory" (default):
   // owner sees vote tally + alternatives but solo-applies. "auto_majority":
