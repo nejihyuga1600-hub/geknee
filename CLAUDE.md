@@ -84,3 +84,12 @@ Two error sources (Sentry + PostHog error tracking) overlap. **Treat Sentry as t
   - KV (or in-memory) cache on /api/directions
   - 1-week immutable CDN cache on /api/streetview
   - lat/lng coalescing to 2-decimal precision on /api/weather
+- **Live server routes** (all auth-gated except OG):
+  - `/api/streetview` — Street View Static proxy, 302 → Google CDN
+  - `/api/weather` — current + 7-day forecast via Google Weather API
+  - `/api/timezone` — IANA timezone resolver, 1-year immutable cache
+  - `/api/directions` — Routes API v2 (`v2:computeRoutes`), KV-cached
+  - `/api/geocode` — Geocoding API (already in use)
+  - `/api/og-trip-map/[tripId]` — Maps Static OG share card (no auth, public-link previewable)
+- **Wave 3 deferred** (each needs design pass): Maps Grounding Lite, Aerial View, Air Quality + Pollen, Roads API, Distance Matrix, Photorealistic 3D Tiles.
+- **Phase 5 deferred**: server `lib/agent/tools/route_between.ts` still calls Mapbox Directions. Migrate to Google Directions after 30 days of Routes API usage data.
