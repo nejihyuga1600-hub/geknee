@@ -18,8 +18,12 @@ import { Sparkle } from "@/lib/icons";
 import {
   POPULAR_SUGGESTIONS,
   resolveDestination,
+  searchDestinations,
   type Suggestion,
 } from "./destinations";
+import CITIES_JSON from "@/app/plan/location/globe/cities-curated.json";
+import { getExtraCities, useExtraCitiesVersion } from "@/app/plan/location/globe/cityData";
+const CITIES_LIST: { n: string; lat: number; lon: number }[] = CITIES_JSON;
 
 // LocationClient is the live planner — when mounted with chromeless, it
 // renders only the real R3F globe (country borders, monuments, click-to-fly,
@@ -177,6 +181,11 @@ export default function AtlasShell() {
   }, []);
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState("");
+  // Validation error shown below the destination input when the user
+  // tries to submit a string that doesn't match any monument or city.
+  const [destError, setDestError] = useState<string | null>(null);
+  // Bump when GeoNames extras finish loading so the autocomplete recomputes.
+  const extraVer = useExtraCitiesVersion();
   const [trip, setTrip] = useState<Trip>(EMPTY_TRIP);
   // Responsive collapse — top nav becomes too dense on phones, so we
   // sink Collection / Go Pro / Trips behind the existing Menu pill below
@@ -253,13 +262,19 @@ export default function AtlasShell() {
   const submitDest = (raw?: string) => {
     const value = (raw ?? dest).trim();
     if (!value) return;
-    const match = resolveDestination(value);
-    if (match) {
-      setTrip({ ...trip, destination: match.name, lat: match.lat, lon: match.lon, mk: match.mk });
-      setDest(match.name);
-    } else {
-      setTrip({ ...trip, destination: value, lat: null, lon: null, mk: null });
+    // Try monuments first, then city catalog (curated + GeoNames 15K).
+    // searchDestinations(..., limit=1) is the validation gate — if nothing
+    // matches, refuse to advance instead of saving a free-text gibberish
+    // destination like "asdfqwerzxcv-not-a-place" that QA caught earlier.
+    const hits = searchDestinations(value, [...CITIES_LIST, ...getExtraCities()], 1);
+    const match = hits[0];
+    if (!match) {
+      setDestError(`Couldn't find "${value}". Try a city, country, or landmark.`);
+      return;
     }
+    setDestError(null);
+    setTrip({ ...trip, destination: match.name, lat: match.lat, lon: match.lon, mk: match.mk });
+    setDest(match.name);
     setSheet("open");
     setStep(1);
   };
@@ -634,6 +649,9 @@ export default function AtlasShell() {
                 pickSuggestion={pickSuggestion}
                 trip={trip}
                 onNext={() => setStep(1)}
+                destError={destError}
+                setDestError={setDestError}
+                extraVer={extraVer}
               />
             )}
             {step === 1 && (
@@ -1190,6 +1208,9 @@ function StepDestination({
   pickSuggestion,
   trip,
   onNext,
+  destError,
+  setDestError,
+  extraVer,
 }: {
   dest: string;
   setDest: (v: string) => void;
@@ -1197,6 +1218,9 @@ function StepDestination({
   pickSuggestion: (s: Suggestion) => void;
   trip: Trip;
   onNext: () => void;
+  destError: string | null;
+  setDestError: (e: string | null) => void;
+  extraVer: number;
 }) {
   return (
     <div>
@@ -1234,7 +1258,7 @@ function StepDestination({
           }
         }}
         value={dest}
-        onChange={(e) => setDest(e.target.value)}
+        onChange={(e) => { setDest(e.target.value); if (destError) setDestError(null); }}
         onKeyDown={(e) => e.key === "Enter" && submitDest()}
         placeholder="Try 'Kyoto', 'Iceland', 'Eiffel Tower'…"
         style={{
@@ -1242,7 +1266,7 @@ function StepDestination({
           marginTop: 16,
           padding: "12px 16px",
           borderRadius: 12,
-          border: "1px solid var(--brand-border)",
+          border: destError ? "1px solid #ef4444" : "1px solid var(--brand-border)",
           background: "rgba(255,255,255,0.04)",
           color: "var(--brand-ink)",
           fontSize: 15,
@@ -1250,6 +1274,71 @@ function StepDestination({
           outline: "none",
         }}
       />
+
+      {/* Inline error when submitDest rejects an unmatched query. */}
+      {destError && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "#fca5a5",
+            fontFamily: "var(--font-ui), system-ui, sans-serif",
+          }}
+        >
+          {destError}
+        </div>
+      )}
+
+      {/* Autocomplete dropdown — top matches from monuments + cities. */}
+      {dest.trim().length >= 2 && (() => {
+        // Recompute when extras load (extraVer ticks once). Cheap O(n) over
+        // ~33K cities; React batches the typing keystrokes so we're fine.
+        void extraVer;
+        const matches = searchDestinations(dest, [...CITIES_LIST, ...getExtraCities()], 6);
+        if (matches.length === 0) return null;
+        return (
+          <div
+            style={{
+              marginTop: 8,
+              borderRadius: 12,
+              border: "1px solid var(--brand-border)",
+              background: "rgba(15,23,42,0.85)",
+              overflow: "hidden",
+            }}
+          >
+            {matches.map((m) => (
+              <button
+                key={`${m.mk}|${m.lat.toFixed(2)}|${m.lon.toFixed(2)}`}
+                type="button"
+                onClick={() => pickSuggestion(m)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: "1px solid rgba(255,255,255,0.04)",
+                  color: "var(--brand-ink)",
+                  fontFamily: "var(--font-ui), system-ui, sans-serif",
+                  fontSize: 14,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{m.emoji}</span>
+                <span style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 500 }}>{m.name}</span>
+                  {m.location && (
+                    <span style={{ marginLeft: 8, opacity: 0.55, fontSize: 12 }}>{m.location}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       <div
         style={{

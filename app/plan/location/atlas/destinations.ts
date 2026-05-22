@@ -37,14 +37,32 @@ export const POPULAR_SUGGESTIONS: Suggestion[] = [
 // to do with no match (Atlas accepts the raw string and proceeds without
 // a globe pin).
 export function resolveDestination(query: string): Suggestion | null {
+  const hits = searchDestinations(query, [], 1);
+  return hits[0] ?? null;
+}
+
+// Lightweight city shape — anything with name + lat/lon + optional country.
+// Caller passes the curated CITIES + getExtraCities() since those are
+// already loaded in the runtime.
+export type CityLike = { n: string; lat: number; lon: number; c?: string };
+
+// Searches monuments first, then the supplied city list. Returns up to
+// `limit` matches. Used to power the destination autocomplete dropdown.
+// Case-insensitive substring on name/location. Monument matches outrank
+// city matches so "tokyo" → Tokyo Skytree first, then Tokyo city.
+export function searchDestinations(query: string, cities: CityLike[] = [], limit = 6): Suggestion[] {
   const q = query.trim().toLowerCase();
-  if (!q) return null;
-  // Exact mk match wins
+  if (!q) return [];
+  const out: Suggestion[] = [];
+  const seen = new Set<string>();
+
+  // 1. Exact mk match wins (handles paste of the canonical key)
   const exact = POPULAR_SUGGESTIONS.find(s => s.mk.toLowerCase() === q);
-  if (exact) return exact;
-  // Substring against all known monuments — broader than just popular,
-  // so "fushimi" matches even though it's not in the suggestion grid.
+  if (exact) { out.push(exact); seen.add(exact.name.toLowerCase()); }
+
+  // 2. Monument substring matches — known landmarks + adjacent cities.
   for (const mk in INFO) {
+    if (out.length >= limit) break;
     const info = INFO[mk as keyof typeof INFO];
     if (
       info.name.toLowerCase().includes(q) ||
@@ -52,19 +70,43 @@ export function resolveDestination(query: string): Suggestion | null {
       mk.toLowerCase().includes(q)
     ) {
       const coords = MONUMENT_LATLON[mk];
-      // Only return a hit when we have coords — the monument might not be
-      // in MONUMENT_LATLON yet (only ~19 monuments are listed there for now).
-      if (coords) {
-        return {
+      if (coords && !seen.has(info.name.toLowerCase())) {
+        out.push({
           mk,
           name: info.name,
           location: info.location,
           lat: coords.lat,
           lon: coords.lon,
           emoji: String.fromCodePoint(0x1F4CD),
-        };
+        });
+        seen.add(info.name.toLowerCase());
       }
     }
   }
-  return null;
+
+  // 3. City matches from the supplied list. Prefer prefix matches over
+  // substring so "san" surfaces "San Francisco" before "Buenos Aires".
+  const startsWith: CityLike[] = [];
+  const contains: CityLike[] = [];
+  for (const c of cities) {
+    if (out.length + startsWith.length + contains.length >= limit * 3) break;
+    const name = c.n.toLowerCase();
+    if (seen.has(name)) continue;
+    if (name.startsWith(q)) startsWith.push(c);
+    else if (name.includes(q)) contains.push(c);
+  }
+  for (const c of [...startsWith, ...contains]) {
+    if (out.length >= limit) break;
+    out.push({
+      mk: `city:${c.n}`,
+      name: c.n,
+      location: c.c ?? "",
+      lat: c.lat,
+      lon: c.lon,
+      emoji: String.fromCodePoint(0x1F30D), // 🌍 — distinguishes city from landmark 📍
+    });
+    seen.add(c.n.toLowerCase());
+  }
+
+  return out;
 }
