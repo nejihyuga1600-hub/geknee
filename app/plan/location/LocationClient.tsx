@@ -134,6 +134,71 @@ const COUNTRY_ABBREVIATIONS: Record<string, string> = {
   "Democratic People's Republic of Korea": "North Korea",
 };
 
+// Ray-casting point-in-polygon test (odd-even rule).
+function pointInRing(x: number, y: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Squared distance from point (px, py) to the nearest edge of `ring`.
+function pointToRingDistSq(px: number, py: number, ring: number[][]): number {
+  let minSq = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const dx = xj - xi, dy = yj - yi;
+    const len2 = dx * dx + dy * dy;
+    let t = 0;
+    if (len2 > 0) {
+      t = ((px - xi) * dx + (py - yi) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+    }
+    const cx = xi + t * dx, cy = yi + t * dy;
+    const d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+    if (d2 < minSq) minSq = d2;
+  }
+  return minSq;
+}
+
+// "Pole of inaccessibility" — the interior point of `ring` that is
+// FARTHEST from any edge. Always inside the polygon (unlike the shoelace
+// centroid, which can fall in the ocean for concave shapes like Chile,
+// Norway, Italy, and any horseshoe-shaped country). Coarse grid scan
+// over the bounding box: cheap (O(N² × ring.length)) and good enough
+// for label anchoring at canvas resolution. ~ 64² × 200 ≈ 800K ops per
+// country, ~250 countries → ~200M ops per bake — measured ~1-2 s extra
+// at bake time, zero runtime cost since the bake is cached.
+// Returns null if no grid point is inside (degenerate ring).
+function ringLabelAnchor(ring: number[][]): [number, number] | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of ring) {
+    if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+  }
+  const w = maxX - minX, h = maxY - minY;
+  if (w <= 0 || h <= 0) return null;
+  // N=64 grid is enough for canvas-resolution label placement. Bumping
+  // higher gives sub-pixel precision but the extra cost isn't visible.
+  const N = 64;
+  let bestX = (minX + maxX) * 0.5, bestY = (minY + maxY) * 0.5, bestD2 = -1;
+  for (let i = 1; i < N; i++) {
+    const x = minX + (i / N) * w;
+    for (let j = 1; j < N; j++) {
+      const y = minY + (j / N) * h;
+      if (!pointInRing(x, y, ring)) continue;
+      const d2 = pointToRingDistSq(x, y, ring);
+      if (d2 > bestD2) { bestX = x; bestY = y; bestD2 = d2; }
+    }
+  }
+  return bestD2 < 0 ? null : [bestX, bestY];
+}
+
 // Area-weighted centroid (signed shoelace) of a polygon ring in
 // (lon, lat) space. The unweighted vertex average used previously
 // pulled the label toward whichever coastline had the most digitized
@@ -188,7 +253,12 @@ function featurePixelBox(f: GeoFeature, W: number, H: number): {
   // Antimeridian-crossing features produce huge bboxes; skip — labels would
   // render across both canvas edges and look broken.
   if (maxLon - minLon > 180) return null;
-  const [cLon, cLat] = ringCentroidLonLat(bestRing);
+  // Use the pole-of-inaccessibility — guaranteed inside the ring even
+  // for concave shapes (Chile, Norway, Italy, horseshoe countries).
+  // Falls back to the shoelace centroid if the grid scan finds no
+  // interior point (degenerate ring — very rare).
+  const anchor = ringLabelAnchor(bestRing) ?? ringCentroidLonLat(bestRing);
+  const [cLon, cLat] = anchor;
   const cx = (cLon + 180) / 360 * W;
   const cy = (90 - cLat) / 180 * H;
   const w = (maxLon - minLon) / 360 * W;
@@ -834,6 +904,12 @@ function createEarthTexture(
   citiesTex.needsUpdate = true;
   return { base: tex, bordersOverlay: bordersTex, statesOverlay: statesTex, citiesOverlay: citiesTex };
 }
+// Used by the mesh-rendered GeoLabels / GeoInfoLabel click hitboxes so
+// their tap target sits where the user actually sees the country
+// label (not biased toward whichever coastline has the most digitized
+// vertices, which the prior vertex-average was). Precision matters
+// because the hitbox sits at the SAME spot as the baked text — if the
+// two diverge, tap targets drift away from the label they belong to.
 function featureCentroid(f: GeoFeature): [number, number] | null {
   if (!f.geometry) return null;
   const polys: number[][][][] =
@@ -844,12 +920,13 @@ function featureCentroid(f: GeoFeature): [number, number] | null {
       : [];
   if (!polys.length) return null;
   let best: number[][] = [];
-  for (const poly of polys)
-    if (poly[0] && poly[0].length > best.length) best = poly[0] as number[][];
+  let bestLen = 0;
+  for (const poly of polys) {
+    const ring = poly[0];
+    if (ring && ring.length > bestLen) { best = ring as number[][]; bestLen = ring.length; }
+  }
   if (!best.length) return null;
-  let lon = 0, lat = 0;
-  for (const pt of best) { lon += pt[0]; lat += pt[1]; }
-  return [lon / best.length, lat / best.length];
+  return ringLabelAnchor(best) ?? ringCentroidLonLat(best);
 }
 
 // geoPos imported from ./globe/geo

@@ -91,6 +91,67 @@ async function main() {
       ]);
       const STATE_FILTER_ADM0 = new Set(["USA", "CAN", "AUS", "BRA", "MEX", "RUS", "CHN", "IND", "ARG"]);
 
+      // Ray-casting point-in-polygon test.
+      function pointInRing(x, y, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1];
+          const xj = ring[j][0], yj = ring[j][1];
+          const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-12) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      }
+
+      // Squared distance from (px,py) to nearest edge of ring.
+      function pointToRingDistSq(px_, py_, ring) {
+        let minSq = Infinity;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1];
+          const xj = ring[j][0], yj = ring[j][1];
+          const dx = xj - xi, dy = yj - yi;
+          const len2 = dx * dx + dy * dy;
+          let t = 0;
+          if (len2 > 0) {
+            t = ((px_ - xi) * dx + (py_ - yi) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+          }
+          const cx = xi + t * dx, cy = yi + t * dy;
+          const d2 = (px_ - cx) * (px_ - cx) + (py_ - cy) * (py_ - cy);
+          if (d2 < minSq) minSq = d2;
+        }
+        return minSq;
+      }
+
+      // Pole of inaccessibility — interior point farthest from any edge.
+      // Always inside the ring (unlike the shoelace centroid which can
+      // land in the ocean for concave shapes). Coarse 64×64 grid scan
+      // over the bbox; sufficient for canvas-resolution label anchoring.
+      function ringLabelAnchor(ring) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of ring) {
+          if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+          if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+        }
+        const w = maxX - minX, h = maxY - minY;
+        if (w <= 0 || h <= 0) return null;
+        const N = 64;
+        let bestX = (minX + maxX) * 0.5, bestY = (minY + maxY) * 0.5, bestD2 = -1;
+        for (let i = 1; i < N; i++) {
+          const x = minX + (i / N) * w;
+          for (let j = 1; j < N; j++) {
+            const y = minY + (j / N) * h;
+            if (!pointInRing(x, y, ring)) continue;
+            const d2 = pointToRingDistSq(x, y, ring);
+            if (d2 > bestD2) { bestX = x; bestY = y; bestD2 = d2; }
+          }
+        }
+        return bestD2 < 0 ? null : [bestX, bestY];
+      }
+
+      // Pixel bbox + label anchor of the largest polygon ring of a
+      // GeoFeature. Uses ringLabelAnchor (pole of inaccessibility) for
+      // the label position to keep labels INSIDE concave countries.
       function featurePixelBox(f) {
         const geom = f.geometry;
         if (!geom) return null;
@@ -98,6 +159,8 @@ async function main() {
         if (geom.type === "Polygon") polys = [geom.coordinates];
         else if (geom.type === "MultiPolygon") polys = geom.coordinates;
         if (!polys.length) return null;
+        // Pick the largest ring (handles Alaska/Hawaii — the contiguous
+        // mainland is the dominant footprint).
         let biggest = polys[0][0];
         let biggestArea = 0;
         for (const poly of polys) {
@@ -109,14 +172,24 @@ async function main() {
           }
           if (area > biggestArea) { biggestArea = area; biggest = ring; }
         }
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        // Bbox in pixel space for sizing.
+        let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
         for (const [lon, lat] of biggest) {
-          const [x, y] = px(lon, lat);
-          if (x < minX) minX = x; if (x > maxX) maxX = x;
-          if (y < minY) minY = y; if (y > maxY) maxY = y;
+          if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon;
+          if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
         }
-        const w = maxX - minX, h = maxY - minY;
-        return { cx: minX + w / 2, cy: minY + h / 2, w, h, area: w * h };
+        // Antimeridian crossings — skip; labels would span both edges.
+        if (maxLon - minLon > 180) return null;
+        // Anchor via pole-of-inaccessibility, in (lon,lat) space, then
+        // project to canvas pixels. Falls back to bbox center if the
+        // grid scan finds no interior point (rare, degenerate ring).
+        const anchorLL = ringLabelAnchor(biggest) ?? [(minLon + maxLon) * 0.5, (minLat + maxLat) * 0.5];
+        const [aLon, aLat] = anchorLL;
+        const [ax, ay] = px(aLon, aLat);
+        const [x0, y0] = px(minLon, maxLat);
+        const [x1, y1] = px(maxLon, minLat);
+        const w = x1 - x0, h = y1 - y0;
+        return { cx: ax, cy: ay, w, h, area: w * h };
       }
 
       function tryPlaceLabel(placed, cx, cy, w, h, pad) {

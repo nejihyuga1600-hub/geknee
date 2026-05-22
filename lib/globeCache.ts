@@ -20,7 +20,10 @@ const DB_VERSION = 1;
 // 2026-05-22-1: split borders into a 3rd "always-visible" overlay
 // (was previously fused with state labels on a single tier-gated
 // sphere — caused country borders to look sunken into the terrain).
-export const OVERLAY_CACHE_VERSION = "2026-05-22-1";
+// 2026-05-22-2: label anchoring switched from shoelace centroid to
+// pole-of-inaccessibility (ringLabelAnchor). Fixes country labels
+// landing in the ocean for concave shapes (Chile, Norway, Italy).
+export const OVERLAY_CACHE_VERSION = "2026-05-22-2";
 
 type Stored = {
   blob: Blob;
