@@ -3199,9 +3199,9 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           enableRotate={false}
           minDistance={11.5}
           maxDistance={45}
-          zoomSpeed={isMobile ? 0.6 : 1.2}
+          zoomSpeed={isMobile ? 0.5 : 0.9}
           enableDamping
-          dampingFactor={0.12}
+          dampingFactor={0.20}
           touches={{ ONE: 0, TWO: 2 }}
         />
         <DampingUpdater />
