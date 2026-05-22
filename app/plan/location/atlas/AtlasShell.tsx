@@ -752,22 +752,59 @@ function GenieCorner({
     scrollRef.current?.scrollTo({ top: 1e6, behavior: "smooth" });
   }, [messages, open]);
 
-  const send = (override?: string) => {
+  const send = async (override?: string) => {
     const text = (override ?? draft).trim();
     if (!text) return;
-    setMessages((m) => [...m, { role: "user", text }]);
+    const userMsg = { role: "user" as const, text };
+    // Optimistic: render the user's bubble + a placeholder assistant
+    // bubble that the stream writes into as tokens arrive.
+    setMessages((m) => [...m, userMsg, { role: "genie", text: "" }]);
     setDraft("");
-    setTimeout(() => {
+    try {
+      const history = [...messages, userMsg].map((m) => ({
+        role: m.role === "genie" ? ("assistant" as const) : ("user" as const),
+        content: m.text,
+      }));
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history,
+          tripInfo: trip.destination
+            ? {
+                location: trip.destination,
+                nights: String(trip.nights ?? ""),
+                style: trip.style ?? undefined,
+                budget: trip.budget ?? undefined,
+              }
+            : undefined,
+          pageContext: `Planner step: ${steps[step] ?? "destination"}`,
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error(`chat ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setMessages((m) => [...m.slice(0, -1), { role: "genie", text: acc }]);
+      }
+    } catch {
+      // Network / 401 / API outage → keep the panel responsive with a
+      // template so it never goes silent. Tagged in the message so the
+      // user knows it's a stub, not the real AI.
       const ctx = trip.destination
         ? `For ${trip.destination}${trip.style ? ` (${trip.style})` : ""}: `
         : "";
       const replies = [
-        `${ctx}Good question. Based on what you've told me, I'd lean toward shoulder season — fewer crowds, better prices.`,
-        `${ctx}I'd budget 2–3 days for the signature spots and leave the rest unstructured. That's where the best memories happen.`,
-        `${ctx}Worth checking: weather window, holidays at the destination, and any visa lead time.`,
+        `${ctx}Good question — based on what you've told me, I'd lean toward shoulder season for fewer crowds and better prices.`,
+        `${ctx}I'd budget 2–3 days for the signature spots and leave the rest unstructured — that's where the best memories happen.`,
+        `${ctx}Worth checking weather window, local holidays, and any visa lead time before you lock in dates.`,
       ];
-      setMessages((m) => [...m, { role: "genie", text: replies[Math.floor(Math.random() * replies.length)] }]);
-    }, 550);
+      setMessages((m) => [...m.slice(0, -1), { role: "genie", text: replies[Math.floor(Math.random() * replies.length)] }]);
+    }
   };
 
   const suggestions =
