@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Playwright MCP runtime artifacts (page snapshots, console logs from local verify).
+.playwright-mcp/
+
 # dependencies
 /node_modules
 /.pnp
