@@ -1,135 +1,118 @@
-# geknee — session handoff (2026-05-12)
+# Handoff — geknee.com / travel-ai
 
-## Goal we're working toward
+**Date:** 2026-05-21
+**Branch:** `main` (clean, pushed to `origin/main`)
+**Last commit:** `576d712`
 
-Replace generic Unicode emojis (🚶 🚕 🏛 🌍 ✨ 🔓 🏆 etc.) across the
-geknee web app with a single coherent **custom icon set** built in
-`lib/icons.tsx`. Two render layers:
+---
 
-1. **Bare line glyph** — inline UI chrome, nav labels, tight rows
-2. **`<IconBadge icon={X} tier="gold">`** — hex shards with tier-tinted
-   ring + cosmic glow for "trophy moments" (monument unlocks, quest
-   claims, leaderboard ranks, achievement toasts)
+## Where things stand
 
-Design language: cosmic-editorial, trading-card / collectible-shard
-feel, adult traveler audience (20s-40s). Tiers map directly to the
-existing monument skin ladder (bronze/silver/gold/diamond/aurora/celestial)
-so badge color and skin color speak the same vocabulary.
+Working tree is clean. Latest pushed commit (`576d712`) tightens the city/state label opacity fade band on the globe so labels snap on cleanly at the Country↔Local zoom boundary instead of ghosting at country zoom.
 
-## Current state of the code
+Vercel auto-deploy was kicked off but **not explicitly verified to Ready** in the last turn. User should hard-refresh geknee.com once the deploy lands and confirm:
+- No half-opacity ghost city labels at Country tier (`camDist ≥ 13`)
+- City + state labels fully readable the moment the right-side zoom badge flips to "Local"
 
-**Live and committed:**
+---
 
-- `lib/icons.tsx` — 23 named SVG glyph components + `<IconBadge>` wrapper
-  + `TIER_TINT` map + `ICON_REGISTRY` (for future scripts that iterate
-  over the set). v2 styling now in: stroke 2.0, accent fills, burst
-  rays on Trophy/Unlock/Monument/Sparkle.
-- `public/brand/geknee-icons.svg` + `.png` — flat contact sheet (v1)
-- `public/brand/geknee-icons-badges.svg` + `.png` — hex-shard contact
-  sheet
-- `public/brand/geknee-icons-v2.svg` + `.png` — approved v2 mockup
-  (rendered with tier fills + bursts + monument pennant flag)
+## Recently shipped (this session)
 
-**Replacements done across the site:** zero, deliberately. v2 styling
-just landed in `lib/icons.tsx` (this commit). The user approved v2 in
-the mockup — they want to **see it live in real surfaces** next.
+### Globe labels overhaul
+- `feat(globe): label overlay sphere — state + city labels fade in at "Local" zoom tier` — `73c85e4`
+- `style(globe): country labels 25% bigger (MAX_FONT 22 → 27)` — `a7069cc`
+- `style(globe): snap city + state labels at Country↔Local boundary` — `576d712`
 
-## Files you're actively editing
+All landmark/city/country labels now bake into a canvas-baked equirectangular texture pair returned by `createEarthTexture` in `app/plan/location/LocationClient.tsx`:
+- **Base** sphere: country labels (always visible)
+- **Overlay** sphere (`R * 1.0008`, `meshBasicMaterial`, transparent): state + city labels, opacity driven per-frame from `camDistRef`
 
-- `lib/icons.tsx` — v2 styling now lives in: Trophy + Unlock + Monument
-  + Sparkle have burst details / accent fills. Stroke bumped 1.8 → 2.0.
-- `public/brand/geknee-icons*.{svg,png}` — contact sheets, four files
-
-## What's been tried that needs care
-
-- **Transit emojis in itinerary AI generation are load-bearing.** The
-  `🚶 🚇 🚌 🚕 🚂 🚴 ⛵ ✈️` tokens are baked into the
-  `/api/itinerary` SYSTEM prompt and parsed by
-  `app/plan/summary/components/ActivityBlock.tsx` (`TRANSIT_EMOJI` regex
-  on line ~140) to choose between walking / cycling / driving routing
-  on the day map. **Do NOT swap these to SVGs in the AI prompt without
-  also rewriting the parser.** Plan: change the prompt to emit text
-  tokens like `[walk]` / `[subway]`, update the parser to recognise
-  them, then render via `<Walk />` in ActivityBlock's rendered output.
-  Substantial coordinated change — needs its own focused commit so
-  in-flight itineraries don't break mid-trip.
-
-- **Tried** scripted find-and-replace across the codebase for high-
-  frequency emojis. **Failed** because most usages are inside template
-  strings the AI generates, not static UI strings. The static-string
-  usages worth swapping are concentrated in:
-  - `app/components/MonumentShop.tsx` — 🏛 fallback emoji, 📷 in
-    "Claim" buttons (`ms.verify === 'photo'`), 🔓 lock/unlock states
-  - `app/plan/[tripId]/(tabs)/itinerary/PhotoToItinerary.tsx` — already
-    uses SVG paperclip, but the `✦` literals could become `<Sparkle/>`
-  - `app/wrapped/WrappedClient.tsx` — `✦` opportunities
-  - `app/components/SettingsPanel.tsx` — Wrap link uses `✦` literal
-  - `app/plan/[tripId]/(tabs)/NextStepHint.tsx` — `✦ NEXT` label
-
-## The next step you'd take
-
-1. **MonumentShop.tsx swap** (highest leverage — the user's main
-   trophy-moment surface). Replace:
-   - The 🏛 fallback emoji in `DetailView` glyph with `<Monument />`
-   - The 📷 in `Claim` button with `<Camera size={12} />`
-   - The 🔓 / 🔒 lock states with `<Unlock />` / `<Lock />`
-   - The monument card "Collected" checkmark → `<IconBadge icon={Unlock}
-     tier={skinTier}>` for the unlock moment animation in
-     `UnlockCeremony.tsx`
-
-2. **Sparkle ✦ literal hunt** — grep for `'✦'` and replace inline
-   `<span>✦</span>` with `<Sparkle size={10} />`. ~10 sites, ~20 lines.
-   Cheap visual win.
-
-3. **Itinerary token swap** (carefully). Two-commit sequence:
-   - Commit A: update `/api/itinerary` SYSTEM prompt to emit
-     `[walk]` / `[subway]` / `[bus]` / `[taxi]` / `[train]` / `[bike]` /
-     `[ferry]` / `[flight]` tokens. Update the `TRANSIT_EMOJI` regex
-     in `ActivityBlock.tsx` to recognise BOTH (old emoji + new tokens)
-     so existing itineraries keep working.
-   - Commit B: switch the rendered output in `ActivityBlock` to use
-     `<Walk />` / `<Subway />` etc. based on the parsed token.
-
-4. **Wrapped recap** — the year-in-review cards use 🏆 / 🌍 / ✦. Swap
-   with `<IconBadge icon={Trophy} tier="celestial">` for the rarest-find
-   card; bare glyphs elsewhere.
-
-## Open questions / known gotchas
-
-- IconBadge uses inline SVG with `fill: 'currentColor'` on accent
-  paths — when wrapped in a tier-tinted parent the fills inherit from
-  CSS context. If a consumer overrides `color` mid-tree the fills will
-  drift; pass an explicit tier prop and let TIER_TINT drive the look.
-- Stroke 2.0 looks slightly chunky at 14px. If we want a "small inline"
-  variant, add a `weight: 1.6 | 2.0` prop to base() in `lib/icons.tsx`.
-- Two SVG contact sheets in `public/brand/` — keep them in sync if you
-  add new icons (or write a `bin/render-icon-sheet.mjs` that generates
-  from `ICON_REGISTRY`).
-
-## Commits this session, latest first
-
-- `???????` (this one) — v2 styling live in lib/icons.tsx + handoff.md
-- `1e704e7` — IconBadge wrapper + hex contact sheet
-- `521708d` — initial icon set v1 + flat contact sheet
-- earlier in session: photo attach polish, quest revamp, recs caching,
-  Google Places destination-bias fix, booking suggestions cache +
-  Haiku swap, NextStepHint cohesion chips
-
-## Pickup script for next session
-
+**Opacity formula** (see `useFrame` in `GlobeScene`):
+```ts
+if (d <= 12.7) opacity = 1;
+else if (d >= 13.0) opacity = 0;
+else opacity = (13.0 - d) / 0.3;
 ```
-cd /Users/geknee/geknee
-git pull
-# Open the v2 mockup + the live icons file side-by-side
-code public/brand/geknee-icons-v2.png lib/icons.tsx
-# Start with the MonumentShop swap (most user-visible win):
-code app/components/MonumentShop.tsx
+Tweak knobs: `12.7` and `13.0`. Country/Local tier boundary in `AtlasShell` is `camDist = 13`.
+
+**Cleanup pending:** dead `if (false as boolean && statesGeo)` block still in `createEarthTexture` — kept for diff review in `73c85e4`. Safe to delete next pass.
+
+### Google Maps Platform — Waves 1+2
+- Routes API v2 migration (`31cbc1a`)
+- Places API (New) with session tokens + Basic field mask (`0ad42b7`)
+- Maps Static OG share cards (`a6b79fb`)
+- StreetViewThumb wired into ActivityBlock, BookView hotels/restaurants, RecPanel chips (`cc768b3`, `d3d90e4`, `4408299`)
+- `useGeocode` hook with mem+session+API cache (`9d43aff`)
+- Wave 3 design notes in `d6fd118`
+
+Still deferred: `lib/agent/tools/route_between.ts` calls Mapbox Directions server-side. Plan: migrate after 30 days of Routes API v2 usage data.
+
+### Auth / account switching
+- Cross-email NextAuth linking footgun fixed; `auth.ts` `signIn` callback blocks linking different Google accounts to the same User row
+- Mislinked Account row repaired in DB via `bin/repair-mislinked-account.mjs`
+- Removed `accounts.google.com/Logout?continue=` chain (Google rejects external `continue` URLs → 400)
+
+### Trip social features
+- Per-item voting (thumbs up/down) on hotels, activities, itinerary stops → auto-posts to group chat
+- `app/components/VoteButtons.tsx`, `app/api/trips/[id]/item-vote/route.ts`
+- `TripItemVote` Prisma model: `(tripId, userId, itemKey)` unique
+- Invite friends pill (`InviteFriendsPill.tsx`) persistent in tab header
+- Vault visibility: `TripFile.visibility` defaults `"public"`, can be `"private"`
+- AI suggestions feature flag now defaults ON in `lib/suggestions/featureFlag.ts`
+- Group chat fix: `openGroup` uses real `TripDraft.id`, not `hashStr(location)`
+
+### Deploy unblock
+- 11-hour Vercel deploy outage fixed in `d667fa3`
+- `next.config.ts` `outputFileTracingExcludes` trims Prisma engine orphans (was blowing 250MB lambda cap)
+- `app/plan/layout.tsx` cascades `export const dynamic = 'force-dynamic'` — fixes "Unable to find lambda for route: /plan/..." misclassification of static client pages
+- `app/auth/mobile-cb` split into server wrapper + `MobileCallbackClient.tsx` so `dynamic` is honored (the directive is ignored in `'use client'` files)
+
+---
+
+## Open / deferred
+
+| Item | Notes |
+|---|---|
+| Delete dead `if (false as boolean && statesGeo)` block in `createEarthTexture` | Kept for diff review per `73c85e4`. Safe to remove next pass. |
+| Migrate `lib/agent/tools/route_between.ts` off Mapbox Directions | Wait until 30 days of Routes API v2 usage data is in. |
+| Wave 3 Google Maps products | Design notes only (`d6fd118`). Each needs a design pass: Maps Grounding Lite, Aerial View, Air Quality + Pollen, Roads API, Distance Matrix, Photorealistic 3D Tiles. |
+| Verify `576d712` deploy on geknee.com | Hard-refresh, watch the Country↔Local boundary, confirm cities snap on rather than ghost. |
+
+---
+
+## Critical gotchas / landmines
+
+1. **`LocationClient.tsx` is ~6000 lines.** Grep before Read. Use small atomic edits with grep verification between — concurrent cloud-agent edits have reverted changes mid-session before.
+2. **File state hygiene:** Always verify Edit landed (grep for the new string) and that the diff has content **before** committing. Empty commits have happened. See `memory/feedback_check_work_before_done.md`.
+3. **Fetch before work:** Cloud agent pushes to `main`. Always `git fetch && git log origin/main..HEAD` (or compare) before starting work.
+4. **`'use client' + export const dynamic` is silently ignored.** If a page needs `force-dynamic`, the page file itself must be a server component — split client logic into a sibling `*Client.tsx`.
+5. **DB is Neon Postgres via Vercel Marketplace** — not Supabase. Any stale references to Supabase in older docs are wrong.
+6. **Meshy GLB models are user assets.** Never replace or texture-compress without explicit OK.
+7. **NextAuth JWT mode + Google `allowDangerousEmailAccountLinking: true`** is set. The `signIn` callback in `auth.ts` is the only thing blocking cross-email linking — don't loosen it.
+8. **API budget alarms are live on Google Cloud.** Warn before any change that could push an API past $10/mo expected spend.
+
+---
+
+## Files most-touched this session
+
+- `app/plan/location/LocationClient.tsx` — globe + labels
+- `app/components/TripSocialPanel.tsx` — group chat + suggestions inline
+- `app/components/VoteButtons.tsx` — new
+- `app/api/trips/[id]/item-vote/route.ts` — new
+- `app/api/trips/[id]/files/route.ts` + `[fileId]/route.ts` — vault
+- `auth.ts` — cross-email link blocking
+- `prisma/schema.prisma` — `TripItemVote`, `TripFile.visibility`, `rhel-openssl-3.0.x` binary target
+- `next.config.ts` — Prisma trim
+- `app/plan/layout.tsx` — `force-dynamic` cascade
+
+---
+
+## Quick-start for the next session
+
+```bash
+git fetch
+git log --oneline origin/main..HEAD   # should be empty (working tree clean)
+git status                            # should be clean
 ```
 
-Quote the user's last directive verbatim when picking back up:
-> "make it live and continue the handoff"
-
-What landed in this commit: v2 styling is live in `lib/icons.tsx` —
-the visual rules from the approved mockup are now the canonical
-glyphs. Next session: actual swap-in across MonumentShop + Wrapped
-+ ✦ literals as ordered above.
+Then ask the user whether they're happy with how the labels snap on at the Local tier, or if they want the band tuned further (e.g. `12.95 → 13.0` for a sharper snap, `12.0 → 13.0` for a softer fade).

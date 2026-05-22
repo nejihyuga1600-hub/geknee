@@ -250,9 +250,29 @@ function featurePixelBox(f: GeoFeature, W: number, H: number): {
     if (pt[0] < minLon) minLon = pt[0]; if (pt[0] > maxLon) maxLon = pt[0];
     if (pt[1] < minLat) minLat = pt[1]; if (pt[1] > maxLat) maxLat = pt[1];
   }
-  // Antimeridian-crossing features produce huge bboxes; skip — labels would
-  // render across both canvas edges and look broken.
-  if (maxLon - minLon > 180) return null;
+  // Antimeridian-crossing features (Antarctica, Fiji, Kiribati) produce
+  // huge bboxes that span the canvas width — the label placement math
+  // can't pick a sensible interior anchor. Antarctica is high-value
+  // enough that we handle it explicitly: place the label at a known
+  // anchor in central Antarctica (~75°S, 0°E). Other antimeridian
+  // crossings (small Pacific island groups) are still skipped.
+  if (maxLon - minLon > 180) {
+    // Read the name once to detect Antarctica.
+    const fname = (f.properties?.NAME || f.properties?.ADMIN || f.properties?.name) as string | undefined;
+    if (fname === "Antarctica") {
+      // Anchor near the geographic south pole region — interior land,
+      // not coast. Bbox is the polar cap as best we can approximate.
+      const aLon = 0, aLat = -78;
+      return {
+        cx: (aLon + 180) / 360 * W,
+        cy: (90 - aLat) / 180 * H,
+        w: W * 0.18, // ~18% canvas width — generous so the label can size up
+        h: H * 0.18,
+        area: (W * 0.18) * (H * 0.18),
+      };
+    }
+    return null;
+  }
   // Use the pole-of-inaccessibility — guaranteed inside the ring even
   // for concave shapes (Chile, Norway, Italy, horseshoe countries).
   // Falls back to the shoelace centroid if the grid scan finds no
@@ -375,6 +395,7 @@ function createEarthTexture(
   maxTexSize = 8192,
   cities: LabelCity[] = [],
   overlayScale = 1,
+  bordersBitmap?: ImageBitmap | null,
 ): { base: THREE.CanvasTexture; statesOverlay: THREE.CanvasTexture; citiesOverlay: THREE.CanvasTexture } {
   const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
@@ -608,32 +629,32 @@ function createEarthTexture(
     poly([[-24,63],[-13,63],[-13,66],[-18,68],[-24,65]], "#b8e8ff"); // Iceland
   }
 
-  // Borders baked directly into the BASE canvas alongside terrain, with
-  // a two-pass dark-halo + white-line stroke. Halo is the same trick
-  // the country labels use (paintLabelClean dark shadow + white fill) —
-  // it gives the white line a tiny dark outline so it visibly pops on
-  // top of busy satellite imagery without needing a separate overlay
-  // sphere. Keeps every border on the same "no z-offset" plane as the
-  // country labels, so the continent + border read stays visually
-  // coherent at every zoom (no parallax between sphere radii).
-  const bdrAlpha  = terrainBitmap ? 0.98 : 1.0;
-  const bdrWidth  = terrainBitmap ? 2.0  : 2.5;
-  const stateWdth = terrainBitmap ? 1.0  : 1.25;
-  // Halo: ~1.5× the white width, dark + semi-transparent. Wide enough
-  // to read as an outline at canvas-sample resolution but not so wide
-  // it visually thickens the line.
-  const haloWidth = bdrWidth + 1.6;
-  const stateHaloWidth = stateWdth + 1.2;
-  drawBorders(countriesGeo, `rgba(0,0,0,0.55)`, haloWidth);
-  drawBorders(countriesGeo, `rgba(255,255,255,${bdrAlpha})`, bdrWidth);
-
-  // State borders — same halo+white pattern, filtered to the 9 admin-0
-  // codes that have visually-meaningful subdivisions on a globe.
-  const STATE_FILTER = new Set(["USA", "CAN", "AUS", "BRA", "MEX", "RUS", "CHN", "IND", "ARG"]);
-  drawBorders(statesGeo, `rgba(0,0,0,0.45)`, stateHaloWidth,
-    f => STATE_FILTER.has(f.properties.adm0_a3));
-  drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
-    f => STATE_FILTER.has(f.properties.adm0_a3));
+  // Borders sit on the BASE canvas (same pixel plane as terrain + country
+  // labels — no parallax). Preferred source is the pre-baked
+  // /baked/borders-overlay.webp loaded by the caller into `bordersBitmap`
+  // — it contains country + state borders at the same canvas resolution,
+  // halo + white, ready to drawImage straight in. Falls back to runtime
+  // strokes if the bake hasn't shipped yet OR the fetch failed.
+  if (bordersBitmap) {
+    ctx.drawImage(bordersBitmap, 0, 0, W, H);
+  } else {
+    // Fallback path — same two-pass halo + white as the prebake. Country
+    // borders draw whenever countriesGeo loaded (small JSON, always
+    // present). State borders only draw when statesGeo loaded (rare on
+    // cold load because we skip the 40MB fetch).
+    const bdrAlpha  = terrainBitmap ? 0.98 : 1.0;
+    const bdrWidth  = terrainBitmap ? 2.0  : 2.5;
+    const stateWdth = terrainBitmap ? 1.0  : 1.25;
+    const haloWidth = bdrWidth + 1.6;
+    const stateHaloWidth = stateWdth + 1.2;
+    drawBorders(countriesGeo, `rgba(0,0,0,0.55)`, haloWidth);
+    drawBorders(countriesGeo, `rgba(255,255,255,${bdrAlpha})`, bdrWidth);
+    const STATE_FILTER = new Set(["USA", "CAN", "AUS", "BRA", "MEX", "RUS", "CHN", "IND", "ARG"]);
+    drawBorders(statesGeo, `rgba(0,0,0,0.45)`, stateHaloWidth,
+      f => STATE_FILTER.has(f.properties.adm0_a3));
+    drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
+      f => STATE_FILTER.has(f.properties.adm0_a3));
+  }
 
   // ── Labels baked into the earth texture (no z-offset, truly laminated) ────
   // Country + city labels are painted directly onto the equirectangular
@@ -708,10 +729,22 @@ function createEarthTexture(
     // bigger now that they're the only labels visible above the "Local"
     // zoom tier.
     const MAX_FONT = 27 * SCALE_FACTOR;
-    const MIN_FONT = 12 * SCALE_FACTOR;
+    // MIN_FONT pulled down so small-but-important countries (Belgium,
+    // Albania, Lebanon, Taiwan, Israel, etc.) can fit a label inside
+    // their bbox. Previously 12 — those countries got skipped entirely
+    // because no font size between 12 and MIN fit their width budget.
+    const MIN_FONT = 7 * SCALE_FACTOR;
     const PAD = 6 * SCALE_FACTOR;
     const WIDTH_BUDGET_FRAC = 0.80;
-    const MIN_AREA_FOR_LABEL = (W * H) * 0.00012;
+    // MIN_AREA threshold lowered ~4× so we pick up the 40 small
+    // countries (Belgium, Taiwan, Israel, Albania, Lebanon, Kuwait,
+    // Slovenia, Bhutan, Haiti, Armenia, Falkland Is., Kosovo, eSwatini,
+    // Burundi, Rwanda, El Salvador, Djibouti, Belize, Eq. Guinea,
+    // Lesotho, Montenegro, North Macedonia, Timor-Leste, etc.) that
+    // were below the prior threshold (4026 px²). Now ~1100 px² — still
+    // skips the pure city-states (Monaco, Vatican, Singapore) that
+    // can't fit any text at canvas resolution.
+    const MIN_AREA_FOR_LABEL = (W * H) * 0.00003;
     const AREA_MAX = (W * H) * 0.05;     // Russia / antarctica scale
     const AREA_MIN = (W * H) * 0.0008;   // Belgium-ish scale
 
@@ -2120,6 +2153,13 @@ function GlobeScene() {
   const [countries,     setCountries]     = useState<GeoCollection | null>(null);
   const [states,        setStates]        = useState<GeoCollection | null>(null);
   const [terrainBitmap, setTerrainBitmap] = useState<ImageBitmap   | null>(null);
+  // Borders bitmap — loaded from /baked/borders-overlay.webp at mount,
+  // then drawImage'd into the base canvas after the terrain so country +
+  // state border strokes sit on the same pixel plane as the terrain
+  // (no z-offset, no parallax). Decouples border rendering from the
+  // 40MB states JSON: most users never fetch that JSON at runtime, but
+  // the prebake captures all the state borders for them.
+  const [bordersBitmap, setBordersBitmap] = useState<ImageBitmap | null>(null);
   const [bumpMap,       setBumpMap]       = useState<THREE.Texture  | null>(null);
   const [texture,       setTexture]       = useState<THREE.CanvasTexture | null>(null);
   // Tier-gated label overlay textures. Each fades in at a different
@@ -2323,7 +2363,7 @@ function GlobeScene() {
     // renders the label overlay at 2× so the state + city labels stay
     // crisp when the user zooms in to the "Local" tier where they fade in.
     const overlayScale = isMobile ? 1 : 2;
-    const { base: tex, statesOverlay: stTex, citiesOverlay: ciTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
+    const { base: tex, statesOverlay: stTex, citiesOverlay: ciTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale, bordersBitmap);
     const anis = gl.capabilities.getMaxAnisotropy();
     for (const t of [tex, stTex, ciTex]) {
       t.minFilter  = THREE.LinearMipmapLinearFilter;
@@ -2378,7 +2418,7 @@ function GlobeScene() {
         ciTex.dispose();
       }
     };
-  }, [countries, states, terrainBitmap, terrainSettled, overlayCacheHit, gl]);
+  }, [countries, states, terrainBitmap, bordersBitmap, terrainSettled, overlayCacheHit, gl]);
 
   // Per-frame tier-gated opacity for the two label overlays. Each tier
   // fades in at its own camDist threshold so the user gets progressive
@@ -2470,6 +2510,29 @@ function GlobeScene() {
           break; // found one — stop
         } catch { continue; }
       }
+    })();
+
+    // ── Pre-baked borders overlay (/public/baked/borders-overlay.webp) ─────
+    // Country + state border strokes (halo + white, two-pass) at the
+    // same canvas resolution as the terrain. Loaded once, then drawImage'd
+    // into the base canvas inside createEarthTexture after the terrain.
+    // This is what gives us state borders without fetching the 40MB
+    // states JSON — the prebake is the source of truth for state borders.
+    // No fallback strategy needed because the static file ships with
+    // every deploy via bin/bake-overlays.mjs.
+    (async () => {
+      try {
+        const res = await fetch('/baked/borders-overlay.webp', { credentials: 'omit' });
+        if (!res.ok || cancelled) return;
+        const blob = await res.blob();
+        // Match the base canvas dimensions used by createEarthTexture so
+        // the drawImage 1:1 maps. Mobile drops to 4K alongside terrain.
+        const maxTex = gl.capabilities.maxTextureSize;
+        const W = Math.min(maxTex, isMobile ? 4096 : 8192), H = W / 2;
+        const bmp = await createImageBitmap(blob, { resizeWidth: W, resizeHeight: H, resizeQuality: 'high' });
+        if (cancelled) { bmp.close?.(); return; }
+        setBordersBitmap(bmp);
+      } catch { /* deploy without bake — runtime falls back to drawBorders */ }
     })();
 
     // ── SRTM/USGS elevation bump map (/public/earth_bump.jpg) ───────────────

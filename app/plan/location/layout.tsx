@@ -31,16 +31,21 @@ export default function LocationLayout({ children }: { children: React.ReactNode
           fetch() + createImageBitmap(), not THREE.TextureLoader. */}
       <link rel="preload" href={`/earth_terrain_${month}.webp`} as="fetch" type="image/webp" crossOrigin="anonymous" />
       <link rel="preload" href="/ne_110m_admin_0_countries.json" as="fetch" crossOrigin="anonymous" />
-      {/* Pre-baked label overlays produced by bin/bake-overlays.mjs.
-          Total ~2 MB combined; the runtime uses fetch() (NOT <img>) on
-          these so they can be passed as Blob → THREE.Texture, hence
-          `as="fetch"` to match the actual consumer (else Chromium warns
-          "preloaded but not used"). Saves ~500 ms off first-paint for
-          users with empty IDB. Both carry tier-gated label text;
-          country + state borders are baked into the BASE canvas (which
-          is the dynamic terrain bake, not preloaded). */}
-      <link rel="preload" href="/baked/states-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
-      <link rel="preload" href="/baked/cities-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
+      {/* Pre-baked overlays produced by bin/bake-overlays.mjs:
+            • borders-overlay.webp — country + state border strokes,
+              halo + white. drawImage'd into the BASE canvas at runtime
+              (no separate sphere → no parallax with terrain/labels).
+              Lets us skip the 40 MB states JSON on every cold load.
+            • states-overlay.webp / cities-overlay.webp — tier-gated
+              label text on their own transparent spheres.
+          All three use fetch() (not <img>) so they can be passed as
+          Blob → THREE.Texture, hence `as="fetch"` + crossOrigin to
+          match the consumer (else Chromium warns "preloaded but not
+          used"). Total ~4-5 MB combined; saves ~500 ms off first-paint
+          for users with empty IDB. */}
+      <link rel="preload" href="/baked/borders-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
+      <link rel="preload" href="/baked/states-overlay.webp"  as="fetch" type="image/webp" crossOrigin="anonymous" />
+      <link rel="preload" href="/baked/cities-overlay.webp"  as="fetch" type="image/webp" crossOrigin="anonymous" />
       {children}
     </>
   );
