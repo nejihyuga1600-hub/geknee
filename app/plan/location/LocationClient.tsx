@@ -1954,6 +1954,38 @@ function DampingUpdater() {
   return null;
 }
 
+// ─── Globe motion state (drives DPR drop + label scale batching) ─────────────
+// Module-scope ref so DprController and label useFrames share one source of
+// truth without prop drilling or context. Idle threshold = 250ms after the
+// last bumpMotion() call.
+const globeMotion = { moving: false, lastBumpAt: 0 };
+function bumpMotion() {
+  globeMotion.moving = true;
+  globeMotion.lastBumpAt = performance.now();
+}
+
+// Drops gl.setPixelRatio to 1 while the camera is moving; restores it on
+// idle. Single biggest perf win for integrated-GPU laptops since fragment
+// shading scales quadratically with DPR.
+function DprController() {
+  const gl = useThree((s) => s.gl);
+  const size = useThree((s) => s.size);
+  const appliedRef = useRef<number | null>(null);
+  useFrame(() => {
+    const now = performance.now();
+    if (globeMotion.moving && now - globeMotion.lastBumpAt > 250) {
+      globeMotion.moving = false;
+    }
+    const target = globeMotion.moving ? 1.0 : Math.min(window.devicePixelRatio, 2);
+    if (appliedRef.current !== target) {
+      gl.setPixelRatio(target);
+      gl.setSize(size.width, size.height, false);
+      appliedRef.current = target;
+    }
+  });
+  return null;
+}
+
 // ─── Nearby-city glow pins shown after a globe click ─────────────────────────
 
 function CitySelectionPin({
@@ -2106,6 +2138,7 @@ function GlobeScene() {
     const SENS = 0.005;
 
     const onDown = (e: PointerEvent) => {
+      bumpMotion();
       if (e.button !== 0) return;
       // Second finger arriving — cancel single-finger drag so OrbitControls can handle pinch-zoom
       if (!e.isPrimary) { if (dragRef.current) dragRef.current.active = false; return; }
@@ -2116,6 +2149,7 @@ function GlobeScene() {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d?.active) return;
+      bumpMotion();
       const dx = e.clientX - d.lastX;
       const dy = e.clientY - d.lastY;
       if (!d.axis) {
@@ -2139,13 +2173,16 @@ function GlobeScene() {
 
     const onUp = () => { if (dragRef.current) dragRef.current.active = false; };
 
+    const onWheel = () => bumpMotion();
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    el.addEventListener('wheel', onWheel, { passive: true });
     return () => {
       el.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      el.removeEventListener('wheel', onWheel);
     };
   }, [gl, camera]);
 
@@ -3155,6 +3192,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           touches={{ ONE: 0, TWO: 2 }}
         />
         <DampingUpdater />
+        <DprController />
         <GlobeScene />
         {/* @react-three/postprocessing's EffectComposer was crashing the
             entire Canvas with "null is not an object (renderer.getContext()
