@@ -132,10 +132,14 @@ export default function TripSocialPanel({
   useEffect(() => {
     if (!open || !userId) return;
     loadNotifications();
+    // 45s (was 15s) — LocationClient already polls notifications every 30s
+    // in the background, so 15s here was doubling up the request volume
+    // for negligible UX gain. 45s keeps the modal feeling live without
+    // the 8-requests-per-minute noise QA caught.
     const iv = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       loadNotifications();
-    }, 15_000);
+    }, 45_000);
     return () => clearInterval(iv);
   }, [open, userId, loadNotifications]);
 
