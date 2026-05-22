@@ -42,17 +42,20 @@ export default function PlanningTabPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { trip?: { itinerary?: string | null; startDate?: string | null; endDate?: string | null } } | null) => {
         if (cancelled) return;
-        // Auto-route to live planner when today is inside trip dates.
+        // Auto-route to /live ONLY when the trip already has an itinerary.
+        // For a same-day trip with no itinerary, generating is more
+        // valuable than dropping the user into an empty live planner.
+        const itinerary = d?.trip?.itinerary;
         const startDate = d?.trip?.startDate;
         const endDate = d?.trip?.endDate;
-        if (startDate && endDate) {
+        if (itinerary && startDate && endDate) {
           const today = new Date().toISOString().slice(0, 10);
           if (today >= startDate && today <= endDate) {
             router.replace(`/trip/${tripId}/live`);
             return;
           }
         }
-        setInitial(d?.trip?.itinerary ? 'itinerary' : 'planning');
+        setInitial(itinerary ? 'itinerary' : 'planning');
       })
       .catch(() => { if (!cancelled) setInitial('planning'); });
     return () => { cancelled = true; };
@@ -77,7 +80,11 @@ export default function PlanningTabPage() {
     <SummaryView
       tripIdOverride={tripId}
       initialMainTab={initial}
-      autoGenerate={false}
+      // Auto-fire AI generation only when the trip has no itinerary yet.
+      // Mirrors the user's intent after clicking "Build itinerary ✨" —
+      // landing on /planning with an empty trip should kick off the
+      // stream, not park them on an empty pin-curate view.
+      autoGenerate={initial === 'planning'}
     />
   );
 }
