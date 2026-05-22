@@ -51,8 +51,7 @@ const OS_SCALE = OUTPUT_W / BASE_W; // = 2 — matches runtime overlayScale on d
 
 async function main() {
   console.log("[bake] reading geo + city data...");
-  const [countriesJson, statesJson, citiesJson] = await Promise.all([
-    readFile(join(publicDir, "ne_110m_admin_0_countries.json"), "utf8"),
+  const [statesJson, citiesJson] = await Promise.all([
     readFile(join(publicDir, "ne_10m_admin_1_states_provinces.json"), "utf8"),
     readFile(join(globeDir, "cities-curated.json"), "utf8"),
   ]);
@@ -69,8 +68,7 @@ async function main() {
   const t0 = Date.now();
 
   const result = await page.evaluate(
-    async ({ countriesJson, statesJson, cities, OW, OH, BASE_W, OS, terrainPresent }) => {
-      const countries = JSON.parse(countriesJson);
+    async ({ statesJson, cities, OW, OH, BASE_W, OS, terrainPresent }) => {
       const states = JSON.parse(statesJson);
       const W = BASE_W;
       const H = W / 2;
@@ -223,11 +221,10 @@ async function main() {
       }
 
       // ── canvases ───────────────────────────────────────────────────────
-      const bordersCanvas = document.createElement("canvas");
-      bordersCanvas.width = OW; bordersCanvas.height = OH;
-      const bordersCtx = bordersCanvas.getContext("2d");
-      bordersCtx.lineJoin = "miter"; bordersCtx.miterLimit = 4; bordersCtx.lineCap = "butt";
-
+      // Borders are NOT baked here — the runtime bakes them directly into
+      // the base canvas alongside the terrain (createEarthTexture paints
+      // a two-pass dark-halo + white-line stroke there). Only the LABEL
+      // overlays go through the static prebake.
       const statesCanvas = document.createElement("canvas");
       statesCanvas.width = OW; statesCanvas.height = OH;
       const statesCtx = statesCanvas.getContext("2d");
@@ -248,64 +245,11 @@ async function main() {
       const WIDTH_BUDGET_FRAC = 0.80;
       const fontFamily = '"Inter Tight", "Inter", system-ui, sans-serif';
 
-      // ── country borders → bordersCtx (always-visible borders overlay) ─
-      const countryBorderWidth = (terrainPresent ? 2.0 : 2.5) * OS;
-      const countryBorderAlpha = terrainPresent ? 0.98 : 1.0;
-      bordersCtx.strokeStyle = `rgba(255,255,255,${countryBorderAlpha})`;
-      bordersCtx.lineWidth = countryBorderWidth;
-      for (const f of countries.features) {
-        const geom = f.geometry;
-        if (!geom) continue;
-        const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.type === "MultiPolygon" ? geom.coordinates : [];
-        for (const polygon of polys) {
-          for (const ring of polygon) {
-            let prevLon = ring[0][0];
-            bordersCtx.beginPath();
-            let started = false;
-            for (const [lon, lat] of ring) {
-              if (started && Math.abs(lon - prevLon) > 180) {
-                bordersCtx.stroke(); bordersCtx.beginPath(); started = false;
-              }
-              const [bx, by] = px(lon, lat);
-              const x = bx * OS, y = by * OS;
-              if (!started) { bordersCtx.moveTo(x, y); started = true; }
-              else { bordersCtx.lineTo(x, y); }
-              prevLon = lon;
-            }
-            bordersCtx.stroke();
-          }
-        }
-      }
-
-      // ── state borders → bordersCtx (same always-visible overlay) ──────
-      const stateBorderWidth = (terrainPresent ? 1.0 : 1.25) * OS;
-      const stateBorderAlpha = terrainPresent ? 0.85 : 0.9;
-      bordersCtx.strokeStyle = `rgba(255,255,255,${stateBorderAlpha})`;
-      bordersCtx.lineWidth = stateBorderWidth;
-      for (const f of states.features) {
-        if (!STATE_FILTER_ADM0.has(f.properties?.adm0_a3)) continue;
-        const geom = f.geometry;
-        if (!geom) continue;
-        const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.type === "MultiPolygon" ? geom.coordinates : [];
-        for (const polygon of polys) {
-          for (const ring of polygon) {
-            let prevLon = ring[0][0];
-            bordersCtx.beginPath();
-            let started = false;
-            for (const [lon, lat] of ring) {
-              if (started && Math.abs(lon - prevLon) > 180) {
-                bordersCtx.stroke(); bordersCtx.beginPath(); started = false;
-              }
-              const [bx, by] = px(lon, lat);
-              const x = bx * OS, y = by * OS;
-              if (!started) { bordersCtx.moveTo(x, y); started = true; }
-              else { bordersCtx.lineTo(x, y); }
-              prevLon = lon;
-            }
-            bordersCtx.stroke();
-          }
-        }
-      }
+      // Borders are baked into the BASE canvas by the runtime (which has
+      // access to the terrain bitmap and the country GeoJSON via the
+      // already-resolved data). This script only prebakes the LABEL
+      // overlays — they're the expensive part (45MB states JSON + label
+      // placement) and they're the same for every cold-load visitor.
 
       // ── state labels → statesCtx ──────────────────────────────────────
       const STATE_MAX_FONT = 17 * SCALE_FACTOR;
@@ -407,22 +351,20 @@ async function main() {
       }
 
       // ── encode → WebP ─────────────────────────────────────────────────
-      const [bordersBlob, statesBlob, citiesBlob] = await Promise.all([
-        new Promise(r => bordersCanvas.toBlob(b => r(b), "image/webp", 0.85)),
+      const [statesBlob, citiesBlob] = await Promise.all([
         new Promise(r => statesCanvas.toBlob(b => r(b), "image/webp", 0.85)),
         new Promise(r => citiesCanvas.toBlob(b => r(b), "image/webp", 0.85)),
       ]);
-      if (!bordersBlob || !statesBlob || !citiesBlob) throw new Error("toBlob returned null");
+      if (!statesBlob || !citiesBlob) throw new Error("toBlob returned null");
 
       return {
         statesPlaced,
         citiesPlaced,
-        bordersBytes: Array.from(new Uint8Array(await bordersBlob.arrayBuffer())),
-        statesBytes:  Array.from(new Uint8Array(await statesBlob.arrayBuffer())),
-        citiesBytes:  Array.from(new Uint8Array(await citiesBlob.arrayBuffer())),
+        statesBytes: Array.from(new Uint8Array(await statesBlob.arrayBuffer())),
+        citiesBytes: Array.from(new Uint8Array(await citiesBlob.arrayBuffer())),
       };
     },
-    { countriesJson, statesJson, cities, OW: OUTPUT_W, OH: OUTPUT_H, BASE_W, OS: OS_SCALE, terrainPresent: true }
+    { statesJson, cities, OW: OUTPUT_W, OH: OUTPUT_H, BASE_W, OS: OS_SCALE, terrainPresent: true }
   );
 
   await browser.close();
@@ -432,16 +374,13 @@ async function main() {
 
   const outDir = join(publicDir, "baked");
   await mkdir(outDir, { recursive: true });
-  await writeFile(join(outDir, "borders-overlay.webp"), Buffer.from(result.bordersBytes));
-  await writeFile(join(outDir, "states-overlay.webp"),  Buffer.from(result.statesBytes));
-  await writeFile(join(outDir, "cities-overlay.webp"),  Buffer.from(result.citiesBytes));
+  await writeFile(join(outDir, "states-overlay.webp"), Buffer.from(result.statesBytes));
+  await writeFile(join(outDir, "cities-overlay.webp"), Buffer.from(result.citiesBytes));
 
-  const bdKb = (result.bordersBytes.length / 1024).toFixed(0);
-  const stKb = (result.statesBytes.length  / 1024).toFixed(0);
-  const ciKb = (result.citiesBytes.length  / 1024).toFixed(0);
-  console.log(`[bake] wrote public/baked/borders-overlay.webp (${bdKb} KB)`);
-  console.log(`[bake] wrote public/baked/states-overlay.webp  (${stKb} KB)`);
-  console.log(`[bake] wrote public/baked/cities-overlay.webp  (${ciKb} KB)`);
+  const stKb = (result.statesBytes.length / 1024).toFixed(0);
+  const ciKb = (result.citiesBytes.length / 1024).toFixed(0);
+  console.log(`[bake] wrote public/baked/states-overlay.webp (${stKb} KB)`);
+  console.log(`[bake] wrote public/baked/cities-overlay.webp (${ciKb} KB)`);
 }
 
 main().catch((err) => {

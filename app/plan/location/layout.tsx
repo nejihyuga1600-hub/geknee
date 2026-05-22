@@ -32,16 +32,15 @@ export default function LocationLayout({ children }: { children: React.ReactNode
       <link rel="preload" href={`/earth_terrain_${month}.webp`} as="fetch" type="image/webp" crossOrigin="anonymous" />
       <link rel="preload" href="/ne_110m_admin_0_countries.json" as="fetch" crossOrigin="anonymous" />
       {/* Pre-baked label overlays produced by bin/bake-overlays.mjs.
-          Total ~4-5 MB combined across all three; the runtime uses fetch()
-          (NOT <img>) on these so they can be passed as Blob → THREE.Texture,
-          hence `as="fetch"` to match the actual consumer (else Chromium
-          warns "preloaded but not used"). Saves ~500 ms off first-paint
-          for users with empty IDB. The borders overlay carries country +
-          state border strokes and is always visible; the other two carry
-          tier-gated label text. */}
-      <link rel="preload" href="/baked/borders-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
-      <link rel="preload" href="/baked/states-overlay.webp"  as="fetch" type="image/webp" crossOrigin="anonymous" />
-      <link rel="preload" href="/baked/cities-overlay.webp"  as="fetch" type="image/webp" crossOrigin="anonymous" />
+          Total ~2 MB combined; the runtime uses fetch() (NOT <img>) on
+          these so they can be passed as Blob → THREE.Texture, hence
+          `as="fetch"` to match the actual consumer (else Chromium warns
+          "preloaded but not used"). Saves ~500 ms off first-paint for
+          users with empty IDB. Both carry tier-gated label text;
+          country + state borders are baked into the BASE canvas (which
+          is the dynamic terrain bake, not preloaded). */}
+      <link rel="preload" href="/baked/states-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
+      <link rel="preload" href="/baked/cities-overlay.webp" as="fetch" type="image/webp" crossOrigin="anonymous" />
       {children}
     </>
   );

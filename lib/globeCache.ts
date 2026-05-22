@@ -23,7 +23,12 @@ const DB_VERSION = 1;
 // 2026-05-22-2: label anchoring switched from shoelace centroid to
 // pole-of-inaccessibility (ringLabelAnchor). Fixes country labels
 // landing in the ocean for concave shapes (Chile, Norway, Italy).
-export const OVERLAY_CACHE_VERSION = "2026-05-22-2";
+// 2026-05-22-3: borders moved BACK into the base canvas with a
+// two-pass dark-halo + white-line stroke (matches the technique
+// country labels use). Keeps borders on the same "no z-offset"
+// plane as the labels so the continent + border read stays
+// coherent at every zoom — no parallax between sphere radii.
+export const OVERLAY_CACHE_VERSION = "2026-05-22-3";
 
 type Stored = {
   blob: Blob;
@@ -97,23 +102,20 @@ export async function setOverlayBlob(key: string, blob: Blob): Promise<void> {
 }
 
 // Convenience helpers for the canonical overlay keys.
-export const BORDERS_OVERLAY_KEY = "borders-overlay";
-export const STATES_OVERLAY_KEY  = "states-overlay";
-export const CITIES_OVERLAY_KEY  = "cities-overlay";
+export const STATES_OVERLAY_KEY = "states-overlay";
+export const CITIES_OVERLAY_KEY = "cities-overlay";
 
-export async function getCachedOverlays(): Promise<{ borders: Blob; states: Blob; cities: Blob } | null> {
-  const [borders, states, cities] = await Promise.all([
-    getOverlayBlob(BORDERS_OVERLAY_KEY),
+export async function getCachedOverlays(): Promise<{ states: Blob; cities: Blob } | null> {
+  const [states, cities] = await Promise.all([
     getOverlayBlob(STATES_OVERLAY_KEY),
     getOverlayBlob(CITIES_OVERLAY_KEY),
   ]);
-  if (borders && states && cities) return { borders, states, cities };
+  if (states && cities) return { states, cities };
   return null;
 }
 
-export async function saveCachedOverlays(borders: Blob, states: Blob, cities: Blob): Promise<void> {
+export async function saveCachedOverlays(states: Blob, cities: Blob): Promise<void> {
   await Promise.all([
-    setOverlayBlob(BORDERS_OVERLAY_KEY, borders),
     setOverlayBlob(STATES_OVERLAY_KEY, states),
     setOverlayBlob(CITIES_OVERLAY_KEY, cities),
   ]);
