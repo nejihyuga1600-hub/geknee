@@ -179,7 +179,7 @@ export default function LandingTour() {
         id="tour-plan"
         eyebrow="§ Itinerary builder"
         headline={<>Plan it yourself. Or let the <em style={{ color: ACCENT }}>genie</em>.</>}
-        body={<>Spin the globe, drop pins on a real map, write your own day-by-day. Or ask the genie for a draft — 20 seconds, restaurants and transit lines included. Edit either way.</>}
+        body={<>Spin the globe, drop pins on a real map, write your own day-by-day. Or ask the genie for a draft — under a minute, restaurants and transit lines included. Edit either way.</>}
         phoneSide="left"
         phone={<PhoneFrame tint="cyan" rotate={1.5}><PhonePlan /></PhoneFrame>}
         cta={

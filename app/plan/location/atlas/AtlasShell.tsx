@@ -1946,7 +1946,7 @@ function StepReview({ trip, onBack }: { trip: Trip; onBack: () => void }) {
         </div>
         <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--brand-ink)" }}>
           Based on a {trip.style || "relaxed"} trip to {trip.destination || "your destination"},
-          I&apos;ll draft a {trip.nights}-night itinerary. Should take about 20 seconds.
+          I&apos;ll draft a {trip.nights}-night itinerary on the next screen — usually 30–60 seconds.
         </div>
       </div>
 

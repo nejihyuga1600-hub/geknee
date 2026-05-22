@@ -526,7 +526,7 @@ export default async function Home() {
             gap: 18,
           }}>
             <div id="step-01" style={{ scrollMarginTop: 80 }}>
-              <Step n="01" title="Plan it" body="Spin the globe, pick a destination, drop pins on a real map. Or let the genie draft an itinerary in 20 seconds." invert />
+              <Step n="01" title="Plan it" body="Spin the globe, pick a destination, drop pins on a real map. Or let the genie draft an itinerary in under a minute." invert />
             </div>
             <div id="step-02" style={{ scrollMarginTop: 80 }}>
               <Step n="02" title="Go there" body="Your phone confirms you're actually there — geo + a photo. No couch-unlocks. No grinding. No loot boxes." invert />
