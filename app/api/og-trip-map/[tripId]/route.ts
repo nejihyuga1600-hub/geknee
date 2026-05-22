@@ -43,7 +43,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ tripId:
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return new Response(`Static maps ${res.status}`, { status: 502 });
+    if (!res.ok) {
+      // Static Maps returns a 403 with X-Staticmap-API-Warning header
+      // when the API key is referrer-restricted or the Static Maps API
+      // isn't enabled. Log both so Vercel logs surface the root cause.
+      const warn = res.headers.get('x-staticmap-api-warning') ?? '';
+      const body = await res.text().catch(() => '');
+      console.error('[og-trip-map] upstream', res.status, warn || body.slice(0, 300));
+      return new Response(`Static maps ${res.status}`, { status: 502 });
+    }
     const buf = await res.arrayBuffer();
     return new Response(buf, {
       headers: {
@@ -53,6 +61,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ tripId:
     });
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+    console.error('[og-trip-map] exception', isTimeout ? 'timeout' : err);
     return new Response(isTimeout ? 'timeout' : 'fetch failed', { status: isTimeout ? 504 : 502 });
   }
 }

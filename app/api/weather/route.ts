@@ -39,6 +39,11 @@ export async function GET(req: Request) {
     const [currentRes, forecastRes] = responses;
 
     if (!currentRes.ok) {
+      // Surface upstream Google body to Vercel logs so 502s have a root
+      // cause next time we debug. Body shape on failure: { error: { code,
+      // message, status } } — usually a key/API-enablement issue.
+      const errBody = await currentRes.text().catch(() => "");
+      console.error("[weather] upstream", currentRes.status, errBody.slice(0, 500));
       return NextResponse.json({ error: `weather ${currentRes.status}` }, { status: 502 });
     }
 
@@ -90,6 +95,7 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.error("[weather] exception", isTimeout ? "timeout" : err);
     return NextResponse.json(
       { error: isTimeout ? "weather timeout" : "weather failed" },
       { status: isTimeout ? 504 : 502 },
