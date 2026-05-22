@@ -305,17 +305,26 @@ function createEarthTexture(
   maxTexSize = 8192,
   cities: LabelCity[] = [],
   overlayScale = 1,
-): { base: THREE.CanvasTexture; statesOverlay: THREE.CanvasTexture; citiesOverlay: THREE.CanvasTexture } {
+): { base: THREE.CanvasTexture; bordersOverlay: THREE.CanvasTexture; statesOverlay: THREE.CanvasTexture; citiesOverlay: THREE.CanvasTexture } {
   const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
   // Overlay canvases — same lon/lat mapping as the base, optionally higher
-  // resolution for crisp labels at zoom-in. Split into TWO transparent
-  // overlays so each tier can fade in at its own camDist threshold:
-  //   • statesCanvas → state labels (fade in at the Country/Mid boundary,
-  //     d ≤ 27.7). Mirrors the prior GeoLabels zoomLevel ≥ 1 gate.
+  // resolution for crisp lines + labels at zoom-in. Split into THREE
+  // transparent overlays so borders sit on top of terrain (instead of
+  // being baked into it) AND each label tier can fade in at its own
+  // camDist threshold:
+  //   • bordersCanvas → country + state border strokes. ALWAYS visible —
+  //     no opacity gate. Sits on its own sphere just above the base so
+  //     the lines visibly pop on top of the satellite terrain instead
+  //     of getting blended into it like they did when baked into the
+  //     base canvas (user complaint: "borders look sunken under terrain").
+  //   • statesCanvas → state labels only (fade in at the Country/Mid
+  //     boundary, d ≤ 27.7). Mirrors the prior GeoLabels zoomLevel ≥ 1
+  //     gate. Borders moved out of here onto the always-visible borders
+  //     overlay so they're visible at all zooms.
   //   • citiesCanvas → curated city labels + pins (fade in deeper at
   //     d ≤ 21.7). Mirrors the prior CityLabels camDist < 22 gate.
   // Small/regional cities (GeoNames extras) continue to render through
@@ -323,6 +332,11 @@ function createEarthTexture(
   // Cap at 16384 to stay within WebGL MAX_TEXTURE_SIZE on most GPUs.
   const OW = Math.min(W * overlayScale, 16384);
   const OH = OW / 2;
+  const bordersCanvas = document.createElement("canvas");
+  bordersCanvas.width = OW;
+  bordersCanvas.height = OH;
+  const bordersCtx = bordersCanvas.getContext("2d")!;
+  bordersCtx.lineJoin = "miter"; bordersCtx.miterLimit = 4; bordersCtx.lineCap = "butt";
   const statesCanvas = document.createElement("canvas");
   statesCanvas.width = OW;
   statesCanvas.height = OH;
@@ -537,23 +551,24 @@ function createEarthTexture(
   // Hairline borders. Pulled down again per user request — countries 2px
   // / states 1px on the 8K canvas. Alpha pushed near opaque white so the
   // thin stroke holds against the satellite imagery underneath.
+  // Both BOTH country + state borders draw to the bordersOverlay canvas
+  // (a separate sphere that's always opacity 1). Painting them on the
+  // base canvas blended the strokes into the terrain photography
+  // (user: "borders look sunken under terrain"); the dedicated overlay
+  // sphere sits a hair above the base so the lines visibly sit on top
+  // of the satellite imagery at every zoom level.
   const bdrAlpha  = terrainBitmap ? 0.98 : 1.0;
   const bdrWidth  = terrainBitmap ? 2.0  : 2.5;
   const stateWdth = terrainBitmap ? 1.0  : 1.25;
-  drawBorders(countriesGeo, `rgba(255,255,255,${bdrAlpha})`, bdrWidth);
+  const OS_border = OW / W;
+  drawBorders(countriesGeo, `rgba(255,255,255,${bdrAlpha})`, bdrWidth, undefined, bordersCtx, OS_border);
 
-  // State borders moved onto the STATES overlay canvas (was on the base).
-  // Two motivations: (1) so the base bake doesn't depend on the 40MB states
-  // JSON — it can run as soon as countries + terrain arrive — and (2) so
-  // the IndexedDB cache in lib/globeCache.ts can store the entire states
-  // layer (borders + labels) as a single WebP blob. Trade-off: borders
-  // share the overlay's opacity gate (d ≤ 27.7), so they hide at the same
-  // "Country" zoom tier where state labels do — at that range the borders
-  // are sub-pixel hairlines on the screen-mapped sphere anyway.
+  // State borders — same overlay as country borders (always-visible
+  // borders sphere). Filtered to the 9 admin-0 codes that have
+  // visually-meaningful subdivisions on a globe.
   const STATE_FILTER = new Set(["USA", "CAN", "AUS", "BRA", "MEX", "RUS", "CHN", "IND", "ARG"]);
-  const OS_state = OW / W;
   drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
-    f => STATE_FILTER.has(f.properties.adm0_a3), statesCtx, OS_state);
+    f => STATE_FILTER.has(f.properties.adm0_a3), bordersCtx, OS_border);
 
   // ── Labels baked into the earth texture (no z-offset, truly laminated) ────
   // Country + city labels are painted directly onto the equirectangular
@@ -811,11 +826,13 @@ function createEarthTexture(
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
+  const bordersTex = new THREE.CanvasTexture(bordersCanvas);
+  bordersTex.needsUpdate = true;
   const statesTex = new THREE.CanvasTexture(statesCanvas);
   statesTex.needsUpdate = true;
   const citiesTex = new THREE.CanvasTexture(citiesCanvas);
   citiesTex.needsUpdate = true;
-  return { base: tex, statesOverlay: statesTex, citiesOverlay: citiesTex };
+  return { base: tex, bordersOverlay: bordersTex, statesOverlay: statesTex, citiesOverlay: citiesTex };
 }
 function featureCentroid(f: GeoFeature): [number, number] | null {
   if (!f.geometry) return null;
@@ -2052,8 +2069,11 @@ function GlobeScene() {
   // image-loaded Texture from the IndexedDB cache (cached WebP blob →
   // Image → Texture). Both inherit from THREE.Texture and behave the
   // same in the .map slot of meshBasicMaterial.
+  const [bordersOverlayTexture, setBordersOverlayTexture] = useState<THREE.Texture | null>(null);
   const [statesOverlayTexture, setStatesOverlayTexture] = useState<THREE.Texture | null>(null);
   const [citiesOverlayTexture, setCitiesOverlayTexture] = useState<THREE.Texture | null>(null);
+  // No material ref for borders — it's always opacity 1, no useFrame gate
+  // needed. The other two are tier-gated via the useFrame block below.
   const statesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const citiesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   // 0 = countries only | 1 = + states | 2 = + cities
@@ -2108,20 +2128,22 @@ function GlobeScene() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const installTextures = async (statesBlob: Blob, citiesBlob: Blob) => {
+      const installTextures = async (bordersBlob: Blob, statesBlob: Blob, citiesBlob: Blob) => {
         const { blobToImage } = await import('@/lib/globeCache');
-        const [stImg, ciImg] = await Promise.all([blobToImage(statesBlob), blobToImage(citiesBlob)]);
-        if (cancelled || !stImg || !ciImg) return false;
+        const [bdImg, stImg, ciImg] = await Promise.all([blobToImage(bordersBlob), blobToImage(statesBlob), blobToImage(citiesBlob)]);
+        if (cancelled || !bdImg || !stImg || !ciImg) return false;
         const anis = gl.capabilities.getMaxAnisotropy();
+        const bdTex = new THREE.Texture(bdImg);
         const stTex = new THREE.Texture(stImg);
         const ciTex = new THREE.Texture(ciImg);
-        for (const t of [stTex, ciTex]) {
+        for (const t of [bdTex, stTex, ciTex]) {
           t.minFilter  = THREE.LinearMipmapLinearFilter;
           t.magFilter  = THREE.LinearFilter;
           t.anisotropy = anis;
           t.colorSpace = THREE.SRGBColorSpace;
           t.needsUpdate = true;
         }
+        setBordersOverlayTexture(bdTex);
         setStatesOverlayTexture(stTex);
         setCitiesOverlayTexture(ciTex);
         return true;
@@ -2133,7 +2155,7 @@ function GlobeScene() {
         const cached = await getCachedOverlays();
         if (cancelled) return;
         if (cached) {
-          const installed = await installTextures(cached.states, cached.cities);
+          const installed = await installTextures(cached.borders, cached.states, cached.cities);
           if (cancelled) return;
           if (installed) { setOverlayCacheHit(true); return; }
         }
@@ -2144,19 +2166,20 @@ function GlobeScene() {
         // would otherwise be reported as "preloaded but not used" since
         // default fetch credentials are "same-origin" (= credentials sent).
         try {
-          const [stRes, ciRes] = await Promise.all([
-            fetch('/baked/states-overlay.webp', { credentials: 'omit' }),
-            fetch('/baked/cities-overlay.webp', { credentials: 'omit' }),
+          const [bdRes, stRes, ciRes] = await Promise.all([
+            fetch('/baked/borders-overlay.webp', { credentials: 'omit' }),
+            fetch('/baked/states-overlay.webp',  { credentials: 'omit' }),
+            fetch('/baked/cities-overlay.webp',  { credentials: 'omit' }),
           ]);
           if (cancelled) return;
-          if (stRes.ok && ciRes.ok) {
-            const [stBlob, ciBlob] = await Promise.all([stRes.blob(), ciRes.blob()]);
+          if (bdRes.ok && stRes.ok && ciRes.ok) {
+            const [bdBlob, stBlob, ciBlob] = await Promise.all([bdRes.blob(), stRes.blob(), ciRes.blob()]);
             if (cancelled) return;
-            const installed = await installTextures(stBlob, ciBlob);
+            const installed = await installTextures(bdBlob, stBlob, ciBlob);
             if (cancelled) return;
             if (installed) {
               // Promote to IDB so next visit is tier-1 instant.
-              void saveCachedOverlays(stBlob, ciBlob).catch(() => { /* non-fatal */ });
+              void saveCachedOverlays(bdBlob, stBlob, ciBlob).catch(() => { /* non-fatal */ });
               setOverlayCacheHit(true);
               return;
             }
@@ -2236,9 +2259,9 @@ function GlobeScene() {
     // renders the label overlay at 2× so the state + city labels stay
     // crisp when the user zooms in to the "Local" tier where they fade in.
     const overlayScale = isMobile ? 1 : 2;
-    const { base: tex, statesOverlay: stTex, citiesOverlay: ciTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
+    const { base: tex, bordersOverlay: bdTex, statesOverlay: stTex, citiesOverlay: ciTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
     const anis = gl.capabilities.getMaxAnisotropy();
-    for (const t of [tex, stTex, ciTex]) {
+    for (const t of [tex, bdTex, stTex, ciTex]) {
       t.minFilter  = THREE.LinearMipmapLinearFilter;
       t.magFilter  = THREE.LinearFilter;
       t.anisotropy = anis;
@@ -2251,9 +2274,11 @@ function GlobeScene() {
     // was skipped on cache hit). Dispose the unused freshly-baked
     // textures so they don't leak.
     if (overlayCacheHit) {
+      bdTex.dispose();
       stTex.dispose();
       ciTex.dispose();
     } else {
+      setBordersOverlayTexture(bdTex);
       setStatesOverlayTexture(stTex);
       setCitiesOverlayTexture(ciTex);
       // Cache-miss path: save the freshly-baked overlays to IDB so the
@@ -2268,17 +2293,19 @@ function GlobeScene() {
       // unconditionally since states is never fetched there.
       const haveCompleteData = isMobile || states !== null;
       if (haveCompleteData) {
+        const bdCanvas = bdTex.image as HTMLCanvasElement;
         const stCanvas = stTex.image as HTMLCanvasElement;
         const ciCanvas = ciTex.image as HTMLCanvasElement;
         void (async () => {
           try {
-            const [stBlob, ciBlob] = await Promise.all([
+            const [bdBlob, stBlob, ciBlob] = await Promise.all([
+              new Promise<Blob | null>(r => bdCanvas.toBlob(b => r(b), 'image/webp', 0.85)),
               new Promise<Blob | null>(r => stCanvas.toBlob(b => r(b), 'image/webp', 0.85)),
               new Promise<Blob | null>(r => ciCanvas.toBlob(b => r(b), 'image/webp', 0.85)),
             ]);
-            if (stBlob && ciBlob) {
+            if (bdBlob && stBlob && ciBlob) {
               const { saveCachedOverlays } = await import('@/lib/globeCache');
-              await saveCachedOverlays(stBlob, ciBlob);
+              await saveCachedOverlays(bdBlob, stBlob, ciBlob);
             }
           } catch { /* IDB quota / private mode — non-fatal, just re-bake next time */ }
         })();
@@ -2287,6 +2314,7 @@ function GlobeScene() {
     return () => {
       tex.dispose();
       if (!overlayCacheHit) {
+        bdTex.dispose();
         stTex.dispose();
         ciTex.dispose();
       }
@@ -2655,35 +2683,59 @@ function GlobeScene() {
           />
         </Sphere>
 
-        {/* Tier-gated label overlay spheres. Each lives at a slightly
+        {/* Border + label overlay spheres. Each lives at a slightly
             different radius so the alpha blending order stays stable
             and they don't z-fight each other or the base sphere:
-              • base (countries)    at R
-              • states overlay      at R * 1.0007 (fade in at d=28)
-              • cities overlay      at R * 1.0009 (fade in at d=22)
-            Both materials are meshBasicMaterial so scene lighting
-            doesn't tint the labels; depthWrite is off so they stack
-            cleanly. Opacities are driven by the useFrame above. */}
+              • base (terrain + country labels)  at R
+              • borders overlay (always visible) at R * 1.0006 — country +
+                state border strokes. Painted on a separate sphere so
+                they visibly sit ON TOP of the satellite terrain
+                instead of being blended into it on the base canvas.
+              • states overlay (fade in d=28)    at R * 1.0007 — state labels
+              • cities overlay (fade in d=22)    at R * 1.0009 — city labels + pins
+            All overlay materials are meshBasicMaterial so scene lighting
+            doesn't tint them; depthWrite off so they stack cleanly. */}
+        {/* depthTest=false on all three so they paint ON TOP of the terrain
+            even where the displacement map (displacementScale=0.65, max
+            lift ~0.53 units) physically pushes mountains past these
+            spheres' radii. Without this, the Andes / Himalayas / Rockies
+            poke through and visually "eat" the border lines + labels.
+            renderOrder enforces the back-to-front stack since z-tests
+            no longer order them automatically. */}
+        {bordersOverlayTexture && (
+          <Sphere args={[R * 1.0006, 128, 128]} renderOrder={1}>
+            <meshBasicMaterial
+              map={bordersOverlayTexture}
+              transparent
+              opacity={1}
+              depthWrite={false}
+              depthTest={false}
+              toneMapped={false}
+            />
+          </Sphere>
+        )}
         {statesOverlayTexture && (
-          <Sphere args={[R * 1.0007, 128, 128]}>
+          <Sphere args={[R * 1.0007, 128, 128]} renderOrder={2}>
             <meshBasicMaterial
               ref={statesOverlayMaterialRef}
               map={statesOverlayTexture}
               transparent
               opacity={0}
               depthWrite={false}
+              depthTest={false}
               toneMapped={false}
             />
           </Sphere>
         )}
         {citiesOverlayTexture && (
-          <Sphere args={[R * 1.0009, 128, 128]}>
+          <Sphere args={[R * 1.0009, 128, 128]} renderOrder={3}>
             <meshBasicMaterial
               ref={citiesOverlayMaterialRef}
               map={citiesOverlayTexture}
               transparent
               opacity={0}
               depthWrite={false}
+              depthTest={false}
               toneMapped={false}
             />
           </Sphere>

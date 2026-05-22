@@ -17,7 +17,10 @@ const DB_VERSION = 1;
 // Versions of the bake output that callers gate on. Bump whenever
 // createEarthTexture's overlay paint behavior changes in a visible way.
 // (Format: yyyy-mm-dd-N when convenient, but any unique string works.)
-export const OVERLAY_CACHE_VERSION = "2026-05-21-1";
+// 2026-05-22-1: split borders into a 3rd "always-visible" overlay
+// (was previously fused with state labels on a single tier-gated
+// sphere — caused country borders to look sunken into the terrain).
+export const OVERLAY_CACHE_VERSION = "2026-05-22-1";
 
 type Stored = {
   blob: Blob;
@@ -91,20 +94,23 @@ export async function setOverlayBlob(key: string, blob: Blob): Promise<void> {
 }
 
 // Convenience helpers for the canonical overlay keys.
-export const STATES_OVERLAY_KEY = "states-overlay";
-export const CITIES_OVERLAY_KEY = "cities-overlay";
+export const BORDERS_OVERLAY_KEY = "borders-overlay";
+export const STATES_OVERLAY_KEY  = "states-overlay";
+export const CITIES_OVERLAY_KEY  = "cities-overlay";
 
-export async function getCachedOverlays(): Promise<{ states: Blob; cities: Blob } | null> {
-  const [states, cities] = await Promise.all([
+export async function getCachedOverlays(): Promise<{ borders: Blob; states: Blob; cities: Blob } | null> {
+  const [borders, states, cities] = await Promise.all([
+    getOverlayBlob(BORDERS_OVERLAY_KEY),
     getOverlayBlob(STATES_OVERLAY_KEY),
     getOverlayBlob(CITIES_OVERLAY_KEY),
   ]);
-  if (states && cities) return { states, cities };
+  if (borders && states && cities) return { borders, states, cities };
   return null;
 }
 
-export async function saveCachedOverlays(states: Blob, cities: Blob): Promise<void> {
+export async function saveCachedOverlays(borders: Blob, states: Blob, cities: Blob): Promise<void> {
   await Promise.all([
+    setOverlayBlob(BORDERS_OVERLAY_KEY, borders),
     setOverlayBlob(STATES_OVERLAY_KEY, states),
     setOverlayBlob(CITIES_OVERLAY_KEY, cities),
   ]);
