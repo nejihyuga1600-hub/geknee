@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "bake:overlays": "node bin/bake-overlays.mjs",
     "meshy": "python meshy_batch.py",
     "meshy:register": "python meshy_register.py",
     "meshy:skins": "python meshy_skins.py",

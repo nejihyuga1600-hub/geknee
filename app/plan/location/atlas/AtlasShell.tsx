@@ -25,7 +25,16 @@ import {
 // renders only the real R3F globe (country borders, monuments, click-to-fly,
 // procedural Earth texture). ssr:false because it touches window at module
 // scope. Dynamic import keeps Atlas's first paint cheap.
-const PlannerGlobe = dynamic(() => import("../LocationClient"), { ssr: false, loading: () => null });
+// loading: render the same radial-gradient globe-backdrop while the
+// LocationClient bundle (~3,700-line client component + R3F + drei +
+// troika SDF text) downloads + parses. Without this, the canvas slot
+// is empty while AtlasShell's chrome (top nav, sheet) is already visible
+// — creates a blank "missing globe" flash. The gradient matches
+// StaticGlobeBackdrop below so the transition is seamless.
+const PlannerGlobe = dynamic(() => import("../LocationClient"), {
+  ssr: false,
+  loading: () => <StaticGlobeBackdrop />,
+});
 
 // Globe bypass strategy: try the full WebGL globe everywhere by default.
 // Only swap to the static gradient backdrop if WebGL actually fails or the

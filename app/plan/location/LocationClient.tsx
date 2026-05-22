@@ -21,6 +21,13 @@ import { R, geo, geoPos, type SurfPos } from "./globe/geo";
 import { INFO, type LmInfo } from "./globe/info";
 import { L, LM_DENSITY } from "./globe/locations";
 import { MONUMENT_LATLON, SKIN_RING_COLOR } from "./globe/skins";
+// Curated city list — single source of truth, also consumed by
+// bin/bake-overlays.mjs to build the pre-baked cities-overlay.webp.
+// JSON keeps the data static-extractable (Next.js + the bake script
+// can both read it without TypeScript) while preserving the same
+// shape the bake + runtime expect.
+import CITIES_JSON from "./globe/cities-curated.json";
+const CITIES: { n: string; lat: number; lon: number }[] = CITIES_JSON;
 import {
   Lm,
   LandmarkLabel,
@@ -298,21 +305,32 @@ function createEarthTexture(
   maxTexSize = 8192,
   cities: LabelCity[] = [],
   overlayScale = 1,
-): { base: THREE.CanvasTexture; overlay: THREE.CanvasTexture } {
+): { base: THREE.CanvasTexture; statesOverlay: THREE.CanvasTexture; citiesOverlay: THREE.CanvasTexture } {
   const W = Math.min(maxTexSize, 8192), H = W / 2;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
-  // Overlay canvas — same lon/lat mapping, optionally higher resolution
-  // for crisp state + city labels at zoom-in. Cap at 16384 to stay within
-  // WebGL MAX_TEXTURE_SIZE on most GPUs.
+  // Overlay canvases — same lon/lat mapping as the base, optionally higher
+  // resolution for crisp labels at zoom-in. Split into TWO transparent
+  // overlays so each tier can fade in at its own camDist threshold:
+  //   • statesCanvas → state labels (fade in at the Country/Mid boundary,
+  //     d ≤ 27.7). Mirrors the prior GeoLabels zoomLevel ≥ 1 gate.
+  //   • citiesCanvas → curated city labels + pins (fade in deeper at
+  //     d ≤ 21.7). Mirrors the prior CityLabels camDist < 22 gate.
+  // Small/regional cities (GeoNames extras) continue to render through
+  // the mesh-based CityLabels with popMin-based progressive disclosure.
+  // Cap at 16384 to stay within WebGL MAX_TEXTURE_SIZE on most GPUs.
   const OW = Math.min(W * overlayScale, 16384);
   const OH = OW / 2;
-  const overlayCanvas = document.createElement("canvas");
-  overlayCanvas.width = OW;
-  overlayCanvas.height = OH;
-  const overlayCtx = overlayCanvas.getContext("2d")!;
+  const statesCanvas = document.createElement("canvas");
+  statesCanvas.width = OW;
+  statesCanvas.height = OH;
+  const statesCtx = statesCanvas.getContext("2d")!;
+  const citiesCanvas = document.createElement("canvas");
+  citiesCanvas.width = OW;
+  citiesCanvas.height = OH;
+  const citiesCtx = citiesCanvas.getContext("2d")!;
   // miter joins + butt caps render crisper polygon corners than round.
   ctx.lineJoin = "miter";
   ctx.miterLimit = 4;
@@ -387,10 +405,13 @@ function createEarthTexture(
     color: string,
     width: number,
     filter?: (f: GeoFeature) => boolean,
+    targetCtx?: CanvasRenderingContext2D,
+    scale: number = 1,
   ) {
     if (!data) return;
-    ctx.strokeStyle = color;
-    ctx.lineWidth   = width;
+    const c = targetCtx ?? ctx;
+    c.strokeStyle = color;
+    c.lineWidth   = width * scale;
 
     for (const feature of data.features) {
       if (filter && !filter(feature)) continue;
@@ -405,19 +426,20 @@ function createEarthTexture(
       for (const polygon of polygons) {
         for (const ring of polygon) {
           let prevLon = (ring[0] as number[])[0];
-          ctx.beginPath();
+          c.beginPath();
           let started = false;
           for (const coord of ring as number[][]) {
             const [lon, lat] = coord;
             if (started && Math.abs(lon - prevLon) > 180) {
-              ctx.stroke(); ctx.beginPath(); started = false;
+              c.stroke(); c.beginPath(); started = false;
             }
-            const [x, y] = px(lon, lat);
-            if (!started) { ctx.moveTo(x, y); started = true; }
-            else          { ctx.lineTo(x, y); }
+            const [bx, by] = px(lon, lat);
+            const x = bx * scale, y = by * scale;
+            if (!started) { c.moveTo(x, y); started = true; }
+            else          { c.lineTo(x, y); }
             prevLon = lon;
           }
-          ctx.stroke();
+          c.stroke();
         }
       }
     }
@@ -520,9 +542,18 @@ function createEarthTexture(
   const stateWdth = terrainBitmap ? 1.0  : 1.25;
   drawBorders(countriesGeo, `rgba(255,255,255,${bdrAlpha})`, bdrWidth);
 
+  // State borders moved onto the STATES overlay canvas (was on the base).
+  // Two motivations: (1) so the base bake doesn't depend on the 40MB states
+  // JSON — it can run as soon as countries + terrain arrive — and (2) so
+  // the IndexedDB cache in lib/globeCache.ts can store the entire states
+  // layer (borders + labels) as a single WebP blob. Trade-off: borders
+  // share the overlay's opacity gate (d ≤ 27.7), so they hide at the same
+  // "Country" zoom tier where state labels do — at that range the borders
+  // are sub-pixel hairlines on the screen-mapped sphere anyway.
   const STATE_FILTER = new Set(["USA", "CAN", "AUS", "BRA", "MEX", "RUS", "CHN", "IND", "ARG"]);
+  const OS_state = OW / W;
   drawBorders(statesGeo, `rgba(255,255,255,${terrainBitmap ? 0.85 : 0.9})`, stateWdth,
-    f => STATE_FILTER.has(f.properties.adm0_a3));
+    f => STATE_FILTER.has(f.properties.adm0_a3), statesCtx, OS_state);
 
   // ── Labels baked into the earth texture (no z-offset, truly laminated) ────
   // Country + city labels are painted directly onto the equirectangular
@@ -605,16 +636,18 @@ function createEarthTexture(
     const AREA_MIN = (W * H) * 0.0008;   // Belgium-ish scale
 
     // Overlay coordinate scale — placed[] is in BASE coords, but state +
-    // city draw calls go to overlayCtx using these scaled positions so
-    // the high-res overlay canvas stays in pixel-perfect alignment with
-    // the base. OS = 1 when overlay matches base; 2 when overlay is 2×.
+    // city draw calls go to statesCtx / citiesCtx using these scaled
+    // positions so the high-res overlay canvases stay in pixel-perfect
+    // alignment with the base. OS = 1 when overlays match base; 2 when
+    // overlays are 2×. Shared across both overlay tiers since they share
+    // the same canvas resolution.
     const OS = OW / W;
 
-    // ── State labels — drawn ONTO the OVERLAY canvas (fades in at Local
-    //   zoom). Placed BEFORE countries so a country label can slide off
-    //   its centroid when a state name sits there. Sizing + bbox + halo
-    //   identical to the prior in-base-texture pass; only difference is
-    //   the target canvas + scaled coordinates.
+    // ── State labels — drawn ONTO the STATES overlay canvas (fades in at
+    //   the Country/Mid zoom boundary, d ≤ 27.7). Placed BEFORE countries
+    //   so a country label can slide off its centroid when a state name
+    //   sits there. Sizing + bbox + halo identical to the prior pass;
+    //   only difference is the target canvas + scaled coordinates.
     if (statesGeo) {
       const STATE_MAX_FONT = 17 * SCALE_FACTOR;  // ~75% of country MAX
       const STATE_MIN_FONT = 8  * SCALE_FACTOR;
@@ -649,23 +682,23 @@ function createEarthTexture(
         const measuredW = ctx.measureText(s.name).width;
         const labelH = size * 1.1;
         if (!tryPlaceLabel(placed, s.cx, s.cy, measuredW, labelH, PAD)) continue;
-        overlayCtx.font = `400 ${size * OS}px ${fontFamily}`;
-        overlayCtx.textAlign = 'center';
-        overlayCtx.textBaseline = 'middle';
-        overlayCtx.shadowColor = 'rgba(0,0,0,0.5)';
-        overlayCtx.shadowBlur = Math.max(2, size * OS * 0.16);
-        overlayCtx.fillStyle = 'rgba(255,255,255,0.85)';
-        overlayCtx.fillText(s.name, s.cx * OS, s.cy * OS);
-        overlayCtx.shadowColor = 'transparent';
-        overlayCtx.shadowBlur = 0;
+        statesCtx.font = `400 ${size * OS}px ${fontFamily}`;
+        statesCtx.textAlign = 'center';
+        statesCtx.textBaseline = 'middle';
+        statesCtx.shadowColor = 'rgba(0,0,0,0.5)';
+        statesCtx.shadowBlur = Math.max(2, size * OS * 0.16);
+        statesCtx.fillStyle = 'rgba(255,255,255,0.85)';
+        statesCtx.fillText(s.name, s.cx * OS, s.cy * OS);
+        statesCtx.shadowColor = 'transparent';
+        statesCtx.shadowBlur = 0;
       }
     }
 
-    // ── City labels — drawn ONTO the OVERLAY canvas. Place BEFORE
-    //   countries so the country label yields when a city pin overlaps
-    //   the country's centroid. Pin marker + label both at scaled
-    //   overlay coords; placed[] stays in base coords for cross-tier
-    //   overlap math.
+    // ── City labels — drawn ONTO the CITIES overlay canvas (fades in
+    //   deeper than states, d ≤ 21.7). Place BEFORE countries so the
+    //   country label yields when a city pin overlaps the country's
+    //   centroid. Pin marker + label both at scaled overlay coords;
+    //   placed[] stays in base coords for cross-tier overlap math.
     if (cities.length > 0) {
       const sortedCities = [...cities]
         .filter(c => (c.p ?? 0) >= 0)
@@ -703,15 +736,15 @@ function createEarthTexture(
         }
         if (!placedOK) continue;
 
-        overlayCtx.beginPath();
-        overlayCtx.arc(x * OS, y * OS, (DOT_R + 1.5 * SCALE_FACTOR) * OS, 0, Math.PI * 2);
-        overlayCtx.fillStyle = "rgba(0,0,0,0.85)";
-        overlayCtx.fill();
-        overlayCtx.beginPath();
-        overlayCtx.arc(x * OS, y * OS, DOT_R * OS, 0, Math.PI * 2);
-        overlayCtx.fillStyle = "#ffffff";
-        overlayCtx.fill();
-        paintLabel(overlayCtx, city.n, lx * OS, ly * OS, size * OS, fontFamily);
+        citiesCtx.beginPath();
+        citiesCtx.arc(x * OS, y * OS, (DOT_R + 1.5 * SCALE_FACTOR) * OS, 0, Math.PI * 2);
+        citiesCtx.fillStyle = "rgba(0,0,0,0.85)";
+        citiesCtx.fill();
+        citiesCtx.beginPath();
+        citiesCtx.arc(x * OS, y * OS, DOT_R * OS, 0, Math.PI * 2);
+        citiesCtx.fillStyle = "#ffffff";
+        citiesCtx.fill();
+        paintLabel(citiesCtx, city.n, lx * OS, ly * OS, size * OS, fontFamily);
       }
     }
 
@@ -767,134 +800,22 @@ function createEarthTexture(
       paintLabelClean(ctx, chosen.text, placedAt[0], placedAt[1], chosen.size, fontFamily, 500);
     }
 
-    // (the prior in-base-texture state + city blocks lived here. They
-    // were moved above the country pass so the country labels could
-    // yield to placed city + state positions, and their draws now go
-    // to overlayCtx instead of ctx. Deleted in same commit.)
-    if (false as boolean && statesGeo) {
-      const STATE_MAX_FONT = 17 * SCALE_FACTOR;  // ~75% of country MAX
-      const STATE_MIN_FONT = 8  * SCALE_FACTOR;
-      const STATE_MIN_AREA = (W * H) * 0.00006;
-      const STATE_AREA_MAX = (W * H) * 0.01;
-      const STATE_AREA_MIN = (W * H) * 0.0003;
+    // (Prior in-base-texture state + city paint passes lived here. They
+    // were superseded by the tier-gated overlay canvases above — state
+    // labels paint to statesCtx, curated city labels paint to citiesCtx,
+    // each fading in at its own camDist threshold. Deleted entirely so
+    // cities at "Country" tier (where the overlay is invisible) stay
+    // hidden, matching the legacy CityLabels camDist gate.)
 
-      type StateCandidate = { name: string; cx: number; cy: number; boxW: number; boxH: number; area: number };
-      const states: StateCandidate[] = [];
-      for (const f of statesGeo.features) {
-        const sname = (f.properties?.name || f.properties?.NAME) as string | undefined;
-        const admin = (f.properties?.admin || f.properties?.adm0_name || '') as string;
-        if (!sname || !STATE_COUNTRIES.has(admin)) continue;
-        const box = featurePixelBox(f, W, H);
-        if (!box) continue;
-        states.push({ name: sname, cx: box.cx, cy: box.cy, boxW: box.w, boxH: box.h, area: box.area });
-      }
-      states.sort((a, b) => b.area - a.area);
-
-      for (const s of states) {
-        if (s.area < STATE_MIN_AREA) continue;
-        const widthBudget = s.boxW * WIDTH_BUDGET_FRAC;
-        const t = Math.min(1, Math.max(0,
-          (Math.log(s.area) - Math.log(STATE_AREA_MIN)) /
-          (Math.log(STATE_AREA_MAX) - Math.log(STATE_AREA_MIN))
-        ));
-        const tierFont = STATE_MIN_FONT + (STATE_MAX_FONT - STATE_MIN_FONT) * t;
-        const heightCap = s.boxH * 0.50;
-        const maxFont = Math.min(tierFont, Math.max(STATE_MIN_FONT, heightCap));
-        const size = fitFontSize(ctx, s.name, widthBudget, STATE_MIN_FONT, maxFont, fontFamily);
-        if (size == null) continue;
-        const measuredW = ctx.measureText(s.name).width;
-        const labelH = size * 1.1;
-        if (!tryPlaceLabel(placed, s.cx, s.cy, measuredW, labelH, PAD)) continue;
-        // States rendered slightly more subdued than countries — lighter
-        // weight + soft halo so they read as a secondary tier.
-        ctx.font = `400 ${size}px ${fontFamily}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = Math.max(2, size * 0.16);
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.fillText(s.name, s.cx, s.cy);
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // ── City labels — paint after countries so they layer on top, sorted
-    //   by population so megacities win overlap conflicts. Dotted by a
-    //   small filled circle at the actual coordinate so the user can
-    //   tell where each label is anchored even when its text is offset.
-    if (cities.length > 0) {
-      const CITY_MIN_POP = 0; // accept curated list which omits `p`
-      const sortedCities = [...cities]
-        .filter(c => (c.p ?? 0) >= CITY_MIN_POP)
-        .sort((a, b) => (b.p ?? 1_000_000) - (a.p ?? 1_000_000));
-      // City fonts trimmed another 25% on top of the prior "25% smaller
-      // than country" pass. Country MAX_FONT = 22; city MAX previously
-      // 16 (75% of country); now 12 (75% of that = 56% of country).
-      // Density tiers by log-population still rank Tokyo above Albuquerque.
-      const CITY_MAX_FONT = 12 * SCALE_FACTOR;
-      const CITY_MIN_FONT = 6  * SCALE_FACTOR;
-      // Pin marker shrunk 50% — the previous size was visually loud and
-      // competed with the text. 2.25 texel radius (4K canvas → 1.1 texel)
-      // is closer to a printed-map dot.
-      const DOT_R = 2.25 * SCALE_FACTOR;
-      const CITY_PAD = 3 * SCALE_FACTOR;
-
-      for (const city of sortedCities) {
-        if (city.lat > 85 || city.lat < -85) continue; // labels too close to poles fish out
-        const x = (city.lon + 180) / 360 * W;
-        const y = (90 - city.lat) / 180 * H;
-        // Bigger fonts for high-pop cities; clamp into the working range.
-        const pop = city.p ?? 1_000_000;
-        const popFactor = Math.min(1, Math.max(0.5, Math.log10(Math.max(pop, 10_000) / 10_000) / 3));
-        const size = Math.max(CITY_MIN_FONT, CITY_MAX_FONT * popFactor);
-
-        ctx.font = `600 ${size}px ${fontFamily}`;
-        const textW = ctx.measureText(city.n).width;
-        const labelH = size * 1.1;
-
-        // Try placing the label slightly below the dot first, then to the
-        // right, then above — first non-colliding wins. Mimics how paper
-        // atlases offset city names from their dots.
-        const offsets: Array<[number, number]> = [
-          [0, size * 0.95],          // below
-          [textW * 0.55 + DOT_R * 2, 0], // right
-          [0, -size * 0.95],         // above
-          [-(textW * 0.55 + DOT_R * 2), 0], // left
-        ];
-        let placedOK = false;
-        let lx = x, ly = y;
-        for (const [dx, dy] of offsets) {
-          const tx = x + dx, ty = y + dy;
-          if (tryPlaceLabel(placed, tx, ty, textW, labelH, CITY_PAD)) {
-            lx = tx; ly = ty; placedOK = true; break;
-          }
-        }
-        if (!placedOK) continue;
-
-        // White pin marker. Two-step: dark contrast ring underneath so the
-        // pin pops against light biome fills + satellite imagery, then a
-        // white disc on top. A tiny inner shadow at the centre gives the
-        // pin a small amount of dimensional read without going full 3D.
-        ctx.beginPath();
-        ctx.arc(x, y, DOT_R + 1.5 * SCALE_FACTOR, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,0,0,0.85)";
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, DOT_R, 0, Math.PI * 2);
-        ctx.fillStyle = "#ffffff";
-        ctx.fill();
-
-        paintLabel(ctx, city.n, lx, ly, size, fontFamily);
-      }
-    }
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
-  const overlayTex = new THREE.CanvasTexture(overlayCanvas);
-  overlayTex.needsUpdate = true;
-  return { base: tex, overlay: overlayTex };
+  const statesTex = new THREE.CanvasTexture(statesCanvas);
+  statesTex.needsUpdate = true;
+  const citiesTex = new THREE.CanvasTexture(citiesCanvas);
+  citiesTex.needsUpdate = true;
+  return { base: tex, statesOverlay: statesTex, citiesOverlay: citiesTex };
 }
 function featureCentroid(f: GeoFeature): [number, number] | null {
   if (!f.geometry) return null;
@@ -1260,655 +1181,6 @@ function GeoLabels({ countries, states, zoomLevel }: {
 }
 
 // --- Major world city labels (coords: WGS-84 decimal degrees) -----------------
-const CITIES: { n: string; lat: number; lon: number }[] = [
-  // ── United States ────────────────────────────────────────────────────────────
-  { n: "New York",         lat:  40.71, lon:  -74.01 },
-  { n: "Los Angeles",      lat:  34.05, lon: -118.24 },
-  { n: "Chicago",          lat:  41.88, lon:  -87.63 },
-  { n: "Houston",          lat:  29.76, lon:  -95.37 },
-  { n: "Phoenix",          lat:  33.45, lon: -112.07 },
-  { n: "Philadelphia",     lat:  39.95, lon:  -75.17 },
-  { n: "San Antonio",      lat:  29.42, lon:  -98.49 },
-  { n: "San Diego",        lat:  32.72, lon: -117.15 },
-  { n: "Dallas",           lat:  32.78, lon:  -96.80 },
-  { n: "Austin",           lat:  30.27, lon:  -97.74 },
-  { n: "Jacksonville",     lat:  30.33, lon:  -81.66 },
-  { n: "San Francisco",    lat:  37.77, lon: -122.42 },
-  { n: "Seattle",          lat:  47.61, lon: -122.33 },
-  { n: "Denver",           lat:  39.74, lon: -104.98 },
-  { n: "Washington DC",    lat:  38.91, lon:  -77.04 },
-  { n: "Nashville",        lat:  36.17, lon:  -86.78 },
-  { n: "Oklahoma City",    lat:  35.47, lon:  -97.52 },
-  { n: "Las Vegas",        lat:  36.17, lon: -115.14 },
-  { n: "Portland",         lat:  45.52, lon: -122.68 },
-  { n: "Memphis",          lat:  35.15, lon:  -90.05 },
-  { n: "Louisville",       lat:  38.25, lon:  -85.76 },
-  { n: "Baltimore",        lat:  39.29, lon:  -76.61 },
-  { n: "Milwaukee",        lat:  43.04, lon:  -87.91 },
-  { n: "Albuquerque",      lat:  35.08, lon: -106.65 },
-  { n: "Tucson",           lat:  32.22, lon: -110.97 },
-  { n: "Atlanta",          lat:  33.75, lon:  -84.39 },
-  { n: "Kansas City",      lat:  39.10, lon:  -94.58 },
-  { n: "Omaha",            lat:  41.26, lon:  -96.01 },
-  { n: "Cleveland",        lat:  41.50, lon:  -81.69 },
-  { n: "Raleigh",          lat:  35.78, lon:  -78.64 },
-  { n: "Colorado Springs", lat:  38.83, lon: -104.82 },
-  { n: "Miami",            lat:  25.77, lon:  -80.19 },
-  { n: "Minneapolis",      lat:  44.98, lon:  -93.27 },
-  { n: "New Orleans",      lat:  29.95, lon:  -90.07 },
-  { n: "Detroit",          lat:  42.33, lon:  -83.05 },
-  { n: "Charlotte",        lat:  35.23, lon:  -80.84 },
-  { n: "St. Louis",        lat:  38.63, lon:  -90.20 },
-  { n: "Pittsburgh",       lat:  40.44, lon:  -80.00 },
-  { n: "Tampa",            lat:  27.95, lon:  -82.46 },
-  { n: "Cincinnati",       lat:  39.10, lon:  -84.51 },
-  { n: "Orlando",          lat:  28.54, lon:  -81.38 },
-  { n: "Salt Lake City",   lat:  40.76, lon: -111.89 },
-  { n: "Sacramento",       lat:  38.58, lon: -121.49 },
-  { n: "Indianapolis",     lat:  39.77, lon:  -86.16 },
-  { n: "Columbus",         lat:  39.96, lon:  -82.99 },
-  { n: "Virginia Beach",   lat:  36.85, lon:  -76.29 },
-  { n: "Fresno",           lat:  36.74, lon: -119.79 },
-  { n: "Baton Rouge",      lat:  30.44, lon:  -91.13 },
-  { n: "Tulsa",            lat:  36.15, lon:  -95.99 },
-  { n: "Wichita",          lat:  37.69, lon:  -97.34 },
-  { n: "Honolulu",         lat:  21.31, lon: -157.86 },
-  { n: "Anchorage",        lat:  61.22, lon: -149.90 },
-  { n: "El Paso",          lat:  31.76, lon: -106.49 },
-  { n: "Fort Worth",       lat:  32.75, lon:  -97.33 },
-  { n: "Corpus Christi",   lat:  27.80, lon:  -97.40 },
-  { n: "Lexington",        lat:  38.04, lon:  -84.50 },
-  { n: "Greensboro",       lat:  36.07, lon:  -79.79 },
-  { n: "Plano",            lat:  33.02, lon:  -96.70 },
-  { n: "Henderson",        lat:  36.04, lon: -114.98 },
-  { n: "Newark",           lat:  40.74, lon:  -74.17 },
-  { n: "St. Paul",         lat:  44.95, lon:  -93.09 },
-  { n: "Chandler",         lat:  33.30, lon: -111.84 },
-  { n: "Laredo",           lat:  27.50, lon:  -99.51 },
-  { n: "Madison",          lat:  43.07, lon:  -89.40 },
-  { n: "Durham",           lat:  35.99, lon:  -78.90 },
-  { n: "Lubbock",          lat:  33.58, lon: -101.86 },
-  { n: "Garland",          lat:  32.91, lon:  -96.64 },
-  { n: "Glendale",         lat:  33.53, lon: -112.19 },
-  { n: "Winston-Salem",    lat:  36.10, lon:  -80.24 },
-  { n: "Scottsdale",       lat:  33.49, lon: -111.93 },
-  { n: "Birmingham",       lat:  33.52, lon:  -86.80 },
-  { n: "Montgomery",       lat:  32.36, lon:  -86.30 },
-  { n: "Tuscaloosa",       lat:  33.21, lon:  -87.57 },
-  { n: "Dothan",           lat:  31.22, lon:  -85.39 },
-  { n: "Decatur",          lat:  34.61, lon:  -86.98 },
-  { n: "Norfolk",          lat:  36.85, lon:  -76.29 },
-  { n: "Spokane",          lat:  47.66, lon: -117.43 },
-  { n: "Richmond",         lat:  37.54, lon:  -77.43 },
-  { n: "Des Moines",       lat:  41.60, lon:  -93.61 },
-  { n: "Boise",            lat:  43.62, lon: -116.20 },
-  { n: "Fayetteville",     lat:  35.05, lon:  -78.88 },
-  { n: "Tacoma",           lat:  47.25, lon: -122.44 },
-  { n: "Oxnard",           lat:  34.20, lon: -119.18 },
-  { n: "Knoxville",        lat:  35.96, lon:  -83.92 },
-  { n: "Providence",       lat:  41.82, lon:  -71.42 },
-  { n: "Akron",            lat:  41.08, lon:  -81.52 },
-  { n: "Little Rock",      lat:  34.75, lon:  -92.29 },
-  { n: "Huntsville",       lat:  34.73, lon:  -86.59 },
-  { n: "Tempe",            lat:  33.42, lon: -111.94 },
-  { n: "Augusta",          lat:  33.47, lon:  -82.00 },
-  { n: "Grand Rapids",     lat:  42.96, lon:  -85.66 },
-  { n: "Chattanooga",      lat:  35.05, lon:  -85.31 },
-  { n: "Jackson",          lat:  32.30, lon:  -90.18 },
-  { n: "Mobile",           lat:  30.69, lon:  -88.04 },
-  { n: "Savannah",         lat:  32.08, lon:  -81.10 },
-  { n: "Fort Lauderdale",  lat:  26.12, lon:  -80.14 },
-  { n: "Cape Coral",       lat:  26.63, lon:  -81.95 },
-  { n: "Sioux Falls",      lat:  43.55, lon:  -96.73 },
-  { n: "Tallahassee",      lat:  30.44, lon:  -84.28 },
-  { n: "Peoria",           lat:  40.69, lon:  -89.59 },
-  { n: "Rockford",         lat:  42.27, lon:  -89.09 },
-  { n: "Syracuse",         lat:  43.05, lon:  -76.15 },
-  { n: "Shreveport",       lat:  32.53, lon:  -93.75 },
-  { n: "Buffalo",          lat:  42.89, lon:  -78.87 },
-  { n: "Reno",             lat:  39.53, lon: -119.81 },
-  { n: "Hartford",         lat:  41.76, lon:  -72.68 },
-  { n: "Missoula",         lat:  46.87, lon: -113.99 },
-  { n: "Billings",         lat:  45.78, lon: -108.50 },
-  { n: "Rapid City",       lat:  44.08, lon: -103.23 },
-  { n: "Fargo",            lat:  46.88, lon:  -96.79 },
-  { n: "Bismarck",         lat:  46.81, lon: -100.78 },
-  { n: "Cheyenne",         lat:  41.14, lon: -104.82 },
-  { n: "Arlington",        lat:  32.74, lon:  -97.11 },
-  { n: "Amarillo",         lat:  35.22, lon: -101.83 },
-  { n: "Brownsville",      lat:  25.90, lon:  -97.50 },
-  { n: "McKinney",         lat:  33.20, lon:  -96.64 },
-  { n: "Frisco",           lat:  33.15, lon:  -96.82 },
-  { n: "Denton",           lat:  33.21, lon:  -97.13 },
-  { n: "Waco",             lat:  31.55, lon:  -97.14 },
-  { n: "Tyler",            lat:  32.35, lon:  -95.30 },
-  { n: "Beaumont",         lat:  30.08, lon:  -94.13 },
-  { n: "Killeen",          lat:  31.12, lon:  -97.73 },
-  { n: "Midland",          lat:  31.99, lon: -102.08 },
-  { n: "Abilene",          lat:  32.45, lon:  -99.73 },
-  { n: "Wilmington",       lat:  34.23, lon:  -77.94 },
-  { n: "Gainesville",      lat:  29.65, lon:  -82.32 },
-  { n: "St. Petersburg",   lat:  27.77, lon:  -82.64 },
-  { n: "Lakeland",         lat:  28.04, lon:  -81.95 },
-  { n: "Pensacola",        lat:  30.42, lon:  -87.22 },
-  { n: "Daytona Beach",    lat:  29.21, lon:  -81.02 },
-  { n: "Fort Myers",       lat:  26.64, lon:  -81.87 },
-  { n: "Hialeah",          lat:  25.86, lon:  -80.28 },
-  { n: "Eugene",           lat:  44.05, lon: -123.09 },
-  { n: "Salem",            lat:  44.94, lon: -123.04 },
-  { n: "Bakersfield",      lat:  35.37, lon: -119.02 },
-  { n: "Stockton",         lat:  37.97, lon: -121.29 },
-  { n: "Long Beach",       lat:  33.77, lon: -118.19 },
-  { n: "Riverside",        lat:  33.98, lon: -117.37 },
-  { n: "San Bernardino",   lat:  34.11, lon: -117.29 },
-  { n: "Irvine",           lat:  33.68, lon: -117.79 },
-  { n: "Santa Ana",        lat:  33.75, lon: -117.87 },
-  { n: "Anaheim",          lat:  33.84, lon: -117.91 },
-  { n: "Aurora",           lat:  39.73, lon: -104.83 },
-  { n: "Fort Collins",     lat:  40.59, lon: -105.08 },
-  { n: "Boulder",          lat:  40.01, lon: -105.27 },
-  { n: "Pueblo",           lat:  38.25, lon: -104.61 },
-  { n: "Allentown",        lat:  40.60, lon:  -75.49 },
-  { n: "Erie",             lat:  42.13, lon:  -80.08 },
-  { n: "Lancaster",        lat:  40.04, lon:  -76.31 },
-  { n: "Stamford",         lat:  41.05, lon:  -73.54 },
-  { n: "New Haven",        lat:  41.31, lon:  -72.92 },
-  { n: "Springfield",      lat:  42.10, lon:  -72.59 },
-  { n: "Worcester",        lat:  42.26, lon:  -71.80 },
-  { n: "Bridgeport",       lat:  41.18, lon:  -73.19 },
-  { n: "Jersey City",      lat:  40.73, lon:  -74.07 },
-  { n: "Yonkers",          lat:  40.93, lon:  -73.90 },
-  { n: "Rochester",        lat:  43.16, lon:  -77.61 },
-  { n: "Albany",           lat:  42.65, lon:  -73.76 },
-  { n: "Trenton",          lat:  40.22, lon:  -74.76 },
-  { n: "Wilmington DE",    lat:  39.74, lon:  -75.55 },
-  { n: "Columbia SC",      lat:  34.00, lon:  -81.03 },
-  { n: "Charleston SC",    lat:  32.78, lon:  -79.93 },
-  { n: "Greenville SC",    lat:  34.85, lon:  -82.40 },
-  { n: "Columbia MO",      lat:  38.95, lon:  -92.33 },
-  { n: "Springfield MO",   lat:  37.21, lon:  -93.29 },
-  { n: "Jefferson City",   lat:  38.57, lon:  -92.17 },
-  { n: "Topeka",           lat:  39.05, lon:  -95.69 },
-  { n: "Wichita Falls",    lat:  33.91, lon:  -98.49 },
-  { n: "Lincoln",          lat:  40.81, lon:  -96.68 },
-  { n: "Sioux City",       lat:  42.50, lon:  -96.40 },
-  { n: "Davenport",        lat:  41.52, lon:  -90.58 },
-  { n: "Cedar Rapids",     lat:  42.00, lon:  -91.64 },
-  { n: "Green Bay",        lat:  44.52, lon:  -88.02 },
-  { n: "Appleton",         lat:  44.26, lon:  -88.41 },
-  { n: "Duluth",           lat:  46.79, lon:  -92.10 },
-  { n: "Rochester MN",     lat:  44.02, lon:  -92.46 },
-  { n: "Flint",            lat:  43.01, lon:  -83.69 },
-  { n: "Lansing",          lat:  42.73, lon:  -84.56 },
-  { n: "Ann Arbor",        lat:  42.28, lon:  -83.74 },
-  { n: "Kalamazoo",        lat:  42.29, lon:  -85.59 },
-  { n: "Fort Wayne",       lat:  41.08, lon:  -85.14 },
-  { n: "Evansville",       lat:  37.97, lon:  -87.57 },
-  { n: "South Bend",       lat:  41.68, lon:  -86.25 },
-  { n: "Dayton",           lat:  39.76, lon:  -84.19 },
-  { n: "Toledo",           lat:  41.66, lon:  -83.56 },
-  { n: "Youngstown",       lat:  41.10, lon:  -80.65 },
-  { n: "Lexington KY",     lat:  38.04, lon:  -84.50 },
-  { n: "Bowling Green KY", lat:  36.99, lon:  -86.44 },
-  { n: "Charleston WV",    lat:  38.35, lon:  -81.63 },
-  { n: "Morgantown",       lat:  39.63, lon:  -79.96 },
-  { n: "Concord NH",       lat:  43.21, lon:  -71.54 },
-  { n: "Burlington VT",    lat:  44.48, lon:  -73.21 },
-  { n: "Portland ME",      lat:  43.66, lon:  -70.26 },
-  { n: "Fairbanks",        lat:  64.84, lon: -147.72 },
-  { n: "Juneau",           lat:  58.30, lon: -134.42 },
-  // ── Canada ───────────────────────────────────────────────────────────────────
-  { n: "Toronto",          lat:  43.65, lon:  -79.38 },
-  { n: "Montreal",         lat:  45.51, lon:  -73.55 },
-  { n: "Vancouver",        lat:  49.25, lon: -123.12 },
-  { n: "Calgary",          lat:  51.05, lon: -114.07 },
-  { n: "Ottawa",           lat:  45.42, lon:  -75.70 },
-  { n: "Edmonton",         lat:  53.55, lon: -113.47 },
-  { n: "Winnipeg",         lat:  49.90, lon:  -97.14 },
-  { n: "Quebec City",      lat:  46.81, lon:  -71.21 },
-  { n: "Hamilton",         lat:  43.26, lon:  -79.87 },
-  { n: "Halifax",          lat:  44.65, lon:  -63.58 },
-  { n: "Saskatoon",        lat:  52.13, lon: -106.67 },
-  { n: "Regina",           lat:  50.45, lon: -104.62 },
-  { n: "Victoria",         lat:  48.43, lon: -123.37 },
-  // ── Mexico & Central America ─────────────────────────────────────────────────
-  { n: "Mexico City",      lat:  19.43, lon:  -99.13 },
-  { n: "Guadalajara",      lat:  20.67, lon: -103.35 },
-  { n: "Monterrey",        lat:  25.69, lon: -100.32 },
-  { n: "Tijuana",          lat:  32.52, lon: -117.04 },
-  { n: "Puebla",           lat:  19.04, lon:  -98.20 },
-  { n: "Cancun",           lat:  21.16, lon:  -86.85 },
-  { n: "Leon",             lat:  21.12, lon: -101.68 },
-  { n: "Havana",           lat:  23.11, lon:  -82.37 },
-  { n: "Santo Domingo",    lat:  18.48, lon:  -69.93 },
-  { n: "San Juan",         lat:  18.47, lon:  -66.12 },
-  { n: "Guatemala City",   lat:  14.64, lon:  -90.51 },
-  { n: "San Jose",         lat:   9.93, lon:  -84.08 },
-  { n: "Panama City",      lat:   8.99, lon:  -79.52 },
-  { n: "Tegucigalpa",      lat:  14.07, lon:  -87.21 },
-  { n: "Managua",          lat:  12.14, lon:  -86.28 },
-  // ── South America ────────────────────────────────────────────────────────────
-  { n: "Sao Paulo",        lat: -23.55, lon:  -46.63 },
-  { n: "Rio de Janeiro",   lat: -22.91, lon:  -43.17 },
-  { n: "Buenos Aires",     lat: -34.60, lon:  -58.38 },
-  { n: "Bogota",           lat:   4.71, lon:  -74.07 },
-  { n: "Lima",             lat: -12.05, lon:  -77.04 },
-  { n: "Santiago",         lat: -33.45, lon:  -70.67 },
-  { n: "Caracas",          lat:  10.48, lon:  -66.88 },
-  { n: "Medellin",         lat:   6.25, lon:  -75.56 },
-  { n: "Quito",            lat:  -0.22, lon:  -78.51 },
-  { n: "Belo Horizonte",   lat: -19.92, lon:  -43.94 },
-  { n: "Fortaleza",        lat:  -3.72, lon:  -38.54 },
-  { n: "Recife",           lat:  -8.05, lon:  -34.90 },
-  { n: "Manaus",           lat:  -3.10, lon:  -60.02 },
-  { n: "Brasilia",         lat: -15.78, lon:  -47.93 },
-  { n: "Salvador",         lat: -12.97, lon:  -38.51 },
-  { n: "Montevideo",       lat: -34.90, lon:  -56.19 },
-  { n: "Asuncion",         lat: -25.29, lon:  -57.65 },
-  { n: "La Paz",           lat: -16.50, lon:  -68.15 },
-  { n: "Guayaquil",        lat:  -2.19, lon:  -79.89 },
-  { n: "Cali",             lat:   3.43, lon:  -76.52 },
-  { n: "Curitiba",         lat: -25.43, lon:  -49.27 },
-  { n: "Cartagena",        lat:  10.39, lon:  -75.48 },
-  // ── Europe ───────────────────────────────────────────────────────────────────
-  { n: "London",           lat:  51.51, lon:   -0.13 },
-  { n: "Paris",            lat:  48.86, lon:    2.35 },
-  { n: "Berlin",           lat:  52.52, lon:   13.40 },
-  { n: "Madrid",           lat:  40.42, lon:   -3.70 },
-  { n: "Rome",             lat:  41.90, lon:   12.50 },
-  { n: "Barcelona",        lat:  41.39, lon:    2.16 },
-  { n: "Amsterdam",        lat:  52.37, lon:    4.90 },
-  { n: "Vienna",           lat:  48.21, lon:   16.37 },
-  { n: "Stockholm",        lat:  59.33, lon:   18.07 },
-  { n: "Warsaw",           lat:  52.23, lon:   21.01 },
-  { n: "Brussels",         lat:  50.85, lon:    4.35 },
-  { n: "Prague",           lat:  50.08, lon:   14.44 },
-  { n: "Lisbon",           lat:  38.72, lon:   -9.14 },
-  { n: "Budapest",         lat:  47.50, lon:   19.04 },
-  { n: "Oslo",             lat:  59.91, lon:   10.75 },
-  { n: "Copenhagen",       lat:  55.68, lon:   12.57 },
-  { n: "Helsinki",         lat:  60.17, lon:   24.94 },
-  { n: "Zurich",           lat:  47.38, lon:    8.54 },
-  { n: "Milan",            lat:  45.47, lon:    9.19 },
-  { n: "Munich",           lat:  48.14, lon:   11.58 },
-  { n: "Athens",           lat:  37.97, lon:   23.73 },
-  { n: "Bucharest",        lat:  44.43, lon:   26.10 },
-  { n: "Hamburg",          lat:  53.55, lon:    9.99 },
-  { n: "Kyiv",             lat:  50.45, lon:   30.52 },
-  { n: "Minsk",            lat:  53.90, lon:   27.57 },
-  { n: "Dublin",           lat:  53.33, lon:   -6.25 },
-  { n: "Edinburgh",        lat:  55.95, lon:   -3.19 },
-  { n: "Manchester",       lat:  53.48, lon:   -2.24 },
-  { n: "Lyon",             lat:  45.75, lon:    4.85 },
-  { n: "Marseille",        lat:  43.30, lon:    5.37 },
-  { n: "Frankfurt",        lat:  50.11, lon:    8.68 },
-  { n: "Cologne",          lat:  50.94, lon:    6.96 },
-  { n: "Stuttgart",        lat:  48.78, lon:    9.18 },
-  { n: "Dusseldorf",       lat:  51.23, lon:    6.79 },
-  { n: "Naples",           lat:  40.85, lon:   14.27 },
-  { n: "Turin",            lat:  45.07, lon:    7.69 },
-  { n: "Florence",         lat:  43.77, lon:   11.25 },
-  { n: "Venice",           lat:  45.44, lon:   12.33 },
-  { n: "Seville",          lat:  37.39, lon:   -5.99 },
-  { n: "Valencia",         lat:  39.47, lon:   -0.38 },
-  { n: "Bilbao",           lat:  43.26, lon:   -2.93 },
-  { n: "Porto",            lat:  41.16, lon:   -8.63 },
-  { n: "Geneva",           lat:  46.20, lon:    6.14 },
-  { n: "Krakow",           lat:  50.06, lon:   19.94 },
-  { n: "Gdansk",           lat:  54.35, lon:   18.65 },
-  { n: "Bratislava",       lat:  48.15, lon:   17.11 },
-  { n: "Ljubljana",        lat:  46.05, lon:   14.51 },
-  { n: "Zagreb",           lat:  45.81, lon:   15.98 },
-  { n: "Sarajevo",         lat:  43.85, lon:   18.36 },
-  { n: "Belgrade",         lat:  44.80, lon:   20.46 },
-  { n: "Sofia",            lat:  42.70, lon:   23.32 },
-  { n: "Riga",             lat:  56.95, lon:   24.11 },
-  { n: "Tallinn",          lat:  59.44, lon:   24.75 },
-  { n: "Vilnius",          lat:  54.69, lon:   25.28 },
-  { n: "Reykjavik",        lat:  64.13, lon:  -21.82 },
-  { n: "Nice",             lat:  43.71, lon:    7.26 },
-  { n: "Palermo",          lat:  38.12, lon:   13.36 },
-  { n: "Thessaloniki",     lat:  40.64, lon:   22.94 },
-  // ── Russia & Central Asia ────────────────────────────────────────────────────
-  { n: "Moscow",           lat:  55.75, lon:   37.62 },
-  { n: "Saint Petersburg", lat:  59.94, lon:   30.32 },
-  { n: "Novosibirsk",      lat:  54.99, lon:   82.90 },
-  { n: "Yekaterinburg",    lat:  56.84, lon:   60.60 },
-  { n: "Kazan",            lat:  55.80, lon:   49.13 },
-  { n: "Vladivostok",      lat:  43.12, lon:  131.90 },
-  { n: "Tashkent",         lat:  41.30, lon:   69.24 },
-  { n: "Almaty",           lat:  43.24, lon:   76.95 },
-  { n: "Baku",             lat:  40.41, lon:   49.87 },
-  { n: "Tbilisi",          lat:  41.69, lon:   44.83 },
-  { n: "Yerevan",          lat:  40.18, lon:   44.51 },
-  { n: "Bishkek",          lat:  42.87, lon:   74.59 },
-  { n: "Ashgabat",         lat:  37.95, lon:   58.38 },
-  // ── Middle East ──────────────────────────────────────────────────────────────
-  { n: "Istanbul",         lat:  41.01, lon:   28.96 },
-  { n: "Tehran",           lat:  35.69, lon:   51.39 },
-  { n: "Riyadh",           lat:  24.69, lon:   46.72 },
-  { n: "Baghdad",          lat:  33.34, lon:   44.40 },
-  { n: "Dubai",            lat:  25.20, lon:   55.27 },
-  { n: "Abu Dhabi",        lat:  24.45, lon:   54.38 },
-  { n: "Doha",             lat:  25.29, lon:   51.53 },
-  { n: "Kuwait City",      lat:  29.37, lon:   47.98 },
-  { n: "Muscat",           lat:  23.61, lon:   58.59 },
-  { n: "Amman",            lat:  31.95, lon:   35.93 },
-  { n: "Beirut",           lat:  33.89, lon:   35.50 },
-  { n: "Tel Aviv",         lat:  32.09, lon:   34.79 },
-  { n: "Jerusalem",        lat:  31.77, lon:   35.22 },
-  { n: "Ankara",           lat:  39.92, lon:   32.85 },
-  { n: "Izmir",            lat:  38.42, lon:   27.14 },
-  { n: "Jeddah",           lat:  21.52, lon:   39.22 },
-  { n: "Sanaa",            lat:  15.35, lon:   44.21 },
-  // ── South Asia ───────────────────────────────────────────────────────────────
-  { n: "Delhi",            lat:  28.61, lon:   77.23 },
-  { n: "Mumbai",           lat:  19.08, lon:   72.88 },
-  { n: "Karachi",          lat:  24.86, lon:   67.01 },
-  { n: "Dhaka",            lat:  23.72, lon:   90.41 },
-  { n: "Kolkata",          lat:  22.57, lon:   88.36 },
-  { n: "Bangalore",        lat:  12.97, lon:   77.59 },
-  { n: "Lahore",           lat:  31.55, lon:   74.35 },
-  { n: "Chennai",          lat:  13.08, lon:   80.27 },
-  { n: "Hyderabad",        lat:  17.38, lon:   78.49 },
-  { n: "Ahmedabad",        lat:  23.03, lon:   72.59 },
-  { n: "Pune",             lat:  18.52, lon:   73.86 },
-  { n: "Colombo",          lat:   6.93, lon:   79.85 },
-  { n: "Kathmandu",        lat:  27.72, lon:   85.32 },
-  { n: "Islamabad",        lat:  33.72, lon:   73.06 },
-  { n: "Kabul",            lat:  34.53, lon:   69.17 },
-  { n: "Jaipur",           lat:  26.91, lon:   75.79 },
-  { n: "Surat",            lat:  21.17, lon:   72.83 },
-  { n: "Kochi",            lat:   9.94, lon:   76.26 },
-  // ── East & Southeast Asia ────────────────────────────────────────────────────
-  { n: "Tokyo",            lat:  35.68, lon:  139.69 },
-  { n: "Shanghai",         lat:  31.23, lon:  121.47 },
-  { n: "Beijing",          lat:  39.91, lon:  116.39 },
-  { n: "Chongqing",        lat:  29.56, lon:  106.55 },
-  { n: "Tianjin",          lat:  39.14, lon:  117.18 },
-  { n: "Shenzhen",         lat:  22.54, lon:  114.06 },
-  { n: "Wuhan",            lat:  30.59, lon:  114.31 },
-  { n: "Guangzhou",        lat:  23.13, lon:  113.26 },
-  { n: "Chengdu",          lat:  30.66, lon:  104.07 },
-  { n: "Osaka",            lat:  34.69, lon:  135.50 },
-  { n: "Seoul",            lat:  37.57, lon:  126.98 },
-  { n: "Taipei",           lat:  25.05, lon:  121.53 },
-  { n: "Bangkok",          lat:  13.75, lon:  100.52 },
-  { n: "Ho Chi Minh City", lat:  10.82, lon:  106.63 },
-  { n: "Hanoi",            lat:  21.03, lon:  105.85 },
-  { n: "Jakarta",          lat:  -6.21, lon:  106.85 },
-  { n: "Manila",           lat:  14.60, lon:  120.98 },
-  { n: "Singapore",        lat:   1.35, lon:  103.82 },
-  { n: "Kuala Lumpur",     lat:   3.14, lon:  101.69 },
-  { n: "Yangon",           lat:  16.87, lon:   96.19 },
-  { n: "Phnom Penh",       lat:  11.57, lon:  104.92 },
-  { n: "Vientiane",        lat:  17.97, lon:  102.60 },
-  { n: "Ulaanbaatar",      lat:  47.89, lon:  106.91 },
-  { n: "Pyongyang",        lat:  39.02, lon:  125.75 },
-  { n: "Nagoya",           lat:  35.18, lon:  136.90 },
-  { n: "Sapporo",          lat:  43.06, lon:  141.35 },
-  { n: "Fukuoka",          lat:  33.59, lon:  130.40 },
-  { n: "Busan",            lat:  35.10, lon:  129.03 },
-  { n: "Hong Kong",        lat:  22.32, lon:  114.17 },
-  { n: "Macau",            lat:  22.19, lon:  113.55 },
-  { n: "Xi'an",            lat:  34.27, lon:  108.95 },
-  { n: "Nanjing",          lat:  32.06, lon:  118.80 },
-  { n: "Hangzhou",         lat:  30.27, lon:  120.16 },
-  { n: "Surabaya",         lat:  -7.25, lon:  112.75 },
-  { n: "Bandung",          lat:  -6.92, lon:  107.61 },
-  { n: "Medan",            lat:   3.58, lon:   98.66 },
-  { n: "Cebu",             lat:  10.32, lon:  123.90 },
-  { n: "Da Nang",          lat:  16.07, lon:  108.22 },
-  { n: "Phuket",           lat:   7.89, lon:   98.40 },
-  { n: "Chiang Mai",       lat:  18.79, lon:   98.99 },
-  { n: "Bali",             lat:  -8.34, lon:  115.09 },
-  // ── Africa ───────────────────────────────────────────────────────────────────
-  { n: "Cairo",            lat:  30.06, lon:   31.25 },
-  { n: "Lagos",            lat:   6.52, lon:    3.38 },
-  { n: "Kinshasa",         lat:  -4.32, lon:   15.32 },
-  { n: "Johannesburg",     lat: -26.20, lon:   28.04 },
-  { n: "Cape Town",        lat: -33.93, lon:   18.42 },
-  { n: "Nairobi",          lat:  -1.29, lon:   36.82 },
-  { n: "Addis Ababa",      lat:   9.03, lon:   38.74 },
-  { n: "Khartoum",         lat:  15.55, lon:   32.53 },
-  { n: "Dar es Salaam",    lat:  -6.79, lon:   39.21 },
-  { n: "Abidjan",          lat:   5.35, lon:   -4.00 },
-  { n: "Accra",            lat:   5.56, lon:   -0.20 },
-  { n: "Casablanca",       lat:  33.59, lon:   -7.62 },
-  { n: "Luanda",           lat:  -8.84, lon:   13.23 },
-  { n: "Kampala",          lat:   0.32, lon:   32.58 },
-  { n: "Algiers",          lat:  36.74, lon:    3.06 },
-  { n: "Tunis",            lat:  36.82, lon:   10.17 },
-  { n: "Dakar",            lat:  14.72, lon:  -17.47 },
-  { n: "Maputo",           lat: -25.97, lon:   32.59 },
-  { n: "Kigali",           lat:  -1.94, lon:   30.06 },
-  { n: "Lusaka",           lat: -15.42, lon:   28.29 },
-  { n: "Harare",           lat: -17.83, lon:   31.05 },
-  { n: "Antananarivo",     lat: -18.91, lon:   47.54 },
-  { n: "Abuja",            lat:   9.07, lon:    7.40 },
-  { n: "Douala",           lat:   4.05, lon:    9.70 },
-  { n: "Conakry",          lat:   9.54, lon:  -13.68 },
-  { n: "Bamako",           lat:  12.65, lon:   -8.00 },
-  { n: "Ouagadougou",      lat:  12.36, lon:   -1.53 },
-  { n: "Tripoli",          lat:  32.90, lon:   13.18 },
-  { n: "Alexandria",       lat:  31.20, lon:   29.92 },
-  { n: "Durban",           lat: -29.86, lon:   31.02 },
-  { n: "Mombasa",          lat:  -4.05, lon:   39.67 },
-  // ── Oceania ──────────────────────────────────────────────────────────────────
-  { n: "Sydney",           lat: -33.87, lon:  151.21 },
-  { n: "Melbourne",        lat: -37.81, lon:  144.96 },
-  { n: "Brisbane",         lat: -27.47, lon:  153.03 },
-  { n: "Perth",            lat: -31.95, lon:  115.86 },
-  { n: "Adelaide",         lat: -34.93, lon:  138.60 },
-  { n: "Auckland",         lat: -36.87, lon:  174.77 },
-  { n: "Canberra",         lat: -35.28, lon:  149.13 },
-  { n: "Gold Coast",       lat: -28.02, lon:  153.40 },
-  { n: "Christchurch",     lat: -43.53, lon:  172.64 },
-  { n: "Wellington",       lat: -41.29, lon:  174.78 },
-  { n: "Suva",             lat: -18.14, lon:  178.44 },
-  { n: "Port Moresby",     lat:  -9.44, lon:  147.18 },
-  { n: "Noumea",           lat: -22.27, lon:  166.46 },
-  { n: "Honiara",          lat:  -9.43, lon:  160.05 },
-  { n: "Apia",             lat: -13.83, lon: -171.77 },
-  { n: "Nuku'alofa",       lat: -21.14, lon: -175.22 },
-  { n: "Papeete",          lat: -17.54, lon: -149.57 },
-  // ── Caribbean & Atlantic ─────────────────────────────────────────────────────
-  { n: "Kingston",         lat:  17.99, lon:  -76.79 },
-  { n: "Port-au-Prince",   lat:  18.54, lon:  -72.34 },
-  { n: "Nassau",           lat:  25.05, lon:  -77.35 },
-  { n: "Bridgetown",       lat:  13.10, lon:  -59.62 },
-  { n: "Port of Spain",    lat:  10.65, lon:  -61.52 },
-  // ── Central Asia extras ──────────────────────────────────────────────────────
-  { n: "Dushanbe",         lat:  38.56, lon:   68.77 },
-  { n: "Nur-Sultan",       lat:  51.18, lon:   71.45 },
-  { n: "Samarkand",        lat:  39.65, lon:   66.96 },
-  // ── Additional Middle East ───────────────────────────────────────────────────
-  { n: "Aden",             lat:  12.78, lon:   45.04 },
-  { n: "Mosul",            lat:  36.34, lon:   43.13 },
-  { n: "Aleppo",           lat:  36.20, lon:   37.16 },
-  { n: "Damascus",         lat:  33.51, lon:   36.29 },
-  // ── Additional Africa ────────────────────────────────────────────────────────
-  { n: "Mogadishu",        lat:   2.05, lon:   45.34 },
-  { n: "Kano",             lat:  12.00, lon:    8.52 },
-  { n: "Ibadan",           lat:   7.39, lon:    3.90 },
-  { n: "Kumasi",           lat:   6.69, lon:   -1.62 },
-  { n: "Lome",             lat:   6.14, lon:    1.22 },
-  { n: "Cotonou",          lat:   6.37, lon:    2.43 },
-  { n: "Brazzaville",      lat:  -4.27, lon:   15.28 },
-  { n: "Libreville",       lat:   0.39, lon:    9.45 },
-  { n: "Malabo",           lat:   3.75, lon:    8.78 },
-  { n: "N'Djamena",        lat:  12.10, lon:   15.04 },
-  { n: "Niamey",           lat:  13.51, lon:    2.12 },
-  { n: "Windhoek",         lat: -22.56, lon:   17.08 },
-  { n: "Gaborone",         lat: -24.65, lon:   25.91 },
-  { n: "Maseru",           lat: -29.32, lon:   27.48 },
-  { n: "Mbabane",          lat: -26.32, lon:   31.13 },
-  { n: "Lilongwe",         lat: -13.97, lon:   33.79 },
-  { n: "Bujumbura",        lat:  -3.38, lon:   29.36 },
-  { n: "Moroni",           lat: -11.70, lon:   43.26 },
-  { n: "Djibouti",         lat:  11.59, lon:   43.15 },
-  { n: "Asmara",           lat:  15.34, lon:   38.93 },
-  // ── Additional Europe ────────────────────────────────────────────────────────
-  { n: "Chisinau",         lat:  47.01, lon:   28.86 },
-  { n: "Tirana",           lat:  41.33, lon:   19.82 },
-  { n: "Pristina",         lat:  42.66, lon:   21.17 },
-  { n: "Skopje",           lat:  42.00, lon:   21.43 },
-  { n: "Podgorica",        lat:  42.44, lon:   19.26 },
-  { n: "Andorra",          lat:  42.51, lon:    1.52 },
-  { n: "Valletta",         lat:  35.90, lon:   14.51 },
-  { n: "Nicosia",          lat:  35.17, lon:   33.36 },
-  { n: "Luxembourg City",  lat:  49.61, lon:    6.13 },
-  { n: "Vaduz",            lat:  47.14, lon:    9.52 },
-  { n: "Bern",             lat:  46.95, lon:    7.44 },
-  { n: "Basel",            lat:  47.56, lon:    7.59 },
-  { n: "Antwerp",          lat:  51.22, lon:    4.40 },
-  { n: "Ghent",            lat:  51.05, lon:    3.72 },
-  { n: "Rotterdam",        lat:  51.93, lon:    4.48 },
-  { n: "The Hague",        lat:  52.08, lon:    4.31 },
-  { n: "Utrecht",          lat:  52.09, lon:    5.12 },
-  { n: "Eindhoven",        lat:  51.44, lon:    5.48 },
-  { n: "Leeds",            lat:  53.80, lon:   -1.55 },
-  { n: "Glasgow",          lat:  55.86, lon:   -4.26 },
-  { n: "Bristol",          lat:  51.45, lon:   -2.59 },
-  { n: "Birmingham UK",    lat:  52.48, lon:   -1.90 },
-  { n: "Liverpool",        lat:  53.41, lon:   -2.98 },
-  { n: "Bordeaux",         lat:  44.84, lon:   -0.58 },
-  { n: "Toulouse",         lat:  43.60, lon:    1.44 },
-  { n: "Strasbourg",       lat:  48.57, lon:    7.75 },
-  { n: "Nantes",           lat:  47.22, lon:   -1.55 },
-  { n: "Montpellier",      lat:  43.61, lon:    3.88 },
-  { n: "Rennes",           lat:  48.11, lon:   -1.68 },
-  { n: "Dortmund",         lat:  51.51, lon:    7.47 },
-  { n: "Essen",            lat:  51.46, lon:    7.01 },
-  { n: "Leipzig",          lat:  51.34, lon:   12.38 },
-  { n: "Dresden",          lat:  51.05, lon:   13.74 },
-  { n: "Bremen",           lat:  53.08, lon:    8.80 },
-  { n: "Hannover",         lat:  52.37, lon:    9.73 },
-  { n: "Nuremberg",        lat:  49.45, lon:   11.08 },
-  { n: "Gothenburg",       lat:  57.71, lon:   11.97 },
-  { n: "Malmo",            lat:  55.60, lon:   13.00 },
-  { n: "Tampere",          lat:  61.50, lon:   23.77 },
-  { n: "Oulu",             lat:  65.01, lon:   25.47 },
-  { n: "Turku",            lat:  60.45, lon:   22.27 },
-  { n: "Wroclaw",          lat:  51.11, lon:   17.04 },
-  { n: "Poznan",           lat:  52.41, lon:   16.93 },
-  { n: "Lodz",             lat:  51.76, lon:   19.46 },
-  { n: "Lublin",           lat:  51.25, lon:   22.57 },
-  { n: "Debrecen",         lat:  47.53, lon:   21.63 },
-  { n: "Graz",             lat:  47.07, lon:   15.44 },
-  { n: "Linz",             lat:  48.31, lon:   14.29 },
-  { n: "Salzburg",         lat:  47.80, lon:   13.05 },
-  { n: "Innsbruck",        lat:  47.27, lon:   11.39 },
-  { n: "Brno",             lat:  49.20, lon:   16.61 },
-  { n: "Ostrava",          lat:  49.84, lon:   18.29 },
-  { n: "Banja Luka",       lat:  44.77, lon:   17.19 },
-  // ── Additional South/Southeast Asia ─────────────────────────────────────────
-  { n: "Lucknow",          lat:  26.85, lon:   80.92 },
-  { n: "Nagpur",           lat:  21.15, lon:   79.09 },
-  { n: "Patna",            lat:  25.60, lon:   85.12 },
-  { n: "Indore",           lat:  22.72, lon:   75.86 },
-  { n: "Bhopal",           lat:  23.26, lon:   77.41 },
-  { n: "Visakhapatnam",    lat:  17.69, lon:   83.22 },
-  { n: "Vadodara",         lat:  22.31, lon:   73.18 },
-  { n: "Coimbatore",       lat:  11.02, lon:   76.97 },
-  { n: "Thiruvananthapuram", lat: 8.49, lon:   76.95 },
-  { n: "Guwahati",         lat:  26.19, lon:   91.74 },
-  { n: "Mandalay",         lat:  21.98, lon:   96.08 },
-  { n: "Makassar",         lat:  -5.15, lon:  119.41 },
-  { n: "Palembang",        lat:  -2.99, lon:  104.76 },
-  { n: "Semarang",         lat:  -6.97, lon:  110.42 },
-  { n: "Yogyakarta",       lat:  -7.80, lon:  110.36 },
-  { n: "Davao",            lat:   7.07, lon:  125.61 },
-  { n: "Quezon City",      lat:  14.68, lon:  121.06 },
-  // ── Additional East Asia ─────────────────────────────────────────────────────
-  { n: "Harbin",           lat:  45.75, lon:  126.64 },
-  { n: "Shenyang",         lat:  41.80, lon:  123.43 },
-  { n: "Dalian",           lat:  38.91, lon:  121.60 },
-  { n: "Qingdao",          lat:  36.07, lon:  120.38 },
-  { n: "Xiamen",           lat:  24.48, lon:  118.09 },
-  { n: "Kunming",          lat:  25.04, lon:  102.71 },
-  { n: "Urumqi",           lat:  43.82, lon:   87.60 },
-  { n: "Lanzhou",          lat:  36.06, lon:  103.79 },
-  { n: "Zhengzhou",        lat:  34.75, lon:  113.66 },
-  { n: "Jinan",            lat:  36.67, lon:  116.99 },
-  { n: "Taiyuan",          lat:  37.87, lon:  112.55 },
-  { n: "Changsha",         lat:  28.23, lon:  112.94 },
-  { n: "Nanchang",         lat:  28.68, lon:  115.86 },
-  { n: "Hefei",            lat:  31.82, lon:  117.23 },
-  { n: "Fuzhou",           lat:  26.07, lon:  119.30 },
-  { n: "Incheon",          lat:  37.46, lon:  126.71 },
-  { n: "Daegu",            lat:  35.87, lon:  128.60 },
-  { n: "Gwangju",          lat:  35.15, lon:  126.91 },
-  { n: "Sendai",           lat:  38.27, lon:  140.87 },
-  { n: "Hiroshima",        lat:  34.39, lon:  132.45 },
-  { n: "Kyoto",            lat:  35.01, lon:  135.77 },
-  { n: "Kobe",             lat:  34.69, lon:  135.20 },
-  // ── World cities expansion ──────────────────────────────────────────────────
-  { n: "Freetown",            lat:    8.48, lon:   -13.23 },
-  { n: "Monrovia",            lat:    6.30, lon:   -10.80 },
-  { n: "Lomé",                lat:    6.14, lon:     1.21 },
-  { n: "Yaoundé",             lat:    3.87, lon:    11.52 },
-  { n: "Port Harcourt",       lat:    4.78, lon:     7.01 },
-  { n: "Zanzibar City",       lat:   -6.16, lon:    39.19 },
-  { n: "Pretoria",            lat:  -25.75, lon:    28.19 },
-  { n: "Lubumbashi",          lat:  -11.66, lon:    27.48 },
-  { n: "Fez",                 lat:   34.03, lon:    -5.00 },
-  { n: "Marrakech",           lat:   31.63, lon:    -8.01 },
-  { n: "Tangier",             lat:   35.76, lon:    -5.80 },
-  { n: "Oran",                lat:   35.70, lon:    -0.63 },
-  { n: "San Salvador",        lat:   13.69, lon:   -89.22 },
-  { n: "San José",            lat:    9.93, lon:   -84.08 },
-  { n: "Belize City",         lat:   17.50, lon:   -88.20 },
-  { n: "Medellín",            lat:    6.25, lon:   -75.56 },
-  { n: "Barranquilla",        lat:   10.96, lon:   -74.78 },
-  { n: "Santa Cruz",          lat:  -17.78, lon:   -63.18 },
-  { n: "Asunción",            lat:  -25.26, lon:   -57.58 },
-  { n: "Georgetown",          lat:    6.80, lon:   -58.16 },
-  { n: "Paramaribo",          lat:    5.85, lon:   -55.20 },
-  { n: "Porto Alegre",        lat:  -30.03, lon:   -51.23 },
-  { n: "Córdoba",             lat:  -31.42, lon:   -64.18 },
-  { n: "Rosario",             lat:  -32.95, lon:   -60.65 },
-  { n: "Mendoza",             lat:  -32.89, lon:   -68.83 },
-  { n: "Valparaíso",          lat:  -33.05, lon:   -71.62 },
-  { n: "Concepción",          lat:  -36.83, lon:   -73.05 },
-  { n: "Manama",              lat:   26.23, lon:    50.59 },
-  { n: "Mecca",               lat:   21.43, lon:    39.83 },
-  { n: "Medina",              lat:   24.47, lon:    39.61 },
-  { n: "Sharjah",             lat:   25.34, lon:    55.41 },
-  { n: "Erbil",               lat:   36.19, lon:    44.01 },
-  { n: "Basra",               lat:   30.51, lon:    47.81 },
-  { n: "Sana'a",              lat:   15.35, lon:    44.21 },
-  { n: "Faisalabad",          lat:   31.42, lon:    73.08 },
-  { n: "Rawalpindi",          lat:   33.60, lon:    73.05 },
-  { n: "Peshawar",            lat:   34.01, lon:    71.58 },
-  { n: "Chittagong",          lat:   22.34, lon:    91.83 },
-  { n: "Kanpur",              lat:   26.45, lon:    80.35 },
-  { n: "Cebu City",           lat:   10.31, lon:   123.89 },
-  { n: "Davao City",          lat:    7.07, lon:   125.61 },
-  { n: "Yokohama",            lat:   35.44, lon:   139.64 },
-  { n: "Kaohsiung",           lat:   22.63, lon:   120.30 },
-  { n: "Taichung",            lat:   24.15, lon:   120.67 },
-  { n: "Suzhou",              lat:   31.30, lon:   120.62 },
-  { n: "Changchun",           lat:   43.88, lon:   125.32 },
-  { n: "Lhasa",               lat:   29.65, lon:    91.17 },
-  { n: "Malmö",               lat:   55.60, lon:    13.00 },
-  { n: "Düsseldorf",          lat:   51.23, lon:     6.78 },
-  { n: "Kraków",              lat:   50.06, lon:    19.94 },
-  { n: "Gdańsk",              lat:   54.35, lon:    18.65 },
-  { n: "Wrocław",             lat:   51.11, lon:    17.04 },
-  { n: "Belfast",             lat:   54.60, lon:    -5.93 },
-  { n: "Cork",                lat:   51.90, lon:    -8.47 },
-  { n: "Galway",              lat:   53.27, lon:    -9.06 },
-  { n: "Krasnoyarsk",         lat:   56.01, lon:    92.87 },
-  { n: "Sochi",               lat:   43.59, lon:    39.73 },
-  { n: "Irkutsk",             lat:   52.29, lon:   104.28 },
-  { n: "Kaliningrad",         lat:   54.71, lon:    20.51 },
-  { n: "Hobart",              lat:  -42.88, lon:   147.33 },
-  { n: "Darwin",              lat:  -12.46, lon:   130.84 },
-  { n: "Nouméa",              lat:  -22.28, lon:   166.46 },
-  { n: "Mesa",                lat:   33.42, lon:  -111.83 },
-  { n: "St. John's",          lat:   47.56, lon:   -52.71 },
-];
 
 // Tier-1: major world cities always shown first when zooming in.
 // Everything not in this set is tier-2 and only appears when the user zooms closer.
@@ -2763,35 +2035,198 @@ function GlobeScene() {
   const [terrainBitmap, setTerrainBitmap] = useState<ImageBitmap   | null>(null);
   const [bumpMap,       setBumpMap]       = useState<THREE.Texture  | null>(null);
   const [texture,       setTexture]       = useState<THREE.CanvasTexture | null>(null);
-  // Separate label overlay texture (states + cities + pins). Painted onto
-  // its own transparent sphere with opacity controlled per-frame so the
-  // labels only show at the "Local" zoom tier (camDist ≤ 10), fading out
-  // by camDist ≥ 13. The overlay canvas is rendered at higher resolution
+  // Tier-gated label overlay textures. Each fades in at a different
+  // camDist threshold so the user gets progressive disclosure matching
+  // the legacy hover-label rules:
+  //   • statesOverlay → state labels, full opacity at d ≤ 27.7,
+  //     invisible at d ≥ 28.0 (mirrors GeoLabels zoomLevel ≥ 1 gate).
+  //   • citiesOverlay → curated city labels + pins, full opacity at
+  //     d ≤ 21.7, invisible at d ≥ 22.0 (mirrors CityLabels camDist
+  //     < 22 gate). The mesh-based CityLabels still handles smaller
+  //     GeoNames extras with popMin progressive disclosure.
+  // Each overlay paints onto its own transparent sphere with opacity
+  // controlled per-frame. Overlay canvases render at higher resolution
   // than the base so labels stay crisp when the user zooms in.
-  const [overlayTexture, setOverlayTexture] = useState<THREE.CanvasTexture | null>(null);
-  const overlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  // Texture (not CanvasTexture) so the same state slot can hold either
+  // a freshly-baked CanvasTexture from createEarthTexture OR an
+  // image-loaded Texture from the IndexedDB cache (cached WebP blob →
+  // Image → Texture). Both inherit from THREE.Texture and behave the
+  // same in the .map slot of meshBasicMaterial.
+  const [statesOverlayTexture, setStatesOverlayTexture] = useState<THREE.Texture | null>(null);
+  const [citiesOverlayTexture, setCitiesOverlayTexture] = useState<THREE.Texture | null>(null);
+  const statesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  const citiesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   // 0 = countries only | 1 = + states | 2 = + cities
   const [zoomLevel, setZoomLevel] = useState(0);
   const zoomLevelRef = useRef(0);
   const [camDist, setCamDist] = useState(30);
   const camDistRef = useRef(30);
+
+  // Deferred-mount gate for the two heaviest non-essential scene
+  // subtrees: <AllLandmarks /> (276 monuments × ~10 primitive meshes
+  // ≈ 2,800 meshes) and <CityLabels /> (Troika SDF text generation for
+  // every visible city, expensive on first paint). Both are visually
+  // additive — the user sees the earth + labels overlay first, then
+  // monuments and city-label meshes pop in ~16ms later on the next
+  // animation frame. Cuts hydration cost on cold load by ~1-2s on
+  // desktop, ~2-3s on phone CPUs. Flag stays true once flipped so a
+  // tab-switch / WebGL context loss doesn't yank the monuments back.
+  const [deferredMount, setDeferredMount] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setDeferredMount(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   // (Mapbox auto-zoom hysteresis ref deleted — entry is now an explicit
   // two-tap on the city card's "Open map" button.)
 
-  // Signal LocationPage when border data AND canvas texture are ready — prevents spinner
-  // disappearing before borders are actually painted on the globe surface
+  // Signal LocationPage when the base layer is paintable: countries +
+  // base texture. Previously also waited on states, but states is a 40MB
+  // JSON that can take 15s+ to fetch — and it's painted into the additive
+  // state-labels overlay, NOT the base. Holding "ready" on states meant
+  // the loading state hung for the slowest asset even though the user
+  // already had a usable globe with terrain, country borders, country
+  // labels, and curated city labels.
   useEffect(() => {
-    if (countries && states && texture) _triggerGlobeReady();
-  }, [countries, states, texture]);
+    if (countries && texture) _triggerGlobeReady();
+  }, [countries, texture]);
+
+  // Pre-baked overlay loader. Three-tier fallback for the heaviest cold-
+  // load assets:
+  //   1. IndexedDB cache       — ~50 ms (returning visitors)
+  //   2. /baked/*.webp (CDN)   — ~500 ms-1 s (first-time visitors; produced
+  //                              by bin/bake-overlays.mjs at build time,
+  //                              ~3 MB combined)
+  //   3. In-browser bake       — ~15-20 s (fallback if both miss, e.g.
+  //                              baked files not deployed yet or IDB
+  //                              disabled in Safari private mode)
+  // When tier 2 hits, we ALSO save the blobs to IDB so the next visit
+  // becomes tier 1.
+  //   • overlayCacheHit === null  → check still in flight (gates downstream effects)
+  //   • overlayCacheHit === true  → overlays already in state; skip states JSON fetch + skip overlay-state assignment after bake
+  //   • overlayCacheHit === false → no cache + no static; run normal bake flow + save blobs to IDB after bake completes
+  const [overlayCacheHit, setOverlayCacheHit] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const installTextures = async (statesBlob: Blob, citiesBlob: Blob) => {
+        const { blobToImage } = await import('@/lib/globeCache');
+        const [stImg, ciImg] = await Promise.all([blobToImage(statesBlob), blobToImage(citiesBlob)]);
+        if (cancelled || !stImg || !ciImg) return false;
+        const anis = gl.capabilities.getMaxAnisotropy();
+        const stTex = new THREE.Texture(stImg);
+        const ciTex = new THREE.Texture(ciImg);
+        for (const t of [stTex, ciTex]) {
+          t.minFilter  = THREE.LinearMipmapLinearFilter;
+          t.magFilter  = THREE.LinearFilter;
+          t.anisotropy = anis;
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.needsUpdate = true;
+        }
+        setStatesOverlayTexture(stTex);
+        setCitiesOverlayTexture(ciTex);
+        return true;
+      };
+
+      try {
+        // Tier 1: IDB cache.
+        const { getCachedOverlays, saveCachedOverlays } = await import('@/lib/globeCache');
+        const cached = await getCachedOverlays();
+        if (cancelled) return;
+        if (cached) {
+          const installed = await installTextures(cached.states, cached.cities);
+          if (cancelled) return;
+          if (installed) { setOverlayCacheHit(true); return; }
+        }
+
+        // Tier 2: static /baked/*.webp (also caches to IDB on success).
+        // credentials: 'omit' so the request matches the layout's
+        // <link rel="preload" as="fetch" crossorigin="anonymous">, which
+        // would otherwise be reported as "preloaded but not used" since
+        // default fetch credentials are "same-origin" (= credentials sent).
+        try {
+          const [stRes, ciRes] = await Promise.all([
+            fetch('/baked/states-overlay.webp', { credentials: 'omit' }),
+            fetch('/baked/cities-overlay.webp', { credentials: 'omit' }),
+          ]);
+          if (cancelled) return;
+          if (stRes.ok && ciRes.ok) {
+            const [stBlob, ciBlob] = await Promise.all([stRes.blob(), ciRes.blob()]);
+            if (cancelled) return;
+            const installed = await installTextures(stBlob, ciBlob);
+            if (cancelled) return;
+            if (installed) {
+              // Promote to IDB so next visit is tier-1 instant.
+              void saveCachedOverlays(stBlob, ciBlob).catch(() => { /* non-fatal */ });
+              setOverlayCacheHit(true);
+              return;
+            }
+          }
+        } catch { /* network failure / not deployed yet — fall through */ }
+
+        // Tier 3: in-browser bake.
+        setOverlayCacheHit(false);
+      } catch {
+        if (!cancelled) setOverlayCacheHit(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gl]);
+
+  // Gated states JSON fetch — desktop-only AND only on overlay-cache MISS.
+  // The 40MB ne_10m_admin_1_states_provinces.json is the single most
+  // expensive asset on cold load (~13s fetch + ~3s parse + ~100MB heap).
+  // On cache hit, the cached states overlay already contains both labels
+  // and borders, so this fetch is pure waste — skip it entirely. On miss
+  // we fetch normally; the bake then writes the resulting overlay to IDB
+  // for next time. Mobile never fetches states regardless (memory).
+  useEffect(() => {
+    if (overlayCacheHit !== false) return; // wait for cache check OR skip on hit
+    if (isMobile) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const sRes = await fetch("/ne_10m_admin_1_states_provinces.json");
+        if (!sRes.ok || cancelled) return;
+        const s: GeoCollection = await sRes.json();
+        if (!cancelled) setStates(s);
+      } catch { /* state borders skipped */ }
+    })();
+    return () => { cancelled = true; };
+  }, [overlayCacheHit]);
+
+  // Terrain "settled" gate — used by the bake effect below. Becomes true
+  // when the terrain bitmap loads OR after an 8s fallback (which covers
+  // the case where the loader exhausts all 12 monthly candidates and
+  // gives up). Without this gate, the first bake would run as soon as
+  // countries arrives (~T+1s) with no terrain, producing a cartoon-ocean
+  // texture that flashes to NASA imagery a few seconds later when the
+  // terrain arrives and triggers a second bake. Worse, both bakes upload
+  // ~32-128MB of GPU texture and block the main thread for 1-3s each.
+  // Waiting for terrain (or its timeout) collapses that to a single
+  // initial bake. The states JSON arrives later and still triggers a
+  // second bake, but that's additive (states overlay), not a re-paint.
+  const [terrainSettled, setTerrainSettled] = useState(false);
+  useEffect(() => {
+    if (terrainBitmap) {
+      if (!terrainSettled) setTerrainSettled(true);
+      return;
+    }
+    if (terrainSettled) return;
+    const t = setTimeout(() => setTerrainSettled(true), 8000);
+    return () => clearTimeout(t);
+  }, [terrainBitmap, terrainSettled]);
 
   // Rebuild canvas texture whenever GeoJSON borders or terrain image change.
-  // Now also re-bakes when the curated CITIES list arrives — labels are
-  // painted into the texture itself instead of levitating as Three.js Text
-  // meshes (see createEarthTexture). Extra GeoNames cities deliberately
-  // skipped here — 33K extras × measureText per rebake would blow past
-  // the 50ms texture-build budget. The curated CITIES (~500) carry most
-  // of the label intent and stay snappy.
+  // Gated on terrainSettled so the first bake fires once terrain is ready
+  // (or after the 8s fallback above) rather than firing immediately with
+  // an empty terrainBitmap and re-firing when terrain arrives. Extra
+  // GeoNames cities deliberately skipped here — 33K extras × measureText
+  // per rebake would blow past the 50ms texture-build budget. The curated
+  // CITIES (~500) carry most of the label intent and stay snappy.
   useEffect(() => {
+    if (!countries) return;
+    if (!terrainSettled) return;
+    if (overlayCacheHit === null) return; // wait for IDB cache check to resolve first
     // Match the mobile cap used for the terrain bitmap below — keeps GPU
     // upload at ~32MB on iOS WKWebView instead of the 128MB+ that an 8K
     // canvas implies. Phones can't perceive the difference (sphere shows
@@ -2801,42 +2236,92 @@ function GlobeScene() {
     // renders the label overlay at 2× so the state + city labels stay
     // crisp when the user zooms in to the "Local" tier where they fade in.
     const overlayScale = isMobile ? 1 : 2;
-    const { base: tex, overlay: ovTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
-    tex.minFilter  = THREE.LinearMipmapLinearFilter;
-    tex.magFilter  = THREE.LinearFilter;
-    tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-    tex.needsUpdate = true;
-    ovTex.minFilter  = THREE.LinearMipmapLinearFilter;
-    ovTex.magFilter  = THREE.LinearFilter;
-    ovTex.anisotropy = gl.capabilities.getMaxAnisotropy();
-    ovTex.needsUpdate = true;
+    const { base: tex, statesOverlay: stTex, citiesOverlay: ciTex } = createEarthTexture(countries, states, terrainBitmap, Math.min(gl.capabilities.maxTextureSize, texCap), CITIES, overlayScale);
+    const anis = gl.capabilities.getMaxAnisotropy();
+    for (const t of [tex, stTex, ciTex]) {
+      t.minFilter  = THREE.LinearMipmapLinearFilter;
+      t.magFilter  = THREE.LinearFilter;
+      t.anisotropy = anis;
+      t.needsUpdate = true;
+    }
     setTexture(tex);
-    setOverlayTexture(ovTex);
-    return () => { tex.dispose(); ovTex.dispose(); };
-  }, [countries, states, terrainBitmap, gl]);
+    // Only commit the freshly-baked overlays when we DIDN'T already
+    // populate them from the IDB cache — otherwise we'd overwrite the
+    // cached blobs with potentially-empty bakes (e.g., when states JSON
+    // was skipped on cache hit). Dispose the unused freshly-baked
+    // textures so they don't leak.
+    if (overlayCacheHit) {
+      stTex.dispose();
+      ciTex.dispose();
+    } else {
+      setStatesOverlayTexture(stTex);
+      setCitiesOverlayTexture(ciTex);
+      // Cache-miss path: save the freshly-baked overlays to IDB so the
+      // NEXT cold load skips the states JSON fetch + bake entirely.
+      // Fire-and-forget; we don't block on this. WebP at q=0.85 is
+      // ~1-3 MB per overlay vs ~5 MB raw PNG — small enough that
+      // even iOS Safari's tight quota tolerates it. On desktop we
+      // only save when states has loaded (otherwise we'd cache an
+      // incomplete overlay and then write again 15s later when states
+      // arrives — two cache writes + the user gets stale labels on
+      // the next visit if they refresh during the gap). Mobile saves
+      // unconditionally since states is never fetched there.
+      const haveCompleteData = isMobile || states !== null;
+      if (haveCompleteData) {
+        const stCanvas = stTex.image as HTMLCanvasElement;
+        const ciCanvas = ciTex.image as HTMLCanvasElement;
+        void (async () => {
+          try {
+            const [stBlob, ciBlob] = await Promise.all([
+              new Promise<Blob | null>(r => stCanvas.toBlob(b => r(b), 'image/webp', 0.85)),
+              new Promise<Blob | null>(r => ciCanvas.toBlob(b => r(b), 'image/webp', 0.85)),
+            ]);
+            if (stBlob && ciBlob) {
+              const { saveCachedOverlays } = await import('@/lib/globeCache');
+              await saveCachedOverlays(stBlob, ciBlob);
+            }
+          } catch { /* IDB quota / private mode — non-fatal, just re-bake next time */ }
+        })();
+      }
+    }
+    return () => {
+      tex.dispose();
+      if (!overlayCacheHit) {
+        stTex.dispose();
+        ciTex.dispose();
+      }
+    };
+  }, [countries, states, terrainBitmap, terrainSettled, overlayCacheHit, gl]);
 
-  // Per-frame opacity ramp for the label overlay. Cities + states show at
-  // full opacity at the "Local" tier (camDist ≤ 10), fade out toward
-  // "Country" tier (camDist ≥ 13), invisible above. Tier thresholds
-  // mirror the zoom-badge definitions in AtlasShell.
+  // Per-frame tier-gated opacity for the two label overlays. Each tier
+  // fades in at its own camDist threshold so the user gets progressive
+  // disclosure that matches the legacy hover-label rules (GeoLabels
+  // zoomLevel ≥ 1 for states, CityLabels camDist < 22 for cities).
+  // 0.3-unit fade band before each threshold keeps the snap-on feel
+  // from the 576d712 commit (no slow ghost fades, but no instant pop
+  // either).
   useFrame(() => {
-    const m = overlayMaterialRef.current;
-    if (!m) return;
     const d = camDistRef.current;
-    // Hard cutoff at the Country/Local tier boundary (camDist 13). Cities
-    // are FULLY visible the moment the user enters Local tier (camDist
-    // ≤ 13 per AtlasShell's badge math) and FULLY invisible at Country
-    // tier and above. A 0.3-unit fade between 12.7 and 13.0 keeps the
-    // transition from popping visually without making the user zoom
-    // further in to read city names. Prior 10 → 13 linear ramp meant
-    // half-opacity ghost cities at the badge's "Country" label and
-    // demanded a full 3-unit zoom to reach full visibility — both
-    // points the user called out.
-    let opacity: number;
-    if (d <= 12.7) opacity = 1;
-    else if (d >= 13.0) opacity = 0;
-    else opacity = (13.0 - d) / 0.3;
-    if (Math.abs(m.opacity - opacity) > 0.001) m.opacity = opacity;
+    // Sharp tier snap with a 0.3-unit fade just before the threshold.
+    //   tierOpacity(d, 28)  → full at d ≤ 27.7, zero at d ≥ 28.0
+    //   tierOpacity(d, 22)  → full at d ≤ 21.7, zero at d ≥ 22.0
+    const tierOpacity = (dist: number, threshold: number) =>
+      dist >= threshold      ? 0
+      : dist <= threshold - 0.3 ? 1
+      : (threshold - dist) / 0.3;
+
+    // States — fade in at the Country/Mid boundary (camDist 28).
+    const stM = statesOverlayMaterialRef.current;
+    if (stM) {
+      const o = tierOpacity(d, 28);
+      if (Math.abs(stM.opacity - o) > 0.001) stM.opacity = o;
+    }
+    // Curated big cities — fade in at the Mid/Near boundary (camDist 22).
+    const ciM = citiesOverlayMaterialRef.current;
+    if (ciM) {
+      const o = tierOpacity(d, 22);
+      if (Math.abs(ciM.opacity - o) > 0.001) ciM.opacity = o;
+    }
   });
 
   // Load all async resources once on mount
@@ -2856,22 +2341,17 @@ function GlobeScene() {
         if (!cancelled) setCountries(c);
       } catch { /* keep border-free texture */ }
     })();
-    if (!isMobile) {
-      (async () => {
-        try {
-          const sRes = await fetch("/ne_10m_admin_1_states_provinces.json");
-          if (!sRes.ok || cancelled) return;
-          const s: GeoCollection = await sRes.json();
-          if (!cancelled) setStates(s);
-        } catch { /* state borders skipped */ }
-      })();
-    }
+    // States JSON fetch moved to its own effect below — gated on the IDB
+    // overlay cache miss. On a returning visit (cache hit) we skip this
+    // ~40MB asset entirely; on first visit we fetch it normally and the
+    // resulting overlay bake gets stored to IDB for the next time.
 
     // ── NASA Blue Marble Next Generation — monthly terrain textures ───────────
-    // Files: /public/earth_terrain_01.jpg … earth_terrain_12.jpg
-    // Download all 12 months from NASA Visible Earth → Blue Marble Next Generation
-    // Rename each: world.topo.bathy.2004XX.3x5400x2700.jpg → earth_terrain_XX.jpg
-    // Falls back through remaining months if current month's file is absent.
+    // Files: /public/earth_terrain_01.{webp,jpg} … earth_terrain_12.{webp,jpg}
+    // WebP variants (~3 MB each, produced by bin/convert-terrain.mjs) are
+    // preferred — saves ~6 MB per cold load over the JPG (~9 MB). Falls
+    // back to JPG for compatibility / months that haven't been re-encoded.
+    // Then falls through remaining months if current month's file is absent.
     (async () => {
       const month = new Date().getMonth() + 1; // 1–12
       const pad   = (n: number) => String(n).padStart(2, '0');
@@ -2879,7 +2359,15 @@ function GlobeScene() {
       const candidates = Array.from({ length: 12 }, (_, i) => ((month - 1 + i) % 12) + 1);
       for (const m of candidates) {
         try {
-          const res = await fetch(`/earth_terrain_${pad(m)}.jpg`);
+          // Try WebP first (smaller), JPG as fallback. Browser sends Accept
+          // header but cheaper to just try both URLs sequentially — fetch
+          // is async, the failed one returns quickly with 404 from CDN.
+          // credentials: 'omit' for the WebP to match the layout's
+          // <link rel="preload" as="fetch" crossorigin="anonymous">.
+          let res = await fetch(`/earth_terrain_${pad(m)}.webp`, { credentials: 'omit' });
+          if (!res.ok) {
+            res = await fetch(`/earth_terrain_${pad(m)}.jpg`);
+          }
           if (!res.ok) continue;
           const blob = await res.blob();
           const maxTex = gl.capabilities.maxTextureSize;
@@ -3167,17 +2655,32 @@ function GlobeScene() {
           />
         </Sphere>
 
-        {/* Label overlay sphere — concentric with the earth at R*1.0008
-            (just above the surface, enough to dodge z-fighting without
-            visible levitation). Carries the state + city + pin labels.
-            Opacity is controlled by the useFrame hook above, ramping
-            from 0 at far zoom to 1 at the "Local" tier (camDist ≤ 10).
-            meshBasicMaterial so scene lighting doesn't tint the labels. */}
-        {overlayTexture && (
-          <Sphere args={[R * 1.0008, 128, 128]}>
+        {/* Tier-gated label overlay spheres. Each lives at a slightly
+            different radius so the alpha blending order stays stable
+            and they don't z-fight each other or the base sphere:
+              • base (countries)    at R
+              • states overlay      at R * 1.0007 (fade in at d=28)
+              • cities overlay      at R * 1.0009 (fade in at d=22)
+            Both materials are meshBasicMaterial so scene lighting
+            doesn't tint the labels; depthWrite is off so they stack
+            cleanly. Opacities are driven by the useFrame above. */}
+        {statesOverlayTexture && (
+          <Sphere args={[R * 1.0007, 128, 128]}>
             <meshBasicMaterial
-              ref={overlayMaterialRef}
-              map={overlayTexture}
+              ref={statesOverlayMaterialRef}
+              map={statesOverlayTexture}
+              transparent
+              opacity={0}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </Sphere>
+        )}
+        {citiesOverlayTexture && (
+          <Sphere args={[R * 1.0009, 128, 128]}>
+            <meshBasicMaterial
+              ref={citiesOverlayMaterialRef}
+              map={citiesOverlayTexture}
               transparent
               opacity={0}
               depthWrite={false}
@@ -3194,16 +2697,21 @@ function GlobeScene() {
 
         {/* Animals removed — now unlockable via the Explorer Collection shop */}
 
-        {/* Landmarks — Lm self-gates on isCollected so only unlocked monuments appear */}
-        <AllLandmarks />
+        {/* Landmarks — Lm self-gates on isCollected so only unlocked monuments appear.
+            Deferred to the second animation frame so cold-load hydration ships the
+            globe + labels first, then mounts the ~2,800 primitive meshes. */}
+        {deferredMount && <AllLandmarks />}
 
         {/* Dropped star pin + nearby city selection pins */}
         {starPos && <DroppedStar key={starPos.key} lat={starPos.lat} lon={starPos.lon} />}
         {starPos && <NearbyCities key={`nc-${starPos.key}`} lat={starPos.lat} lon={starPos.lon} />}
 
-        {/* Geographic labels floating above surface */}
+        {/* Geographic labels floating above surface. GeoLabels stays eager — it's
+            mostly invisible click-hitbox sprites for country info popups, cheap to
+            mount. CityLabels defers to the second frame because Troika SDF text
+            mesh generation per visible city is the heaviest non-essential work. */}
         <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />
-        <CityLabels camDist={camDist} />
+        {deferredMount && <CityLabels camDist={camDist} />}
 
       </group>
     </>
@@ -3419,11 +2927,19 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
 
       {/* Deep-space gradient background. Hidden when chromeless so the host
           surface (AtlasShell) provides its own backdrop. */}
-      {!chromeless && <div style={{
+      {/* Deep-space gradient backdrop behind the WebGL canvas. Without this
+          the transparent Canvas would show whatever `<main>` background the
+          parent sets — in AtlasShell light mode that's cream `#f7f5ee`,
+          against which the Stars sprite (white) is invisible. We render this
+          on BOTH chromeless and non-chromeless modes so the starfield always
+          has a dark sky to sit on regardless of the surrounding chrome's
+          color scheme. AtlasShell chrome (top nav, sheet, etc.) lives at
+          higher z-indexes and still floats on top. */}
+      <div style={{
         position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
         background:
           "radial-gradient(ellipse at 40% 45%, rgba(30,70,200,0.4) 0%, rgba(6,8,22,0.96) 58%, #030510 100%)",
-      }} />}
+      }} />
 
       {/* Full-page 3D canvas — fixed to viewport so it always fills edge-to-edge */}
       <Canvas
