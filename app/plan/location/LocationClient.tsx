@@ -6,7 +6,7 @@ import { OrbitControls, Sphere, Stars, Html, useGLTF, Text, useTexture, Sparkles
 // see comment near GlobeScene render. Re-add when guarded.
 import { useEffect, useRef, useState, useMemo, Component, Suspense, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getCityInfo, getExtraCities, loadCityInfo, loadExtraCities, useExtraCitiesVersion } from "./globe/cityData";
+import { getCityInfo, getExtraCities, getSmallCities, loadCityInfo, loadExtraCities, loadSmallCities, useExtraCitiesVersion, useSmallCitiesVersion } from "./globe/cityData";
 
 // ─── Mobile performance detection ────────────────────────────────────────────
 const isMobile = typeof window !== "undefined" && (
@@ -1563,7 +1563,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
   // mesh-painted on the sphere surface (the previous baked-cities path
   // suppressed tier 1/2 to avoid double-render, but the baked path is
   // disabled — see createEarthTexture).
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
 }) {
   void tier;
   const [hovered,      setHovered]      = useState(false);
@@ -1788,19 +1788,44 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
 }
 
 function CityLabels({ camDist }: { camDist: number }) {
-  // Dynamic separation threshold: wider zoom = stricter = fewer cities shown.
-  // camDist ~21 → thresh ~4°, camDist ~14 → thresh ~1.5°, camDist <12 → ~0.6°
-  // Tightened so more cities pass the spatial-dedup at any given zoom.
-  const sepThresh = camDist > 22 ? 6.0 : camDist > 18 ? 3.5 : camDist > 14 ? 1.8 : camDist > 11 ? 0.9 : 0.5;
+  // Dynamic separation threshold: wider zoom = stricter = fewer cities.
+  // Boundaries aligned with the popMin ladder below. The new ≤ 11 band
+  // (0.2° ~ 22 km) is the deepest tier — keeps the 1K dataset legible.
+  const sepThresh =
+    camDist > 22 ? 6.0 :
+    camDist > 18 ? 3.5 :
+    camDist > 14 ? 1.8 :
+    camDist > 12 ? 0.9 :
+    camDist > 11 ? 0.5 :
+                   0.2;
   const extraVersion = useExtraCitiesVersion();
-  // Population threshold for extras (curated CITIES always pass through).
-  // Far zoom = only big cities; close zoom = full long tail. Loosened so
-  // mid-zoom (continental) shows more regional centers.
-  const popMin = camDist > 22 ? 1_500_000
-              : camDist > 18 ?   400_000
-              : camDist > 14 ?   100_000
-              : camDist > 11 ?    30_000
-              :                        0;
+  const smallVersion = useSmallCitiesVersion();
+  // Population floor per tier. Far zoom = only big cities; close zoom =
+  // full long tail. The deepest band fires loadSmallCities() once it's
+  // reached. Boundaries align with sepThresh above. (Previously the
+  // bottom branch was popMin=0 at camDist ≤ 11, but minDistance was 11.5
+  // so the branch was dead — now reachable since we drop minDistance to
+  // 10.5 on the OrbitControls below.)
+  const popMin =
+    camDist > 22 ? 1_500_000 :
+    camDist > 18 ?   400_000 :
+    camDist > 14 ?   100_000 :
+    camDist > 12 ?    30_000 :
+    camDist > 11 ?    15_000 :
+                       1_000;
+
+  // Fire the lazy small-cities fetch once we enter the deepest tier.
+  // cityData side is idempotent, so zoom-out / zoom-in cycles don't
+  // re-fetch.
+  useEffect(() => {
+    if (popMin <= 1_000) {
+      const seen = new Set<string>([
+        ...CITIES.map((c) => c.n),
+        ...getExtraCities().map((c) => c.n),
+      ]);
+      void loadSmallCities(seen);
+    }
+  }, [popMin]);
 
   const items = useMemo(() => {
     const base = CITIES.map(({ n, lat, lon }) => ({
@@ -1817,14 +1842,24 @@ function CityLabels({ camDist }: { camDist: number }) {
         tier: 3,
         pop: c.p ?? 0,
       }));
-    return [...base, ...extra].map((it) => ({
+    const small = popMin <= 1_000
+      ? getSmallCities()
+          .filter((c) => (c.p ?? 0) >= popMin)
+          .map((c) => ({
+            n: c.n, lat: c.lat, lon: c.lon,
+            pos: geoPos(c.lat, c.lon, R * 1.001),
+            tier: 4,
+            pop: c.p ?? 0,
+          }))
+      : [];
+    return [...base, ...extra, ...small].map((it) => ({
       ...it,
       orientation: computeOrientation(it.pos),
     }));
-  // extraVersion bumps when the GeoNames JSON arrives — recompute then.
-  // popMin is camDist-derived so it's in deps too.
+  // extraVersion / smallVersion bump when the GeoNames JSONs arrive —
+  // recompute then. popMin is camDist-derived so it's in deps too.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [extraVersion, popMin]);
+  }, [extraVersion, smallVersion, popMin]);
 
   // Collected monuments — used to nudge city labels off the monument GLB and
   // draw a leader line so the user can still associate label and landmark.
@@ -1918,7 +1953,7 @@ function CityLabels({ camDist }: { camDist: number }) {
   return (
     <>
       {visible.map(({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }) => (
-        <CityLabel key={n} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} leaderTo={leaderTo} tier={tier as 1 | 2 | 3} />
+        <CityLabel key={`${n}|${lat.toFixed(3)}|${lon.toFixed(3)}`} n={n} lat={lat} lon={lon} pos={pos} orientation={orientation} fontSize={fontSize} leaderTo={leaderTo} tier={tier as 1 | 2 | 3 | 4} />
       ))}
     </>
   );
@@ -3197,7 +3232,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           enableZoom
           enablePan={false}
           enableRotate={false}
-          minDistance={11.5}
+          minDistance={10.5}
           maxDistance={45}
           zoomSpeed={isMobile ? 0.5 : 0.9}
           enableDamping
