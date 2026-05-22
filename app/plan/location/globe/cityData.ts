@@ -13,6 +13,14 @@ let _loadPromise: Promise<void> | null = null;
 let _version = 0;
 const subscribers = new Set<() => void>();
 
+// Small cities (~145K rows, pop >= 1000). Lazy-loaded only at deepest
+// zoom band — most sessions never pay for it. Source asset baked by
+// bin/fetch-cities-1k.mjs.
+let _small: City[] = [];
+let _smallVersion = 0;
+let _smallLoadPromise: Promise<void> | null = null;
+const smallSubscribers = new Set<() => void>();
+
 export function getExtraCities(): City[] {
   return _extra;
 }
@@ -82,4 +90,44 @@ export function loadExtraCities(seenNames: Set<string>): Promise<void> {
     }
   })();
   return _loadPromise;
+}
+
+// ── Small cities (deepest-zoom tier, pop >= 1000) ─────────────────────────
+// Lazy-loaded the first time CityLabels enters its deepest popMin band.
+// Mirrors loadExtraCities shape but uses its own version stream so the
+// 15K consumers don't re-render when the small dataset arrives.
+
+export function getSmallCities(): City[] {
+  return _small;
+}
+
+export function useSmallCitiesVersion(): number {
+  const [v, setV] = useState(_smallVersion);
+  useEffect(() => {
+    const fn = () => setV(_smallVersion);
+    smallSubscribers.add(fn);
+    return () => { smallSubscribers.delete(fn); };
+  }, []);
+  return v;
+}
+
+export function loadSmallCities(seenNames: Set<string>): Promise<void> {
+  if (_smallLoadPromise) return _smallLoadPromise;
+  _smallLoadPromise = (async () => {
+    try {
+      const res = await fetch("/data/cities-geonames-1k.json", { credentials: "omit" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const raw = (await res.json()) as { n: string; lat: number; lon: number; c: string; p: number }[];
+      const lower = new Set(Array.from(seenNames).map((s) => s.toLowerCase()));
+      _small = raw
+        .filter((c) => c.n && !lower.has(c.n.toLowerCase()))
+        .map((c) => ({ n: c.n, lat: c.lat, lon: c.lon, p: c.p, c: c.c }));
+      _smallVersion += 1;
+      smallSubscribers.forEach((fn) => fn());
+    } catch (e) {
+      console.warn("[cityData] loadSmallCities failed; deep-zoom tier will be empty:", e);
+      _smallLoadPromise = null; // allow retry on a future call
+    }
+  })();
+  return _smallLoadPromise;
 }
