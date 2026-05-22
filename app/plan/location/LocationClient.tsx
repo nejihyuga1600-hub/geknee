@@ -1638,10 +1638,23 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
   // intact (no rebuild on size change) and the click sprite at full size.
   // Smooth at 60fps regardless of how coarsely camDist updates in React state.
   const textGroupRef = useRef<THREE.Group>(null);
+  const lastAppliedScaleDistRef = useRef<number>(0);
   useFrame(({ camera }) => {
     if (!textGroupRef.current) return;
     const camDist = camera.position.length();
+    // During motion, skip when camera barely moved — saves ~200×/frame
+    // matrix updates across all country labels.
+    if (globeMotion.moving && Math.abs(camDist - lastAppliedScaleDistRef.current) < 0.05) return;
+    // Cull back-facing labels during motion: skip when the label's outward
+    // normal points away from the camera. At rest, every label still gets
+    // a perfect scale so legibility is unchanged.
+    if (globeMotion.moving) {
+      const labelPos = textGroupRef.current.getWorldPosition(new THREE.Vector3());
+      const camFwd = camera.position.clone().normalize();
+      if (labelPos.normalize().dot(camFwd) < -0.2) return;
+    }
     textGroupRef.current.scale.setScalar(Math.pow(camDist / 15, 1.4));
+    lastAppliedScaleDistRef.current = camDist;
   });
 
   return (
