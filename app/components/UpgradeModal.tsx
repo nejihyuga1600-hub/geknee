@@ -178,16 +178,16 @@ export default function UpgradeModal({ open, onClose, feature, reason, generatio
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
           <PriceTile
             label="Monthly"
-            price="$9"
+            price="$4.99"
             unit="/mo"
             active={interval === 'monthly'}
             onClick={() => setInterval('monthly')}
           />
           <PriceTile
             label="Yearly"
-            price="$72"
+            price="$39"
             unit="/yr"
-            badge="SAVE 33%"
+            badge="SAVE 35%"
             active={interval === 'yearly'}
             onClick={() => setInterval('yearly')}
           />
@@ -219,7 +219,7 @@ export default function UpgradeModal({ open, onClose, feature, reason, generatio
             fontFamily: 'inherit',
           }}
         >
-          {loading ? 'Redirecting to checkout…' : 'Start 7-day free trial →'}
+          {loading ? 'Redirecting to checkout…' : 'Go Pro →'}
         </button>
 
         <p style={{
