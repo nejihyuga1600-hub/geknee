@@ -53,6 +53,20 @@ export default function AccountPage() {
         <div style={{ display: "grid", gap: 10, marginTop: 28 }}>
           <button
             onClick={async () => {
+              const res = await fetch("/api/stripe/portal", { method: "POST" });
+              if (res.ok) {
+                const { url } = (await res.json()) as { url?: string };
+                if (url) { window.location.href = url; return; }
+              }
+              if (res.status === 404) { router.push("/pricing"); return; }
+              alert("Could not open billing portal");
+            }}
+            style={primaryBtn}
+          >
+            Manage subscription
+          </button>
+          <button
+            onClick={async () => {
               // Clear the geknee session cookie BEFORE starting OAuth.
               // Without this, NextAuth in JWT mode treats the OAuth callback
               // as a "link new sub to current session user" instead of a
