@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
+import { sendEmail } from '@/lib/admin/email';
+import { renderProWelcomeEmail } from '@/lib/email/pro-welcome';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-02-24.acacia' });
 
@@ -36,6 +38,30 @@ export async function POST(req: Request) {
           where: { id: userId },
           data: { plan: 'pro', stripeSubscriptionId: sub.id, planExpiresAt: null },
         });
+
+        // Welcome email — best-effort. Don't 500 the webhook if Resend hiccups.
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, name: true },
+          });
+          if (user?.email) {
+            const priceId = sub.items.data[0]?.price?.id ?? '';
+            const interval =
+              priceId === process.env.STRIPE_PRICE_YEARLY ||
+              priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_YEARLY
+                ? 'yearly'
+                : 'monthly';
+            await sendEmail({
+              to: user.email,
+              from: 'GeKnee <hello@geknee.com>',
+              subject: `Welcome to GeKnee Pro — here's what you unlocked`,
+              html: renderProWelcomeEmail({ name: user.name ?? null, interval }),
+            });
+          }
+        } catch (err) {
+          console.error('[stripe/webhook] welcome email failed:', err);
+        }
         break;
       }
       case 'customer.subscription.updated': {
