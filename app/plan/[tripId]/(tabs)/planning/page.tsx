@@ -34,6 +34,10 @@ export default function PlanningTabPage() {
   const router = useRouter();
   const tripId = (params?.tripId as string) ?? '';
   const [initial, setInitial] = useState<'planning' | 'itinerary' | null>(null);
+  // Separate from `initial` because we always open on the itinerary tab
+  // now — autoGenerate has to be driven by "does the trip ALREADY have
+  // an itinerary" instead of the sub-tab choice.
+  const [hadItinerary, setHadItinerary] = useState(false);
 
   useEffect(() => {
     if (!tripId) { setInitial('planning'); return; }
@@ -55,9 +59,16 @@ export default function PlanningTabPage() {
             return;
           }
         }
-        setInitial(itinerary ? 'itinerary' : 'planning');
+        // New trip (no itinerary) → open the itinerary sub-tab so the
+        // streaming UI shows; autoGenerate (below) fires /api/itinerary
+        // on mount. Existing-itinerary trips land on the itinerary tab
+        // as before. The "planning" sub-tab (pin curation) is now
+        // reachable from within SummaryView's sub-tab nav, not the
+        // default landing — matches the "Build itinerary ✨" intent.
+        setHadItinerary(!!itinerary);
+        setInitial('itinerary');
       })
-      .catch(() => { if (!cancelled) setInitial('planning'); });
+      .catch(() => { if (!cancelled) setInitial('itinerary'); });
     return () => { cancelled = true; };
   }, [tripId, router]);
 
@@ -84,7 +95,7 @@ export default function PlanningTabPage() {
       // Mirrors the user's intent after clicking "Build itinerary ✨" —
       // landing on /planning with an empty trip should kick off the
       // stream, not park them on an empty pin-curate view.
-      autoGenerate={initial === 'planning'}
+      autoGenerate={!hadItinerary}
     />
   );
 }
