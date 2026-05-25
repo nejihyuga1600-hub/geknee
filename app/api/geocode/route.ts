@@ -4,7 +4,7 @@
 
 import { auth } from "@/auth";
 
-const cache = new Map<string, { lat: number; lng: number }>();
+const cache = new Map<string, { lat: number; lng: number; country?: string | null }>();
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -36,6 +36,11 @@ export async function GET(req: Request) {
   }
 
   const loc = data.results[0].geometry.location as { lat: number; lng: number };
-  cache.set(address, loc);
-  return Response.json(loc);
+  // ISO 3166-1 alpha-2 country code, used by the live-trip Safety card.
+  const country =
+    (data.results[0].address_components as { types: string[]; short_name: string }[] | undefined)
+      ?.find((c) => c.types.includes('country'))?.short_name ?? null;
+  const result = { ...loc, country };
+  cache.set(address, result);
+  return Response.json(result);
 }

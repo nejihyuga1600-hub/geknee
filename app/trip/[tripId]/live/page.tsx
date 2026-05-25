@@ -12,6 +12,7 @@ import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 import { fetchWeather, type WeatherResult, type WeatherDay } from '@/lib/googleMaps/weatherClient';
 import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 import { CardShell } from './CardShell';
+import { SafetyCard } from './SafetyCard';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -125,6 +126,7 @@ export default function LiveTripPage() {
   const [now, setNow] = useState<Date>(() => new Date());
   const [currentWeather, setCurrentWeather] = useState<WeatherResult | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -148,8 +150,9 @@ export default function LiveTripPage() {
       try {
         const gr = await fetch(`/api/geocode?address=${encodeURIComponent(trip.location!)}`);
         if (!gr.ok || cancelled) return;
-        const gd = await gr.json() as { lat?: number; lng?: number } | null;
+        const gd = await gr.json() as { lat?: number; lng?: number; country?: string | null } | null;
         if (!gd?.lat || !gd?.lng || cancelled) return;
+        if (!cancelled) setCountryCode(gd.country ?? null);
         const w = await fetchWeather(gd.lat, gd.lng, 7);
         if (!cancelled) setCurrentWeather(w);
       } catch { /* silent */ }
@@ -588,6 +591,11 @@ export default function LiveTripPage() {
         <NextStopCard next={activities[nextIdx + 1] ?? null} />
         <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} />
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
+        <SafetyCard
+          countryCode={countryCode}
+          anchor={geo ? { lat: geo.lat, lng: geo.lon } : null}
+          online={online}
+        />
       </div>
 
       {/* ── Day timeline strip ─────────────────────────────────────────── */}
