@@ -1,118 +1,134 @@
-# Handoff — geknee.com / travel-ai
+﻿# Handoff â€” geknee.com / travel-ai
 
-**Date:** 2026-05-21
-**Branch:** `main` (clean, pushed to `origin/main`)
-**Last commit:** `576d712`
-
----
-
-## Where things stand
-
-Working tree is clean. Latest pushed commit (`576d712`) tightens the city/state label opacity fade band on the globe so labels snap on cleanly at the Country↔Local zoom boundary instead of ghosting at country zoom.
-
-Vercel auto-deploy was kicked off but **not explicitly verified to Ready** in the last turn. User should hard-refresh geknee.com once the deploy lands and confirm:
-- No half-opacity ghost city labels at Country tier (`camDist ≥ 13`)
-- City + state labels fully readable the moment the right-side zoom badge flips to "Local"
+**Date:** 2026-05-23
+**Branch:** `main` (in sync with `origin/main`)
+**Live URL:** https://www.geknee.com
 
 ---
 
-## Recently shipped (this session)
+## TL;DR
 
-### Globe labels overhaul
-- `feat(globe): label overlay sphere — state + city labels fade in at "Local" zoom tier` — `73c85e4`
-- `style(globe): country labels 25% bigger (MAX_FONT 22 → 27)` — `a7069cc`
-- `style(globe): snap city + state labels at Country↔Local boundary` — `576d712`
+- **Stripe is live and fully verified (2026-05-24).** End-to-end purchase was verified, then the test sub `sub_1TaKhUHJGVzPMnvW7RImPLoo` (customer `cus_UZJQrpIPSGgRTn`) was canceled and the $4.99 charge `ch_3TaKhVâ€¦` refunded (`re_3TaKhVâ€¦`).
+- **Stripe webhook delivery is CONFIRMED WORKING.** Cancelling the live sub fired a real `customer.subscription.deleted` that reached `/api/stripe/webhook` and flipped the user DB row `proâ†’free`, `stripeSubscriptionIdâ†’null`. The old "brilliant splendor" delivery problem is resolved.
+- **Pro welcome email is LIVE.** `RESEND_API_KEY` set in Vercel prod + `.env.local`; `geknee.com` verified in Resend (DKIM `resend._domainkey` + SPF/MX on `send` + `_dmarc` DMARC TXT). User confirmed receiving a live test from `hello@geknee.com`.
+- **Google Workspace site-verification TXT** added to `geknee.com` DNS via Vercel CLI.
+- **Meshy monument generation deferred** by user â€” pipeline is documented in memory.
 
-All landmark/city/country labels now bake into a canvas-baked equirectangular texture pair returned by `createEarthTexture` in `app/plan/location/LocationClient.tsx`:
-- **Base** sphere: country labels (always visible)
-- **Overlay** sphere (`R * 1.0008`, `meshBasicMaterial`, transparent): state + city labels, opacity driven per-frame from `camDistRef`
+---
 
-**Opacity formula** (see `useFrame` in `GlobeScene`):
-```ts
-if (d <= 12.7) opacity = 1;
-else if (d >= 13.0) opacity = 0;
-else opacity = (13.0 - d) / 0.3;
+## What shipped today
+
+| Commit | What |
+|--------|------|
+| `9a006e7` | UpgradeModal price fix: $9â†’$4.99, $72â†’$39, SAVE 33%â†’35%, CTA copy |
+| `252a0e2` | Pro welcome email: `lib/email/pro-welcome.ts` + wired into `app/api/stripe/webhook/route.ts` checkout.session.completed handler |
+
+Both pushed to `origin/main`; Vercel auto-deployed.
+
+Manual data fix (no commit):
 ```
-Tweak knobs: `12.7` and `13.0`. Country/Local tier boundary in `AtlasShell` is `camDist = 13`.
+UPDATE "User"
+SET "stripeCustomerId" = NULL
+WHERE id = 'cmo689cy80000jj045sossyvj';
+-- (followed by live re-checkout, then:)
+UPDATE "User"
+SET "stripeSubscriptionId" = 'sub_1TaKhUHJGVzPMnvW7RImPLoo'
+WHERE id = 'cmo689cy80000jj045sossyvj';
+```
+(Test-mode `cus_UUH2Q9f0nx3NtI` was rejected in live mode, hence the null + re-checkout.)
 
-**Cleanup pending:** dead `if (false as boolean && statesGeo)` block still in `createEarthTexture` — kept for diff review in `73c85e4`. Safe to delete next pass.
-
-### Google Maps Platform — Waves 1+2
-- Routes API v2 migration (`31cbc1a`)
-- Places API (New) with session tokens + Basic field mask (`0ad42b7`)
-- Maps Static OG share cards (`a6b79fb`)
-- StreetViewThumb wired into ActivityBlock, BookView hotels/restaurants, RecPanel chips (`cc768b3`, `d3d90e4`, `4408299`)
-- `useGeocode` hook with mem+session+API cache (`9d43aff`)
-- Wave 3 design notes in `d6fd118`
-
-Still deferred: `lib/agent/tools/route_between.ts` calls Mapbox Directions server-side. Plan: migrate after 30 days of Routes API v2 usage data.
-
-### Auth / account switching
-- Cross-email NextAuth linking footgun fixed; `auth.ts` `signIn` callback blocks linking different Google accounts to the same User row
-- Mislinked Account row repaired in DB via `bin/repair-mislinked-account.mjs`
-- Removed `accounts.google.com/Logout?continue=` chain (Google rejects external `continue` URLs → 400)
-
-### Trip social features
-- Per-item voting (thumbs up/down) on hotels, activities, itinerary stops → auto-posts to group chat
-- `app/components/VoteButtons.tsx`, `app/api/trips/[id]/item-vote/route.ts`
-- `TripItemVote` Prisma model: `(tripId, userId, itemKey)` unique
-- Invite friends pill (`InviteFriendsPill.tsx`) persistent in tab header
-- Vault visibility: `TripFile.visibility` defaults `"public"`, can be `"private"`
-- AI suggestions feature flag now defaults ON in `lib/suggestions/featureFlag.ts`
-- Group chat fix: `openGroup` uses real `TripDraft.id`, not `hashStr(location)`
-
-### Deploy unblock
-- 11-hour Vercel deploy outage fixed in `d667fa3`
-- `next.config.ts` `outputFileTracingExcludes` trims Prisma engine orphans (was blowing 250MB lambda cap)
-- `app/plan/layout.tsx` cascades `export const dynamic = 'force-dynamic'` — fixes "Unable to find lambda for route: /plan/..." misclassification of static client pages
-- `app/auth/mobile-cb` split into server wrapper + `MobileCallbackClient.tsx` so `dynamic` is honored (the directive is ignored in `'use client'` files)
+DNS via Vercel CLI:
+- TXT `geknee.com` â†’ `google-site-verification=OLAF0VXe2FkG2-Fjom-EpDUrf-VHV8Y2ttH3012VZyk`
 
 ---
 
-## Open / deferred
+## Stripe — RESOLVED (2026-05-24)
 
-| Item | Notes |
-|---|---|
-| Delete dead `if (false as boolean && statesGeo)` block in `createEarthTexture` | Kept for diff review per `73c85e4`. Safe to remove next pass. |
-| Migrate `lib/agent/tools/route_between.ts` off Mapbox Directions | Wait until 30 days of Routes API v2 usage data is in. |
-| Wave 3 Google Maps products | Design notes only (`d6fd118`). Each needs a design pass: Maps Grounding Lite, Aerial View, Air Quality + Pollen, Roads API, Distance Matrix, Photorealistic 3D Tiles. |
-| Verify `576d712` deploy on geknee.com | Hard-refresh, watch the Country↔Local boundary, confirm cities snap on rather than ghost. |
+All three former blockers are closed:
 
----
+### 1. Webhook delivery — WORKING
+- Verified end-to-end: cancelling `sub_1TaKhU…` via the Stripe API fired `customer.subscription.deleted`, which hit `/api/stripe/webhook` and updated the DB (`plan: pro->free`, `stripeSubscriptionId->null`). No more action needed.
 
-## Critical gotchas / landmines
+### 2. Welcome email — LIVE
+- `RESEND_API_KEY` (send-only) added to Vercel production + `.env.local`.
+- `geknee.com` verified in Resend. DNS on Vercel: DKIM `resend._domainkey` TXT, SPF `send` TXT (`v=spf1 include:amazonses.com ~all`), MX `send` (`10 feedback-smtp.us-east-1.amazonses.com`), and `_dmarc` TXT (`v=DMARC1; p=none;`) — last one added this session.
+- Confirmed: live test email delivered from `hello@geknee.com`. Webhook handler (unchanged) sends the Pro welcome on `checkout.session.completed`.
+- Note: Resend send-only key cannot list domains; Google Workspace inbox MX is untouched (Resend MX lives on the `send` subdomain).
 
-1. **`LocationClient.tsx` is ~6000 lines.** Grep before Read. Use small atomic edits with grep verification between — concurrent cloud-agent edits have reverted changes mid-session before.
-2. **File state hygiene:** Always verify Edit landed (grep for the new string) and that the diff has content **before** committing. Empty commits have happened. See `memory/feedback_check_work_before_done.md`.
-3. **Fetch before work:** Cloud agent pushes to `main`. Always `git fetch && git log origin/main..HEAD` (or compare) before starting work.
-4. **`'use client' + export const dynamic` is silently ignored.** If a page needs `force-dynamic`, the page file itself must be a server component — split client logic into a sibling `*Client.tsx`.
-5. **DB is Neon Postgres via Vercel Marketplace** — not Supabase. Any stale references to Supabase in older docs are wrong.
-6. **Meshy GLB models are user assets.** Never replace or texture-compress without explicit OK.
-7. **NextAuth JWT mode + Google `allowDangerousEmailAccountLinking: true`** is set. The `signIn` callback in `auth.ts` is the only thing blocking cross-email linking — don't loosen it.
-8. **API budget alarms are live on Google Cloud.** Warn before any change that could push an API past $10/mo expected spend.
+### 3. Test subscription — CANCELED + REFUNDED
+- `sub_1TaKhU…` canceled; charge `ch_3TaKhV…` ($4.99) refunded via `re_3TaKhV…` (status succeeded).
+
+### Go Pro buttons — decided: keep modal
+- Header button (`LocationClient.tsx`) and nav pill (`atlas/AtlasShell.tsx`) intentionally open `UpgradeModal`; `/pricing` stays the shareable SEO URL. No change made.
 
 ---
 
-## Files most-touched this session
+## Welcome email preview
 
-- `app/plan/location/LocationClient.tsx` — globe + labels
-- `app/components/TripSocialPanel.tsx` — group chat + suggestions inline
-- `app/components/VoteButtons.tsx` — new
-- `app/api/trips/[id]/item-vote/route.ts` — new
-- `app/api/trips/[id]/files/route.ts` + `[fileId]/route.ts` — vault
-- `auth.ts` — cross-email link blocking
-- `prisma/schema.prisma` — `TripItemVote`, `TripFile.visibility`, `rhel-openssl-3.0.x` binary target
-- `next.config.ts` — Prisma trim
-- `app/plan/layout.tsx` — `force-dynamic` cascade
+Rendered locally for design review:
+- `welcome-email-preview.html` (4664 bytes) â€” open in browser
+- `preview-welcome-email.mjs` â€” regenerate anytime with `node preview-welcome-email.mjs`
+
+Email content matches `/pricing` copy verbatim: 5 core perks (unlimited trips, unlimited drafts, priority support, early skin access, Pro-only rarity tiers) + 2 yearly extras (exclusive Pro-Yearly skin, printed annual postcard). Sends from `hello@geknee.com`. Dark mode styling matches /pricing aesthetic.
 
 ---
 
-## Quick-start for the next session
+## Deferred / paused
 
-```bash
-git fetch
-git log --oneline origin/main..HEAD   # should be empty (working tree clean)
-git status                            # should be clean
+- **Meshy monument generation.** Pipeline (Nano Banana Pro â†’ Meshy `v1/image-to-3d` with coin-medallion style) is fully documented at `memory/reference_meshy_monument_pipeline.md`. 11 missing monuments queued in `bin/monuments_nano_banana_to_meshy.py` (not committed). User said "nevermind lets work on this later."
+- **Phase 5 Mapboxâ†’Google Directions migration.** Hold per CLAUDE.md until 30 days of Routes API usage data.
+- **Wave 3 Google Maps products** (Aerial View, Air Quality, Pollen, Roads, Distance Matrix, 3D Tiles) â€” each needs design pass.
+
+---
+
+## Working dir state at handoff
+
+```
+M app/plan/location/LocationClient.tsx        (zoom-smoothness + cities1000 work, already in 8 commits on origin/main)
+M app/plan/location/layout.tsx                 (same series)
+M bin/bake-overlays.mjs                        (border bake refactor)
+M handoff.md                                   (this file)
+?? public/baked/borders-overlay.webp           (generated artifact)
+?? welcome-email-preview.html                  (4664-byte local preview, do not commit)
+?? preview-welcome-email.mjs                   (preview generator, do not commit)
+?? bin/monuments_nano_banana_to_meshy.py       (Meshy pipeline, paused)
 ```
 
-Then ask the user whether they're happy with how the labels snap on at the Local tier, or if they want the band tuned further (e.g. `12.95 → 13.0` for a sharper snap, `12.0 → 13.0` for a softer fade).
+Recent globe-perf commits (already pushed):
+```
+39d0b04 refactor(globe): borders baked into base alongside labels â€” no z-offset
+4214515 fix(globe): label anchoring via pole-of-inaccessibility
+2e44f78 fix(globe): borders on always-visible overlay, depth-test off
+fd04bf2 perf(globe): cold-load 20s -> 2s via static prebake + IDB cache + WebP terrain
+576d712 style(globe): snap city + state labels at Countryâ†”Local boundary
+```
+
+---
+
+## Operational notes for next session
+
+- **Production DB is Neon Postgres** via Vercel Marketplace (not Supabase â€” any docs/notes referring to Supabase are stale).
+- **Vercel CLI env vars:** use `vercel env add NAME production --value X --yes --sensitive`. Do NOT pipe values via stdin in PowerShell â€” it prepends a UTF-16 BOM and silently breaks Stripe key validation.
+- **`vercel env pull` returns empty for sensitive vars** in production scope. That's by design (sensitive-by-default), not a bug. Confirm presence via `vercel env ls`.
+- **Stripe live secrets** (`sk_live_...`, `whsec_NcMJ...`, `pk_live_...`) stay in chat only â€” never persist to disk.
+- **Session cookie** for testing as the logged-in user lives in chat only â€” `__Secure-authjs.session-token`.
+- **Two-agent review system** (UX Scout + Dev Scout) is documented in CLAUDE.md â€” run via `.agents/run-{ux,dev}-agent.sh` in two side-by-side terminals.
+
+---
+
+## Observability quick-ref
+
+| Need | Tool | Where |
+|------|------|-------|
+| Stack trace for a thrown error | Sentry MCP | `search_issues`, `search_events` |
+| "User says X feels broken" (no exception) | PostHog MCP | `query-session-recordings-list` |
+| Confirm webhook hit production | Vercel runtime logs | `mcp__claude_ai_Vercel__get_runtime_logs` |
+| Confirm DB write landed | Prisma direct query | via `lib/prisma` |
+
+---
+
+## Open Q for user
+
+All Stripe items closed this session (welcome email live, webhook verified, test sub canceled + refunded, Go Pro decided to stay modal). Remaining:
+
+1. Resume Meshy monument generation, or keep deferred?
