@@ -1,8 +1,29 @@
 ﻿# Handoff â€” geknee.com / travel-ai
 
-**Date:** 2026-05-23
+**Date:** 2026-05-25
 **Branch:** `main` (in sync with `origin/main`)
 **Live URL:** https://www.geknee.com
+
+---
+
+## Latest session - 2026-05-25 (mobile UI/perf + Safety feature)
+
+Shipped to origin/main:
+- `64cafc2` fix(ios): -webkit-backdrop-filter app-wide (Safari glass panels now blur) + 100vh->100svh (iOS URL-bar bug).
+- `3cee9fc` feat(mobile): decluttered globe top nav. **The live chrome is `app/plan/location/atlas/AtlasShell.tsx`, NOT LocationClient** (which mounts chromeless inside it). Moved Collection/Go Pro into the Settings menu Quick Actions (mobile only); icon-pill tap targets ->40px; mobile avatar ->36px. Browser-verified at 390px.
+- perf(globe) `3cee9fc`+`8fb8ee2`: low-end DPR floor (<=4GB RAM / <=4 cores -> DPR 1) + ambient Sparkles 60->24 on mobile. Existing infra already strong (DPR cap 1.5, antialias off mobile, pause-when-backgrounded, off-screen GLB disposal, ~2s cold load).
+- **Safety card v1** (`40c69af`, `7462609`, `e664432`, `a3b3741`): live-trip Safety card. Offline emergency numbers (`lib/safety/emergencyNumbers.ts`, 112 fallback) + lost-docs checklist (`lib/safety/lostDocs.ts`) + on-demand pharmacy/hospital finder (`app/api/places/nearby/route.ts`, geolocation w/ anchor-city fallback, Basic field mask, session-cached). `/api/geocode` now also returns ISO country code. `SafetyCard.tsx` uses extracted `CardShell`; browser-verified in dark theme.
+
+Decisions:
+- **frameloop:demand REJECTED** - the globe's continuous ambient `<Sparkles>` would freeze under demand rendering (or negate any savings). Not worth it.
+- Go Pro buttons stay as modal; `/pricing` is the shareable SEO URL.
+- Meshy monument generation: still deferred (user confirmed).
+
+Docs: spec `docs/superpowers/specs/2026-05-25-live-trip-safety-card-design.md`; plan `docs/superpowers/plans/2026-05-25-live-trip-safety-card.md`.
+
+Real-time roadmap (each its own spec/plan, after v1, all approved): Right-now AI card -> Flight status + airport leave-by (reuse Gmail flight detection) -> Ticket/confirmation wallet -> "Closing soon" nudge. Deferred: Safety v2 embassy locator; Money & customs; Language & comms.
+
+Standing prefs (saved to memory): use the `frontend-design` skill for any UI work + match GeKnee brand tokens; edit AtlasShell (not LocationClient) for the live globe chrome.
 
 ---
 
