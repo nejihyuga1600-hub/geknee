@@ -2940,7 +2940,7 @@ function GlobeScene() {
 
         {/* Sparkle burst during fly-to animation (desktop only) */}
         {flying && !isMobile && (
-          <Sparkles count={60} scale={R * 2.5} size={3} speed={1.5} color="#88bbff" opacity={0.6} />
+          <Sparkles count={isMobile ? 24 : 60} scale={R * 2.5} size={3} speed={1.5} color="#88bbff" opacity={0.6} />
         )}
 
         {/* Animals removed — now unlockable via the Explorer Collection shop */}
