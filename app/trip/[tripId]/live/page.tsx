@@ -11,6 +11,7 @@ import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
 import { fetchWeather, type WeatherResult, type WeatherDay } from '@/lib/googleMaps/weatherClient';
 import { useTripTimezone } from '@/app/hooks/useTripTimezone';
+import { CardShell } from './CardShell';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -789,31 +790,6 @@ function LeaveByCard({
 }
 
 // ─── Context cards ──────────────────────────────────────────────────────────
-
-function CardShell({ accent, label, children }: {
-  accent: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{
-      background: 'rgba(255,255,255,0.03)',
-      borderLeft: `3px solid ${accent}`,
-      border: '1px solid var(--brand-border)',
-      borderLeftWidth: 3,
-      borderRadius: 12,
-      padding: '14px 16px',
-    }}>
-      <div style={{
-        fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-        color: accent, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase',
-      }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function NextStopCard({ next }: { next: Activity | null }) {
   if (!next) {
