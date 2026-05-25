@@ -42,7 +42,7 @@ interface WrappedClientProps {
 
 const containerStyle: React.CSSProperties = {
   position: 'relative',
-  minHeight: '100vh',
+  minHeight: '100svh',
   width: '100%',
   background: '#0a0a1f',
   color: '#fff',

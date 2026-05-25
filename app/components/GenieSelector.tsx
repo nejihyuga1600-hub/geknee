@@ -40,7 +40,7 @@ export default function GenieSelector({ onClose }: { onClose: () => void }) {
       {/* Backdrop */}
       <div onClick={onClose} style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9998,
-        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
       }} />
 
       {/* Panel */}

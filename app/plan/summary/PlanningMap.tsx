@@ -707,7 +707,7 @@ export default function PlanningMap({
 
       {/* ── Search bar (absolute-positioned overlay over the map) ───────── */}
       <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: 'min(560px, calc(100% - 24px))', zIndex: 50, pointerEvents: 'none' }}>
-        <div style={{ display: 'flex', gap: 8, pointerEvents: 'auto', background: 'rgba(10,15,30,0.92)', backdropFilter: 'blur(10px)', padding: 6, borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 6px 24px rgba(0,0,0,0.35)' }}>
+        <div style={{ display: 'flex', gap: 8, pointerEvents: 'auto', background: 'rgba(10,15,30,0.92)', WebkitBackdropFilter: 'blur(10px)', backdropFilter: 'blur(10px)', padding: 6, borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 6px 24px rgba(0,0,0,0.35)' }}>
           <input
             value={query}
             onChange={e => {
@@ -900,7 +900,7 @@ export default function PlanningMap({
                       background: 'rgba(0,0,0,0.6)', border: 'none',
                       color: '#fff', fontSize: 14, fontWeight: 700,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
                     }}
                     title="Close"
                   >
@@ -913,7 +913,7 @@ export default function PlanningMap({
                       position: 'absolute', bottom: 8, right: 8,
                       background: 'rgba(0,0,0,0.6)', borderRadius: 999,
                       padding: '2px 8px', color: '#fff', fontSize: 10, fontWeight: 600,
-                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
                     }}>
                       {activePhoto + 1} / {detail.photos.length}
                     </div>

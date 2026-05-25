@@ -961,7 +961,7 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
           padding: '4px 10px', borderRadius: 4,
           background: 'rgba(10,10,31,0.78)', color: tierColor,
           border: `1px solid ${tierColor}`, fontWeight: 700,
-          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
           pointerEvents: 'none',
         }}>{hotel.tier}</div>
 
@@ -1003,7 +1003,7 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
                 width: 32, height: 32, borderRadius: '50%',
                 background: 'rgba(10,10,31,0.7)', border: '1px solid rgba(255,255,255,0.12)',
                 color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer',
-                backdropFilter: 'blur(6px)',
+                WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
               }}
             >‹</button>
             <button
@@ -1016,7 +1016,7 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
                 width: 32, height: 32, borderRadius: '50%',
                 background: 'rgba(10,10,31,0.7)', border: '1px solid rgba(255,255,255,0.12)',
                 color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer',
-                backdropFilter: 'blur(6px)',
+                WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
               }}
             >›</button>
             {/* Dot indicators */}

@@ -328,7 +328,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       <div style={{
         position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)',
         background: 'rgba(6,8,22,0.85)', border: '1px solid rgba(100,210,255,0.4)',
-        backdropFilter: 'blur(12px)', borderRadius: 10,
+        WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)', borderRadius: 10,
         color: '#fff', fontSize: 13, fontWeight: 700,
         padding: '8px 8px 8px 16px', display: 'flex', gap: 10, alignItems: 'center',
       }}>
@@ -385,7 +385,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
               display: 'flex', alignItems: 'center', gap: 10,
               background: 'rgba(6,8,22,0.92)',
               border: `1px solid ${searchOpen ? 'rgba(167,139,250,0.65)' : 'rgba(100,210,255,0.35)'}`,
-              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)', backdropFilter: 'blur(14px)',
               borderRadius: dropdownOpen ? '14px 14px 0 0' : 14,
               padding: '11px 14px',
               boxShadow: searchOpen ? '0 6px 24px rgba(0,0,0,0.45)' : '0 2px 12px rgba(0,0,0,0.35)',
@@ -448,7 +448,7 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
                 background: 'rgba(6,8,22,0.97)',
                 border: '1px solid rgba(167,139,250,0.45)',
                 borderTop: 'none',
-                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)', backdropFilter: 'blur(14px)',
                 borderRadius: '0 0 14px 14px',
                 overflow: 'hidden',
                 boxShadow: '0 12px 32px rgba(0,0,0,0.55)',

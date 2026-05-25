@@ -265,7 +265,7 @@ export default async function PricingPage({
           border: `1px solid ${T.borderHi}`,
           borderRadius: 24,
           background: `radial-gradient(ellipse at 50% 0%, rgba(167,139,250,0.18), transparent 70%), rgba(13,13,36,0.6)`,
-          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
           position: 'relative', overflow: 'hidden',
         }}>
           <div style={{

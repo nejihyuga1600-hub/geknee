@@ -170,7 +170,7 @@ export default function VaultPage() {
         height: 64, padding: '0 24px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderBottom: '1px solid var(--brand-border)',
-        background: 'rgba(5,5,15,0.85)', backdropFilter: 'blur(16px)',
+        background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

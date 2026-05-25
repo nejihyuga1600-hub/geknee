@@ -50,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               pointerEvents: 'auto',
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '12px 18px', borderRadius: 12,
-              background: 'rgba(6,8,22,0.95)', backdropFilter: 'blur(12px)',
+              background: 'rgba(6,8,22,0.95)', WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
               border: `1px solid ${colors[t.type]}40`,
               boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 12px ${colors[t.type]}30`,
               color: '#fff', fontSize: 13, fontWeight: 500,

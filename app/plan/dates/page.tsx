@@ -369,7 +369,7 @@ function DatesForm() {
 
   return (
     <main style={{
-      minHeight: '100vh', background: '#060816',
+      minHeight: '100svh', background: '#060816',
       display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       padding: '40px 16px', fontFamily: "'Segoe UI',system-ui,sans-serif",
     }}>
@@ -377,7 +377,7 @@ function DatesForm() {
 
       <div style={{
         position: 'relative', zIndex: 10,
-        background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(18px)',
+        background: 'rgba(255,255,255,0.06)', WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
         border: '1px solid rgba(255,255,255,0.13)', borderRadius: 24,
         padding: '40px 36px', maxWidth: 620, width: '100%',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)',

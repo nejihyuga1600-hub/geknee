@@ -1318,7 +1318,7 @@ function GlobePicker({ startCity, selectedCities, onToggle, onHover }: {
           color: '#c8d8ff', fontSize: 12, fontWeight: 600,
           cursor: sharing ? 'not-allowed' : 'pointer',
           opacity: sharing ? 0.6 : 1,
-          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)',
           transition: 'background 0.15s',
           pointerEvents: 'all',
         }}
@@ -1609,7 +1609,7 @@ function StyleForm() {
 
         <div style={{
           position: 'relative', zIndex: 10,
-          height: '100vh', overflowY: 'auto',
+          height: '100svh', overflowY: 'auto',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-start',
@@ -1913,7 +1913,7 @@ function StyleForm() {
 
       <div style={{
         position: 'relative', zIndex: 10,
-        height: '100vh', overflowY: 'auto',
+        height: '100svh', overflowY: 'auto',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '28px 16px 48px',
       }}>

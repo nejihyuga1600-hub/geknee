@@ -61,7 +61,7 @@ export function ChatPanel({
   return (
     <div style={{
       position: 'absolute', bottom: 96, right: 0, width: 340, maxHeight: '60vh',
-      background: 'rgba(6,8,22,0.96)', backdropFilter: 'blur(20px)',
+      background: 'rgba(6,8,22,0.96)', WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
       border: '1px solid rgba(129,140,248,0.3)', borderRadius: 20,
       display: 'flex', flexDirection: 'column',
       boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(167,139,250,0.08)',

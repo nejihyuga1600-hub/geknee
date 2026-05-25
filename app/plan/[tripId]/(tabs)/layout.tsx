@@ -28,7 +28,7 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', color: '#f1f5f9' }}>
+    <div style={{ minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9' }}>
       <nav
         aria-label="Trip sections"
         style={{

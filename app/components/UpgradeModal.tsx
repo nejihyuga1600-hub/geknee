@@ -57,7 +57,7 @@ export default function UpgradeModal({ open, onClose, feature, reason, generatio
         position: 'fixed', inset: 0, zIndex: 99999,
         animation: 'modalFadeIn 0.25s ease-out',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(8px)',
+        background: 'rgba(0,0,0,0.80)', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)',
       }}
       onClick={onClose}
     >

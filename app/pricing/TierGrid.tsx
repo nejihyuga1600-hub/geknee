@@ -205,7 +205,7 @@ function TierCard({
       padding: '28px 26px',
       display: 'flex', flexDirection: 'column',
       position: 'relative',
-      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
       boxShadow: highlight
         ? '0 20px 60px rgba(167,139,250,0.18), inset 0 0 0 1px rgba(167,139,250,0.08)'
         : 'none',

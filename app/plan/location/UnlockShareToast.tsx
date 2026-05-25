@@ -70,7 +70,7 @@ export default function UnlockShareToast() {
         transform: "translateX(-50%)",
         zIndex: 60,
         background: "rgba(15, 23, 42, 0.95)",
-        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
         border: "1px solid rgba(255, 215, 0, 0.45)",
         boxShadow: "0 14px 40px rgba(0,0,0,0.5), 0 0 32px rgba(255,215,0,0.18)",
         borderRadius: 14,

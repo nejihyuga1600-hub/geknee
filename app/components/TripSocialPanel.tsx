@@ -530,7 +530,7 @@ export default function TripSocialPanel({
       }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 49, animation: 'modalFadeIn 0.25s ease-out' }} />
 
       {/* Panel */}
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 380, background: 'rgba(6,8,22,0.97)', backdropFilter: 'blur(24px)', borderLeft: '1px solid rgba(167, 139, 250,0.2)', zIndex: 50, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 40px rgba(0,0,0,0.6)', animation: 'panelSlideIn 0.3s ease-out' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 380, background: 'rgba(6,8,22,0.97)', WebkitBackdropFilter: 'blur(24px)', backdropFilter: 'blur(24px)', borderLeft: '1px solid rgba(167, 139, 250,0.2)', zIndex: 50, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 40px rgba(0,0,0,0.6)', animation: 'panelSlideIn 0.3s ease-out' }}>
 
         {/* ── Header ── */}
         {!activeGroup ? (
@@ -1335,7 +1335,7 @@ export default function TripSocialPanel({
           <div style={{
             position: 'absolute', inset: 0,
             background: 'rgba(6,8,22,0.97)',
-            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)', backdropFilter: 'blur(24px)',
             display: 'flex', flexDirection: 'column',
             zIndex: 2,
           }}>

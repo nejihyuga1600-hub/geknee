@@ -807,7 +807,7 @@ export default function MonumentShop({ open, onClose }: Props) {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(6px)',
+      background: 'rgba(0,0,0,0.78)', WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
@@ -922,7 +922,7 @@ export default function MonumentShop({ open, onClose }: Props) {
           {pendingMission && (
             <div style={{
               position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)',
+              background: 'rgba(0,0,0,0.8)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
             }} onClick={() => { setPendingMission(null); setPhotoPreview(null); }}>
               <div onClick={e => e.stopPropagation()} style={{
                 background: '#1a1a2e', borderRadius: 16, padding: 24, maxWidth: 340, width: '90%',

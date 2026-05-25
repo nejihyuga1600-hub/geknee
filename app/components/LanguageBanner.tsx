@@ -65,7 +65,7 @@ export default function LanguageBanner({ onSwitch }: Props) {
         border: "1px solid rgba(99,102,241,0.4)",
         borderRadius: 14,
         boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)", backdropFilter: "blur(16px)",
         fontFamily: "system-ui, sans-serif",
         animation: "langBannerIn 0.3s ease-out",
         maxWidth: "calc(100vw - 48px)",

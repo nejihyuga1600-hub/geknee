@@ -1258,7 +1258,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <main style={{ minHeight: '100vh', background: '#060816' }}>
+    <main style={{ minHeight: '100svh', background: '#060816' }}>
       <UpgradeModal
         open={upgradeModal.open}
         feature={upgradeModal.feature}
@@ -1620,7 +1620,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               {shareOpen && (
                 <div style={{
                   position: 'absolute', top: '110%', right: 0, zIndex: 40,
-                  width: 300, background: 'rgba(6,8,22,0.97)', backdropFilter: 'blur(20px)',
+                  width: 300, background: 'rgba(6,8,22,0.97)', WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
                   border: '1px solid rgba(56,189,248,0.25)', borderRadius: 14,
                   padding: '16px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
                   animation: 'chatSlideUp 0.18s ease-out',
@@ -2150,7 +2150,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                   position: isMobile ? 'static' : 'sticky',
                   top: isMobile ? undefined : 72,
                   alignSelf: 'start',
-                  height: isMobile ? 320 : 'calc(100vh - 88px)',
+                  height: isMobile ? 320 : 'calc(100svh - 88px)',
                 }}
               >
                 <UnifiedTripMap
@@ -2359,7 +2359,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                     position: isMobile ? 'static' : 'sticky',
                     top: isMobile ? undefined : 72,
                     alignSelf: 'start',
-                    height: isMobile ? 'auto' : 'calc(100vh - 88px)',
+                    height: isMobile ? 'auto' : 'calc(100svh - 88px)',
                   }}
                 >
                   <UnifiedTripMap

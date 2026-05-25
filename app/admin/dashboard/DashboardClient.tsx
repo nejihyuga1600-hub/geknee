@@ -39,7 +39,7 @@ export default function DashboardClient() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', color: '#f1f5f9', fontFamily: MONO }}>
+    <div style={{ minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9', fontFamily: MONO }}>
       <header style={{ padding: '32px 28px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
         <div>
           <div style={{ color: '#a78bfa', fontSize: 11, letterSpacing: '.2em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>geknee · mission control</div>

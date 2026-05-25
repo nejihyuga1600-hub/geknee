@@ -173,7 +173,7 @@ export default function PlanMapPage() {
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
           height: 64, padding: '0 24px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'rgba(5,5,15,0.85)', backdropFilter: 'blur(16px)',
+          background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
           borderBottom: '1px solid var(--brand-border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -216,7 +216,7 @@ export default function PlanMapPage() {
         }}>
           <div style={{
             display: 'flex', alignItems: 'center',
-            background: 'rgba(13,13,36,0.92)', backdropFilter: 'blur(16px)',
+            background: 'rgba(13,13,36,0.92)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
             border: '1px solid var(--brand-border)', borderRadius: 12,
             padding: '0 12px',
           }}>
@@ -255,7 +255,7 @@ export default function PlanMapPage() {
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '6px 12px', borderRadius: 999,
                 background: active ? `${CATEGORY_COLOR[c]}22` : 'rgba(13,13,36,0.85)',
-                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
                 border: `1px solid ${active ? CATEGORY_COLOR[c] : 'var(--brand-border)'}`,
                 color: active ? CATEGORY_COLOR[c] : 'var(--brand-ink-dim)',
                 fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
@@ -366,7 +366,7 @@ export default function PlanMapPage() {
             position: 'sticky', bottom: 0,
             marginTop: 24, marginInline: -20, padding: '16px 20px',
             background: 'linear-gradient(180deg, rgba(13,13,36,0), rgba(13,13,36,0.95) 30%)',
-            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
             borderTop: '1px solid var(--brand-border)',
           }}>
             <div style={{
@@ -806,7 +806,7 @@ function PinInfoCard({ pin, onClose, onRename }: {
       maxHeight: 'calc(100% - 96px)',
       overflow: 'auto',
       background: 'rgba(13,13,36,0.96)',
-      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
       border: '1px solid var(--brand-border-hi)',
       borderRadius: 14,
       boxShadow: '0 16px 40px rgba(0,0,0,0.55)',

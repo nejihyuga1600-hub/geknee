@@ -16,7 +16,7 @@ const ENTITY = 'geknee'; // update with legal entity name once incorporated
 
 export default function PrivacyPage() {
   return (
-    <main style={{ background: PAPER, color: INK, minHeight: '100vh', padding: '48px 20px 80px' }}>
+    <main style={{ background: PAPER, color: INK, minHeight: '100svh', padding: '48px 20px 80px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto', fontFamily: 'var(--font-ui), system-ui, sans-serif', lineHeight: 1.6 }}>
         <Link href="/" style={{ color: ACCENT, fontSize: 13, textDecoration: 'none' }}>← geknee</Link>
         <h1 style={{ fontFamily: 'var(--font-display), Georgia, serif', fontSize: 40, margin: '24px 0 8px' }}>Privacy Policy</h1>

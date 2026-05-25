@@ -336,7 +336,7 @@ export default function LiveTripPage() {
         position: 'sticky', top: 0, zIndex: 30,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 22px',
-        background: 'rgba(5,5,15,0.85)', backdropFilter: 'blur(16px)',
+        background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--brand-border)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -644,7 +644,7 @@ function MiniTransitCard() {
   return (
     <div style={{
       pointerEvents: 'auto',
-      background: 'rgba(13,13,36,0.85)', backdropFilter: 'blur(12px)',
+      background: 'rgba(13,13,36,0.85)', WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
       border: '1px solid var(--brand-border)', borderRadius: 12,
       padding: '10px 14px', minWidth: 160,
     }}>

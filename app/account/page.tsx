@@ -113,7 +113,7 @@ const card: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: 16,
   padding: "32px 28px",
-  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)", backdropFilter: "blur(16px)",
   boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
   textAlign: "center",
 };

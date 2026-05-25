@@ -193,7 +193,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       style={{
         position: 'fixed', inset: 0, zIndex: 50, animation: 'modalFadeIn 0.25s ease-out',
         background: 'rgba(0,0,0,0.72)',
-        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0 16px',
       }}
