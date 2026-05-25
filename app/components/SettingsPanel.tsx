@@ -209,9 +209,13 @@ interface Props {
   currentTripId?: string;
   isCurrentUserTripOwner?: boolean;
   currentTripVoteMode?: 'advisory' | 'auto_majority';
+  // Mobile: surface top-bar actions here so the header isn't overcrowded.
+  showQuickActions?: boolean;
+  onOpenShop?: () => void;
+  onOpenUpgrade?: () => void;
 }
 
-export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode }: Props) {
+export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode, showQuickActions, onOpenShop, onOpenUpgrade }: Props) {
   const [s, setS] = useState<AppSettings>(DEFAULTS);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
@@ -299,7 +303,7 @@ export default function SettingsPanel({ open, onClose, currentTripId, isCurrentU
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 40, animation: "modalFadeIn 0.25s ease-out",
-          background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+          background: "rgba(0,0,0,0.45)", WebkitBackdropFilter: "blur(4px)", backdropFilter: "blur(4px)",
         }}
       />
 
@@ -332,7 +336,33 @@ export default function SettingsPanel({ open, onClose, currentTripId, isCurrentU
         </div>
 
         {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px", scrollbarWidth: "thin", scrollbarColor: "rgba(167, 139, 250,0.3) transparent" }}>
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "20px 20px 40px", scrollbarWidth: "thin", scrollbarColor: "rgba(167, 139, 250,0.3) transparent" }}>
+
+          {/* ── Quick Actions (mobile: moved out of the crowded top bar) ── */}
+          {showQuickActions && (onOpenShop || onOpenUpgrade) && (
+            <Section title="Quick Actions">
+              {onOpenShop && (
+                <Row label="Monument Collection" sub="Your unlocked landmarks">
+                  <button
+                    onClick={() => { onClose(); onOpenShop(); }}
+                    style={{ background: "rgba(167,139,250,0.15)", border: `1px solid ${BORD2}`, borderRadius: 8, color: TEXT, fontSize: 13, fontWeight: 600, padding: "8px 14px", minHeight: 40, cursor: "pointer" }}
+                  >
+                    Open
+                  </button>
+                </Row>
+              )}
+              {onOpenUpgrade && (
+                <RowLast label="Go Pro" sub="Unlock every skin, tier &amp; perk">
+                  <button
+                    onClick={() => { onClose(); onOpenUpgrade(); }}
+                    style={{ background: "linear-gradient(135deg,#a78bfa,#7dd3fc)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", minHeight: 40, cursor: "pointer" }}
+                  >
+                    Upgrade
+                  </button>
+                </RowLast>
+              )}
+            </Section>
+          )}
 
           {/* ── Language ── */}
           <Section title="Language">

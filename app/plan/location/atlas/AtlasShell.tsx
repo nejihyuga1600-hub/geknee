@@ -350,7 +350,7 @@ export default function AtlasShell() {
             height: 36,
             borderRadius: "50%",
             background: "var(--brand-surface)",
-            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
             border: "1px solid var(--brand-border)",
             cursor: "pointer",
             textDecoration: "none",
@@ -385,12 +385,16 @@ export default function AtlasShell() {
              can still reach MonumentShop / Pricing / Trips from the iOS
              app. Hiding them entirely (the previous behavior) made the
              Capacitor build effectively unusable for collecting. */}
+          {!isMobile && (
           <NavPill onClick={() => setShopOpen(true)} title="Monument Collection" iconOnly={isMobile}>
             <ColIcon /> {!isMobile && <span>Collection</span>}
           </NavPill>
+          )}
+          {!isMobile && (
           <NavPill onClick={() => setUpgradeOpen(true)} accent iconOnly={isMobile}>
             <SparkleIcon /> {!isMobile && <span>Go Pro</span>}
           </NavPill>
+          )}
           <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends" iconOnly={isMobile}>
             <TripsIcon /> {!isMobile && <span>Trips</span>}
           </NavPill>
@@ -403,7 +407,7 @@ export default function AtlasShell() {
               title={session.user.name ? `${session.user.name} — account` : "Account"}
               aria-label="Account"
               style={{
-                width: 28, height: 28, borderRadius: "50%",
+                width: isMobile ? 36 : 28, height: isMobile ? 36 : 28, borderRadius: "50%",
                 background: "linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2, #7dd3fc))",
                 color: "#0a0a1f",
                 display: "grid", placeItems: "center",
@@ -445,7 +449,7 @@ export default function AtlasShell() {
           style={{
             background: "rgba(6,8,22,0.80)",
             border: "1px solid rgba(167, 139, 250, 0.35)",
-            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)",
             borderRadius: 10,
             color: "#c7d2fe",
             fontSize: 10, fontWeight: 700,
@@ -526,7 +530,7 @@ export default function AtlasShell() {
           zIndex: 20,
           height: sheetHeight,
           background: "linear-gradient(180deg, rgba(10,10,31,0.85), rgba(10,10,31,0.98))",
-          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)", backdropFilter: "blur(20px)",
           borderTop: "1px solid var(--brand-border)",
           borderRadius: "24px 24px 0 0",
           boxShadow: "0 -20px 60px rgba(0,0,0,0.6)",
@@ -692,7 +696,7 @@ export default function AtlasShell() {
       {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />}
       {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
       <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />
-      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => setShopOpen(true)} onOpenUpgrade={() => setUpgradeOpen(true)} />}
       {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
     </main>
   );
@@ -867,7 +871,7 @@ function GenieCorner({
           right: 24, bottom: 196,
           width: 360, maxHeight: 480,
           background: "rgba(13,13,36,0.96)",
-          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)", backdropFilter: "blur(18px)",
           border: "1px solid var(--brand-border-hi)",
           borderRadius: 18,
           boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
@@ -1013,7 +1017,7 @@ function ZoomIndicator() {
       borderRadius: 14,
       background: "rgba(13,13,36,0.55)",
       border: "1px solid rgba(148,163,208,0.18)",
-      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)", backdropFilter: "blur(8px)",
       color: "#a8a8c0",
       fontFamily: "var(--font-ui), system-ui, sans-serif",
       userSelect: "none",
@@ -1069,12 +1073,15 @@ function NavPill({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    padding: iconOnly ? "6px 8px" : "6px 12px",
+    padding: iconOnly ? "0 8px" : "6px 12px",
+    minWidth: iconOnly ? 40 : undefined,
+    minHeight: iconOnly ? 40 : undefined,
+    justifyContent: "center" as const,
     borderRadius: 999,
     background: accent
       ? "rgba(167, 139, 250, 0.16)"
       : "var(--brand-surface)",
-    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
     border: `1px solid ${accent ? "var(--brand-border-hi)" : "var(--brand-border)"}`,
     color: accent ? "var(--brand-accent)" : "var(--brand-ink)",
     fontSize: 11,

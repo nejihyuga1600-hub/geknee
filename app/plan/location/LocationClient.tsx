@@ -12,6 +12,12 @@ import { getCityInfo, getExtraCities, getSmallCities, loadCityInfo, loadExtraCit
 const isMobile = typeof window !== "undefined" && (
   /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768
 );
+// Low-end heuristic: <=4GB RAM or <=4 logical cores. Floors DPR to 1 so
+// memory-constrained phones render a smaller framebuffer.
+const isLowEnd = typeof navigator !== "undefined" && (
+  ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 4 ||
+  (navigator.hardwareConcurrency ?? 8) <= 4
+);
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
@@ -1077,7 +1083,7 @@ function GeoInfoLabel({ name, pos, orientation, fontSize, kind, lat: latProp, lo
               zIndex: 200,
               pointerEvents: mobileActive ? "auto" : "none",
               background: "rgba(13,13,36,0.96)",
-              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)", backdropFilter: "blur(18px)",
               border: "1px solid rgba(167,139,250,0.35)",
               borderRadius: 12,
               overflow: "hidden",
@@ -1692,7 +1698,7 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
               zIndex: 200,
               pointerEvents: mobileActive ? "auto" : "none",
               background: "rgba(13,13,36,0.96)",
-              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)", backdropFilter: "blur(18px)",
               border: "1px solid rgba(167,139,250,0.35)",
               borderRadius: 12,
               overflow: "hidden",
@@ -3188,7 +3194,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         key={glKey}
         style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100svh", zIndex: 1, touchAction: "none" }}
         camera={{ position: [0, 0, 26], fov: 50 }}
-        dpr={[1, isMobile ? 1.5 : 2]}
+        dpr={[1, isLowEnd ? 1 : isMobile ? 1.5 : 2]}
         // Halt the entire render loop when backgrounded (Capacitor app
         // background OR tab hidden). useFrame stops ticking; GPU stays
         // idle. Returns to "always" on resume.
@@ -3316,7 +3322,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           title="Reset globe orientation"
           style={{
             background: "rgba(6,8,22,0.80)", border: "1px solid rgba(167, 139, 250,0.35)",
-            backdropFilter: "blur(14px)", borderRadius: 12, color: "#c7d2fe",
+            WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)", borderRadius: 12, color: "#c7d2fe",
             fontSize: 12, fontWeight: 700, padding: "8px 16px", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 8,
             boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
@@ -3340,7 +3346,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
               title="Monument Collection"
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(167, 139, 250,0.4)",
-                backdropFilter: "blur(12px)", borderRadius: 10,
+                WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)", borderRadius: 10,
                 color: "#c4b5fd", fontSize: isMobile ? 16 : 12, fontWeight: 700,
                 padding: isMobile ? "6px 8px" : "8px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: isMobile ? 0 : 6,
@@ -3372,7 +3378,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
               title="Trips &amp; Friends"
               style={{
                 background: "rgba(6,8,22,0.75)", border: "1px solid rgba(167, 139, 250,0.35)",
-                backdropFilter: "blur(12px)", borderRadius: 10, color: "#c7d2fe",
+                WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)", borderRadius: 10, color: "#c7d2fe",
                 fontSize: isMobile ? 16 : 12, fontWeight: 600,
                 padding: isMobile ? "6px 8px" : "8px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: isMobile ? 0 : 6,
@@ -3423,7 +3429,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
             onClick={() => setAuthOpen(true)}
             style={{
               background: "rgba(6,8,22,0.75)", border: "1px solid rgba(167, 139, 250,0.35)",
-              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
               borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600,
               padding: "9px 18px", cursor: "pointer",
               display: "flex", alignItems: "center", gap: 7,
@@ -3443,7 +3449,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           title="Settings"
           style={{
             background: "rgba(6,8,22,0.75)", border: "1px solid rgba(167, 139, 250,0.3)",
-            backdropFilter: "blur(12px)", borderRadius: 10, color: "rgba(200,210,255,0.8)",
+            WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)", borderRadius: 10, color: "rgba(200,210,255,0.8)",
             width: 36, height: 36, cursor: "pointer", display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 4, padding: 0,
             boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
