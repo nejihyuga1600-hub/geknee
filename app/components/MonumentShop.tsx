@@ -470,7 +470,13 @@ function DetailView({
   onMission: (item: CollectibleBase, mission: Mission) => void;
   onBack: () => void;
 }) {
-  const unlocked   = collected.some(c => c.monumentId === item.id && c.skin === 'default');
+  // Any row counts as unlocked — matches the globe's `_collectedMonuments`
+  // gate (LocationClient.tsx) which also accepts ANY skin row. Older
+  // accounts can have mission-skin rows (e.g. {skin:'gold'}) without a
+  // matching {skin:'default'} row from data drift in earlier code paths.
+  // Requiring 'default' here made those monuments look LOCKED in the
+  // collection while still rendering as UNLOCKED on the globe.
+  const unlocked   = collected.some(c => c.monumentId === item.id);
   const hasSkin    = (sk: string) => collected.some(c => c.monumentId === item.id && c.skin === sk);
   const missionDone = (mid: string) => missions.some(m => m.missionId === mid);
   const canUnlock  = !unlocked && (isDev || item.cityKeys.some(k => tripLocs.some(t => t.includes(k))));
@@ -633,9 +639,15 @@ function DetailView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-interface Props { open: boolean; onClose: () => void }
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  /** Monument key to pre-select when the shop opens, e.g. from a globe tap.
+   *  Matched against CollectibleBase.id in MONUMENTS / AUTO_MONUMENTS. */
+  initialMk?: string | null;
+}
 
-export default function MonumentShop({ open, onClose }: Props) {
+export default function MonumentShop({ open, onClose, initialMk }: Props) {
   const { data: session } = useSession();
   const isDevClient = DEV_EMAILS.has(session?.user?.email?.toLowerCase() ?? '');
   const [tab,       setTab]       = useState<'monuments' | 'animals'>('monuments');
@@ -667,10 +679,25 @@ export default function MonumentShop({ open, onClose }: Props) {
 
   useEffect(() => { if (open) { load(); setSelected(null); setMsg(''); setLastUnlock(null); } }, [open, load]);
 
+  // Pre-select a monument when the shop opens via globe tap. Runs after the
+  // collected list is loaded so we can confirm the user actually owns this mk
+  // before promoting them to the detail / skin picker view.
+  useEffect(() => {
+    if (!open || !initialMk) return;
+    const target = ALL_MONUMENTS.find(m => m.id === initialMk);
+    if (!target) return;
+    const owned = collected.some(c => c.monumentId === initialMk && c.skin === 'default');
+    if (!owned) return;
+    setTab('monuments');
+    setSelected(target);
+  }, [open, initialMk, collected]);
+
   // Reset selected when switching tabs
   const switchTab = (t: typeof tab) => { setTab(t); setSelected(null); setMsg(''); setLastUnlock(null); };
 
-  const isCollected = (id: string) => collected.some(c => c.monumentId === id && c.skin === 'default');
+  // Match the `unlocked` check above — any skin row counts as collected
+  // so the filter ("Unlocked" tab) is consistent with what the cards show.
+  const isCollected = (id: string) => collected.some(c => c.monumentId === id);
   const canUnlock   = (item: CollectibleBase) =>
     !isCollected(item.id) && (isDev || item.cityKeys.some(k => tripLocs.some(t => t.includes(k))));
 
