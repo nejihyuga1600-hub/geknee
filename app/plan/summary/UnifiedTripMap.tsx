@@ -944,6 +944,14 @@ export default function UnifiedTripMap({
         return p.dayNumber === activeFilter;
       });
 
+      // 5-point star path centered at (0,0) — used for quest pins so
+      // they're distinguishable by SHAPE not just color (the gold
+      // QUEST_COLOR happened to match Day 3's day color, which made
+      // a Day-2 quest look like a leaked Day-3 pin).
+      const STAR_PATH = 'M 0,-13 L 3.5,-4.2 L 12.4,-4 L 5.4,1.8 L 7.9,10.5 L 0,5.6 L -7.9,10.5 L -5.4,1.8 L -12.4,-4 L -3.5,-4.2 Z';
+
+      const PointCtor = (window.google!.maps as unknown as { Point: new (x: number, y: number) => unknown }).Point;
+
       for (const p of visibleResolved) {
         if (!p.resolved) continue;
         const dayColor = DAY_COLORS[(p.dayNumber - 1) % DAY_COLORS.length];
@@ -952,15 +960,30 @@ export default function UnifiedTripMap({
         const marker = new window.google!.maps!.Marker({
           position: p.resolved,
           map: mapRef.current,
-          label: { text: String(p.positionInDay), color: '#0a0a1f', fontSize: '12px', fontWeight: '700' },
-          icon: {
-            path: window.google!.maps!.SymbolPath.CIRCLE,
-            scale: p.isQuest ? 14 : 12,
-            fillColor: color,
-            fillOpacity: 0.95,
-            strokeColor: '#0a0a1f',
-            strokeWeight: p.isQuest ? 3 : 2,
-          },
+          // Quest pins put the position number BELOW the star so the
+          // star's silhouette stays clean. Regular pins keep the
+          // number centered inside the circle.
+          label: p.isQuest
+            ? { text: String(p.positionInDay), color: '#fde68a', fontSize: '11px', fontWeight: '700' }
+            : { text: String(p.positionInDay), color: '#0a0a1f', fontSize: '12px', fontWeight: '700' },
+          icon: p.isQuest
+            ? {
+                path: STAR_PATH,
+                scale: 1.4,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: '#0a0a1f',
+                strokeWeight: 2,
+                labelOrigin: new PointCtor(0, 22),
+              }
+            : {
+                path: window.google!.maps!.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: color,
+                fillOpacity: 0.95,
+                strokeColor: '#0a0a1f',
+                strokeWeight: 2,
+              },
           title: `${p.dayLabel} · ${p.name}${p.isQuest ? ' · Monument Quest' : ''}`,
           zIndex: p.isQuest ? 100 : 10,
         });
