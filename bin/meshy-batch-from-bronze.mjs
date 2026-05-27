@@ -80,7 +80,9 @@ const MONUMENTS = {
 // collapsed entry-level into a single bronze tier. Bronze becomes the
 // auto-drop / default skin. Matches app/plan/location/globe/quests.ts:
 //   common: bronze · rare: silver, gold · epic: diamond · legendary: aurora, celestial
-const ALL_TIERS = ['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial'];
+// natural sits BELOW bronze in rarity — entry tier shown on first unlock,
+// rendered as translucent frosted-glass with real-world colors.
+const ALL_TIERS = ['natural', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial'];
 // Kept for backwards-compat with the script's wantsBase logic; harmless empty.
 const TIERS_AFTER_BASE = ALL_TIERS;
 

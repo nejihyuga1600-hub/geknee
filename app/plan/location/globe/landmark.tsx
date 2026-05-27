@@ -10,7 +10,7 @@
 //   locations.ts — pre-computed landmark positions + density map
 
 import { useFrame } from "@react-three/fiber";
-import { useGLTF, Html, Sparkles, Text, Billboard } from "@react-three/drei";
+import { useGLTF, Html, Text, Billboard } from "@react-three/drei";
 import { safePreloadGLB } from "./safeGLB";
 
 // M1.3 — Mobile-only viewport gating for GLB loads. On phones we mount the
@@ -542,7 +542,8 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   //     stone vs 17MB Eiffel bronze) so the Suspense flashed the primitive
   //     for several seconds even on a fast connection.
   const previewSkin = mk && AVAILABLE_SKINS[mk]
-    ? (AVAILABLE_SKINS[mk].has('bronze') ? 'bronze'
+    ? (AVAILABLE_SKINS[mk].has('natural') ? 'natural'
+        : AVAILABLE_SKINS[mk].has('bronze') ? 'bronze'
         : AVAILABLE_SKINS[mk].has('stone') ? 'stone'
         : [...AVAILABLE_SKINS[mk]][0])
     : undefined;
@@ -569,7 +570,7 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   // effective size (s=0.4 baseline) so the globe reads uniformly.
   // The `s` prop on Lm is now ignored visually; it remains in the API for
   // backwards compatibility with callers but doesn't affect rendering.
-  const LANDMARK_BOOST = 2.34;
+  const LANDMARK_BOOST = 2.925;
   const UNIFORM_S = 0.4;
   void s; // declared override intentionally ignored
   const effS = UNIFORM_S * density * LANDMARK_BOOST;
@@ -620,7 +621,6 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const [glbVisible, setGlbVisible] = useState(!IS_MOBILE);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const modelGroupRef = useRef<THREE.Group>(null);
-  const sparkleGroupRef = useRef<THREE.Group>(null);
   const flashLightRef = useRef<THREE.PointLight>(null);
 
   // Detect unlock transition (isCollected: false → true)
@@ -772,10 +772,9 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       ringMatRef.current.opacity = ua.active ? ua.ringOpacity : 0.7;
     }
 
-    // Sparkle group visibility
-    if (sparkleGroupRef.current) {
-      sparkleGroupRef.current.visible = ua.sparkleActive;
-    }
+    // Sparkles removed at user request — leave ua.sparkleActive flag in place
+    // so the 4 s timer below still runs (kept for parity with downstream
+    // animations that key off ua.time); no visible group to flip anymore.
 
     // === Skin switch animation ===
     const sa = skinAnimRef.current;
@@ -930,6 +929,11 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key } }));
     }
     setMobileActive(prev => !prev);
+    // If the user owns this monument, also surface the collection panel so
+    // they can review the achievement and swap skins without leaving the globe.
+    if (isCollected && mk) {
+      window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: { mk } }));
+    }
   };
 
   const showLabel = mobileActive;
@@ -974,18 +978,6 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
             after the scene cut. 4+2 is the sweet spot.) */}
         <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={4.0} distance={3} decay={2} />
         <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={2.0} distance={3} decay={2} />
-
-        {/* Unlock sparkle burst */}
-        <group ref={sparkleGroupRef} visible={false}>
-          <Sparkles
-            count={40}
-            scale={[2, 2, 2]}
-            size={6}
-            speed={2}
-            opacity={0.8}
-            color="#ffd700"
-          />
-        </group>
 
         {/* Persistent monument ring removed at user request — the rarity-
             tinted ring + the white "find me" outline were reading as visual

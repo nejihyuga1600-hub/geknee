@@ -29,8 +29,8 @@ import process from 'process';
 
 const MESHY_BASE     = 'https://api.meshy.ai/openapi';
 const TEXT_TO_3D     = `${MESHY_BASE}/v2/text-to-3d`;
-const IMAGE_TO_3D    = `${MESHY_BASE}/v2/image-to-3d`;
-const RETEXTURE      = `${MESHY_BASE}/v1/text-to-texture`;
+const IMAGE_TO_3D    = `${MESHY_BASE}/v1/image-to-3d`;
+const RETEXTURE      = `${MESHY_BASE}/v1/retexture`;
 const POLL_MS        = 10_000;
 const MAX_POLLS      = 120; // ≤20 minutes total
 const BLOB_BASE_PUB  = 'https://mrfgpxw07gmgmriv.public.blob.vercel-storage.com';
@@ -44,6 +44,11 @@ const PREFIX = {
   acropolis: 'acropolis', sydneyOpera: 'sydney_opera', neuschwanstein: 'neuschwanstein',
   stonehenge: 'stonehenge', iguazuFalls: 'iguazu_falls', tokyoSkytree: 'tokyo_skytree',
   victoriaFalls: 'victoria_falls',
+  // Wave 3
+  mountFuji: 'mount_fuji', petra: 'petra', niagaraFalls: 'niagara_falls',
+  chichenItza: 'chichen_itza', burjKhalifa: 'burj_khalifa', hagiaSophia: 'hagia_sophia',
+  notreDameF: 'notre_dame', forbiddenCity: 'forbidden_city', uluru: 'uluru',
+  mtRushmore: 'mt_rushmore', easterIsland: 'easter_island', fushimiInari: 'fushimi_inari',
 };
 
 const DISPLAY = {
@@ -56,15 +61,28 @@ const DISPLAY = {
   sydneyOpera: 'Sydney Opera House', neuschwanstein: 'Neuschwanstein Castle',
   stonehenge: 'Stonehenge', iguazuFalls: 'Iguazu Falls',
   tokyoSkytree: 'Tokyo Skytree', victoriaFalls: 'Victoria Falls',
+  // Wave 3
+  mountFuji: 'Mount Fuji', petra: 'Petra Treasury', niagaraFalls: 'Niagara Falls',
+  chichenItza: 'Chichen Itza Pyramid', burjKhalifa: 'Burj Khalifa', hagiaSophia: 'Hagia Sophia',
+  notreDameF: 'Notre-Dame Cathedral', forbiddenCity: 'Forbidden City', uluru: 'Uluru',
+  mtRushmore: 'Mount Rushmore', easterIsland: 'Easter Island Moai', fushimiInari: 'Fushimi Inari',
 };
 
 // Default material/aesthetic per skin rarity (used by all three modes)
 const SKIN_PROMPT = {
+  // natural = entry-tier default shown on first unlock. Translucent base
+  // material with the monument's real-world colors faintly visible
+  // through, like frosted glass / polished resin with embedded color.
+  // Per user spec: real-world colors + translucent foundation. Sits
+  // below bronze in the rarity ranking so unlocked players see this
+  // immediately without earning anything else first.
+  natural:   'monument figure rendered in its authentic real-world colors (accurate stone / metal / wood / vegetation hues, photorealistic palette, NO bronze tint), sitting on a translucent clear-glass coin base / pedestal that is fully see-through like crystal. The monument itself is solid and naturally colored; ONLY the round disc / coin base underneath the monument is translucent glass.',
   stone:     'weathered grey granite with detailed chisel marks',
   bronze:    'aged bronze with green patina accents and metallic sheen',
   silver:    'polished silver with reflective chrome highlights',
   gold:      'lustrous solid gold with intricate engraving',
   diamond:   'clear diamond with prismatic refraction and crystalline facets',
+  damascus:  'iridescent CoD Modern Warfare Damascus camo — vibrant emerald and teal base with hot pink coral and magenta wavy contour bands, deep violet outline rings, topographic flow-line pattern, glossy oil-slick rainbow chrome shimmer, bright high-contrast saturation',
   aurora:    'iridescent aurora-green holographic surface with northern-lights glow',
   celestial: 'cosmic purple nebula material with star particles',
   obsidian:  'polished black obsidian with subtle red volcanic veins',
@@ -193,14 +211,19 @@ let refinedGlbUrl;
 if (mode === 'image') {
   if (!imageArg) throw new Error('--image <url> required for image mode');
 
-  // Image-to-3D: single stage, returns a refined model
+  // Image-to-3D: single stage, returns a refined model.
+  // CRITICAL: do NOT include the monument name in texture_prompt. Meshy
+  // applies strong training priors for famous landmarks (e.g. Statue of
+  // Liberty → green-bronze patina) that override the visual material in
+  // the input image. We pass ONLY the material/skin descriptor so meshy
+  // is forced to take its color cues from the actual reference image
+  // (which we pre-rendered in the target skin color via Nano Banana).
   console.log('1/1 · Meshy image-to-3d…');
   const created = await meshyFetch(IMAGE_TO_3D, 'POST', {
     image_url: imageArg,
     enable_pbr: true,
     should_remesh: true,
-    // image-to-3d accepts an optional texture_prompt to tint the result
-    texture_prompt: `${monName}, ${material}`,
+    texture_prompt: material,
   });
   const task = await waitForTask(IMAGE_TO_3D, created.result, 'image-to-3d');
   refinedGlbUrl = task.model_urls?.glb;
@@ -211,11 +234,9 @@ if (mode === 'image') {
   // Retexture: applies a new texture to the base GLB, keeping the geometry.
   console.log('1/1 · Meshy retexture…');
   const created = await meshyFetch(RETEXTURE, 'POST', {
-    model_url:       baseUrl,
-    object_prompt:   monName,
-    style_prompt:    material,
-    enable_pbr:      true,
-    art_style:       'realistic',
+    model_url:         baseUrl,
+    text_style_prompt: `${monName}, ${material}`,
+    enable_pbr:        true,
   });
   const task = await waitForTask(RETEXTURE, created.result, 'retexture');
   refinedGlbUrl = task.model_urls?.glb;

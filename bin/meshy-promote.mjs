@@ -142,8 +142,10 @@ if (previewState.imageRef) {
 
 // ─── 2) Codemod AVAILABLE_SKINS ───────────────────────────────────────────────
 
-console.log('4/5 · Wiring AVAILABLE_SKINS in LocationClient.tsx…');
-const locPath = 'app/plan/location/LocationClient.tsx';
+// AVAILABLE_SKINS was extracted from LocationClient.tsx into globe/skins.ts
+// during the LocationClient split. Codemod targets the new location.
+console.log('4/5 · Wiring AVAILABLE_SKINS in globe/skins.ts…');
+const locPath = 'app/plan/location/globe/skins.ts';
 const src = readFileSync(locPath, 'utf8');
 
 // Find: <mk>: new Set(['stone', ...])  — allow multi-line, flexible whitespace
@@ -169,7 +171,7 @@ if (match) {
 } else {
   // Monument not in AVAILABLE_SKINS yet — add a new entry
   const insertPoint = src.indexOf('const AVAILABLE_SKINS:');
-  if (insertPoint < 0) throw new Error('Could not find AVAILABLE_SKINS in LocationClient.tsx');
+  if (insertPoint < 0) throw new Error('Could not find AVAILABLE_SKINS in globe/skins.ts');
   const openBrace = src.indexOf('{', insertPoint);
   const insertion = `\n  ${mk}: new Set(['${style}']),`;
   newSrc = src.slice(0, openBrace + 1) + insertion + src.slice(openBrace + 1);

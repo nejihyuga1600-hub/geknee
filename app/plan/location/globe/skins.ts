@@ -26,6 +26,19 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
   iguazuFalls: 'iguazu_falls',
   tokyoSkytree: 'tokyo_skytree',
   victoriaFalls: 'victoria_falls',
+  // Added with the second-wave bronze promotion (May 2026).
+  mountFuji: 'mount_fuji',
+  petra: 'petra',
+  niagaraFalls: 'niagara_falls',
+  chichenItza: 'chichen_itza',
+  burjKhalifa: 'burj_khalifa',
+  hagiaSophia: 'hagia_sophia',
+  notreDameF: 'notre_dame',
+  forbiddenCity: 'forbidden_city',
+  uluru: 'uluru',
+  mtRushmore: 'mt_rushmore',
+  easterIsland: 'easter_island',
+  fushimiInari: 'fushimi_inari',
 };
 
 // Skins actually uploaded to Vercel Blob. Requesting a skin not in this map
@@ -33,17 +46,39 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
 // it at runtime — so we gate skinPath on this whitelist to avoid the fetch.
 // Updated by bin/meshy-promote.mjs as new skins go live.
 export const AVAILABLE_SKINS: Record<string, Set<string>> = {
+  victoriaFalls: new Set(['bronze']),
+  tokyoSkytree: new Set(['bronze']),
+  iguazuFalls: new Set(['bronze']),
+  stonehenge: new Set(['bronze']),
+  neuschwanstein: new Set(['bronze']),
+  acropolis: new Set(['bronze']),
+  goldenGate: new Set(['bronze']),
+  pyramidGiza: new Set(['bronze']),
+  angkorWat: new Set(['bronze']),
   // Generated from blob inventory by bin/blob-sync-available-skins.mjs.
   // Re-run that script after uploading new GLBs.
   bigBen:         new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
   christRedeem:   new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
-  colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
-  eiffelTower:    new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
+  colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'natural']),
+  eiffelTower:    new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus', 'natural']),
   greatWall:      new Set(['bronze', 'gold', 'diamond', 'aurora', 'celestial']),
+  machuPicchu:    new Set(['bronze']),
   sagradaFamilia: new Set(['bronze', 'celestial']),
   statueLiberty:  new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
   sydneyOpera:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
   tajMahal:       new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  mountFuji:      new Set(['bronze']),
+  petra:          new Set(['bronze']),
+  niagaraFalls:   new Set(['bronze']),
+  chichenItza:    new Set(['bronze']),
+  burjKhalifa:    new Set(['bronze']),
+  hagiaSophia:    new Set(['bronze']),
+  notreDameF:     new Set(['bronze']),
+  forbiddenCity:  new Set(['bronze']),
+  uluru:          new Set(['bronze']),
+  mtRushmore:     new Set(['bronze']),
+  easterIsland:   new Set(['bronze']),
+  fushimiInari:   new Set(['bronze']),
 };
 
 // Raw lat/lon for each collectable monument. Consumed by:
@@ -88,6 +123,10 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
 // Rarity tier colors — used by the ring around collected monuments on the
 // globe and by the Google Maps Circle ring overlay in CityMapView.
 export const SKIN_RING_COLOR: Record<string, string> = {
+  // natural = entry tier (rank 1) showing the monument's real-world
+  // colors. Off-white ring so the chip is visible on the dark globe
+  // without implying any rarity bonus.
+  natural: '#e5e7eb',
   stone: '#808080',
   bronze: '#cd7f32',
   silver: '#c0c0c0',
@@ -99,7 +138,8 @@ export const SKIN_RING_COLOR: Record<string, string> = {
 };
 
 // Rarity rank — higher = rarer. Used by /u/[handle] to count "rare" collections
-// and pick the highest-tier skin for display.
+// and pick the highest-tier skin for display. natural=0 so it sorts BELOW
+// every other tier (the unlocked baseline, no rarity bonus).
 export const SKIN_RANK: Record<string, number> = {
-  stone: 1, bronze: 2, silver: 3, gold: 4, diamond: 5, aurora: 6, celestial: 7,
+  natural: 0, stone: 1, bronze: 2, silver: 3, gold: 4, diamond: 5, aurora: 6, celestial: 7,
 };
