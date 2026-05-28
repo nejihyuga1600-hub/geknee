@@ -2345,6 +2345,19 @@ function GlobeScene() {
   const [citiesOverlayTexture, setCitiesOverlayTexture] = useState<THREE.Texture | null>(null);
   const statesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const citiesOverlayMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+
+  // Belt-and-suspenders GPU-texture disposal. React state is the single
+  // owner of each texture across the half-dozen useEffect paths that build
+  // them (initial bake, IDB cache hydrate, bump-map loader, glKey remount
+  // re-bake). Disposing here on value-change AND on unmount covers every
+  // path without retrofitting cleanup into each creator. Three's dispose()
+  // is idempotent — double-dispose is a no-op, not a crash. Targets the
+  // ~256 MB earth texture + ~50 MB overlays + ~16 MB bump that otherwise
+  // linger past LocationClient unmount until the next GC cycle.
+  useEffect(() => () => { texture?.dispose(); }, [texture]);
+  useEffect(() => () => { bumpMap?.dispose(); }, [bumpMap]);
+  useEffect(() => () => { statesOverlayTexture?.dispose(); }, [statesOverlayTexture]);
+  useEffect(() => () => { citiesOverlayTexture?.dispose(); }, [citiesOverlayTexture]);
   // 0 = countries only | 1 = + states | 2 = + cities
   const [zoomLevel, setZoomLevel] = useState(0);
   const zoomLevelRef = useRef(0);
