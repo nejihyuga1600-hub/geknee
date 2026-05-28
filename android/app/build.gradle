@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// Pulls signing material from local.properties (gitignored). Loses the
+// signing config gracefully on dev machines that lack a keystore — release
+// build will fail with a clear error instead of silently using a debug key.
+def keystorePropertiesFile = rootProject.file("local.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.geknee.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +25,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystoreProperties['signing.storeFile']) {
+                storeFile file(keystoreProperties['signing.storeFile'])
+                storePassword keystoreProperties['signing.storePassword']
+                keyAlias keystoreProperties['signing.keyAlias']
+                keyPassword keystoreProperties['signing.keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystoreProperties['signing.storeFile']) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
