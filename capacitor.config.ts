@@ -65,7 +65,10 @@ const config: CapacitorConfig = {
     // 3D globe and pinch-zoom don't fight Android's default touch handling.
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: true,
+    // Off — Play Store flags release builds that ship this on. Flip to true
+    // locally when you need chrome://inspect on a connected device, then
+    // re-run `npx cap sync android`. Do not commit the `true` value.
+    webContentsDebuggingEnabled: false,
   },
 
   plugins: {
