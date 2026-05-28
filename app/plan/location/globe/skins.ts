@@ -53,7 +53,7 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   neuschwanstein: new Set(['bronze']),
   acropolis: new Set(['bronze']),
   goldenGate: new Set(['bronze']),
-  pyramidGiza: new Set(['bronze']),
+  pyramidGiza: new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
   angkorWat: new Set(['bronze']),
   // Generated from blob inventory by bin/blob-sync-available-skins.mjs.
   // Re-run that script after uploading new GLBs.
@@ -61,8 +61,8 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   christRedeem:   new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
   colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'natural']),
   eiffelTower:    new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus', 'natural']),
-  greatWall:      new Set(['bronze', 'gold', 'diamond', 'aurora', 'celestial']),
-  machuPicchu:    new Set(['bronze']),
+  greatWall:      new Set(['bronze', 'gold', 'diamond', 'aurora', 'celestial', 'silver']),
+  machuPicchu:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
   sagradaFamilia: new Set(['bronze', 'celestial']),
   statueLiberty:  new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
   sydneyOpera:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
