@@ -34,6 +34,15 @@ const nextConfig: NextConfig = {
       'node_modules/@prisma/engines/query-engine-windows*',
     ],
   },
+  async redirects() {
+    return [
+      // Legacy preference-collection route. The 2,085-line client UI in
+      // app/plan/style/page.tsx was superseded by the AtlasShell flow;
+      // nothing in the app links to it. Inbound bookmarks/share links
+      // land on the live planner instead.
+      { source: '/plan/style', destination: '/plan/location', permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;
