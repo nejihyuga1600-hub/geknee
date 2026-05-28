@@ -227,6 +227,17 @@ export default function AtlasShell() {
   }, []);
   const { data: session } = useSession();
   const [shopOpen,     setShopOpen]     = useState(false);
+  const [shopInitialMk, setShopInitialMk] = useState<string | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ mk: string }>).detail;
+      if (!d?.mk) return;
+      setShopInitialMk(d.mk);
+      setShopOpen(true);
+    };
+    window.addEventListener('geknee:open-monument-shop', h);
+    return () => window.removeEventListener('geknee:open-monument-shop', h);
+  }, []);
   const [upgradeOpen,  setUpgradeOpen]  = useState(false);
   const [tripsOpen,    setTripsOpen]    = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -693,7 +704,7 @@ export default function AtlasShell() {
           opens the panel. Saves ~150KB JS + the panel's effects/intervals
           for sessions where the user never opens it. TripSocialPanel stays
           eager because users open it almost every session. */}
-      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />}
+      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => { setShopOpen(false); setShopInitialMk(null); }} initialMk={shopInitialMk} />}
       {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
       <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />
       {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => setShopOpen(true)} onOpenUpgrade={() => setUpgradeOpen(true)} />}

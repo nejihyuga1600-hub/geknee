@@ -19,7 +19,7 @@ export function loadGoogleMaps(): Promise<void> {
     };
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places,geometry&callback=${cb}&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places,geometry,marker&callback=${cb}&loading=async`;
     script.async = true;
     script.onerror = () => {
       promise = null; // allow retry

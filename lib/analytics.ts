@@ -22,7 +22,14 @@ export type AnalyticsEvent =
   | 'pwa_install_prompted'
   | 'pwa_install_accepted'
   | 'pwa_install_dismissed'
-  | 'pwa_installed';
+  | 'pwa_installed'
+  // Globe-load canary. `globe_load_failed` fires from a watchdog when the
+  // earth texture hasn't applied within ~10s of Canvas mount — i.e. the user
+  // is staring at a blank blue sphere. `globe_load_recovered` fires if the
+  // texture lands AFTER the watchdog tripped (rare but happens on slow
+  // connections); pair the two in PostHog to compute true "stuck globe" rate.
+  | 'globe_load_failed'
+  | 'globe_load_recovered';
 
 let initialized = false;
 

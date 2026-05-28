@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Sphere, Stars, Html, useGLTF, Text, useTexture, Sparkles } from "@react-three/drei";
+import { OrbitControls, Sphere, Stars, Html, useGLTF, Text, useTexture } from "@react-three/drei";
 // EffectComposer/Bloom from @react-three/postprocessing was removed —
 // see comment near GlobeScene render. Re-add when guarded.
 import { useEffect, useRef, useState, useMemo, Component, Suspense, type ReactNode } from "react";
@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation";
 import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
 import HomeAirportBanner from "@/app/components/HomeAirportBanner";
 import { track } from "@/lib/analytics";
+import { captureError } from "@/lib/sentry";
 import { R, geo, geoPos, type SurfPos } from "./globe/geo";
 import { INFO, type LmInfo } from "./globe/info";
 import { L, LM_DENSITY } from "./globe/locations";
@@ -1659,7 +1660,10 @@ function CityLabel({ n, lat, lon, pos, orientation, fontSize, leaderTo, tier }: 
       const camFwd = camera.position.clone().normalize();
       if (labelPos.normalize().dot(camFwd) < -0.2) return;
     }
-    textGroupRef.current.scale.setScalar(Math.pow(camDist / 15, 1.4));
+    // More aggressive on the close-in side so labels don't visually dominate
+    // when the user pulls the camera in past the city-detail tier. At
+    // camDist=20 → ~1.0, camDist=12 → ~0.50, camDist=10 → ~0.39 (was 0.58).
+    textGroupRef.current.scale.setScalar(Math.pow(camDist / 20, 1.6));
     lastAppliedScaleDistRef.current = camDist;
   });
 
@@ -1817,14 +1821,15 @@ function CityLabels({ camDist }: { camDist: number }) {
     camDist > 18 ?   400_000 :
     camDist > 14 ?   100_000 :
     camDist > 12 ?    30_000 :
-    camDist > 11 ?    15_000 :
+    camDist > 11 ?     5_000 :
                        1_000;
 
-  // Fire the lazy small-cities fetch once we enter the deepest tier.
-  // cityData side is idempotent, so zoom-out / zoom-in cycles don't
-  // re-fetch.
+  // Fire the lazy small-cities fetch once we approach the deep tier. Triggering
+  // at popMin ≤ 5K (camDist ≤ 12) instead of waiting for 1K means the 9 MB
+  // dataset is in memory by the time the user finishes their zoom-in gesture,
+  // so labels populate without a visible delay.
   useEffect(() => {
-    if (popMin <= 1_000) {
+    if (popMin <= 5_000) {
       const seen = new Set<string>([
         ...CITIES.map((c) => c.n),
         ...getExtraCities().map((c) => c.n),
@@ -1848,7 +1853,7 @@ function CityLabels({ camDist }: { camDist: number }) {
         tier: 3,
         pop: c.p ?? 0,
       }));
-    const small = popMin <= 1_000
+    const small = popMin <= 5_000
       ? getSmallCities()
           .filter((c) => (c.p ?? 0) >= popMin)
           .map((c) => ({
@@ -2005,6 +2010,72 @@ function CameraZoomHandler() {
 function DampingUpdater() {
   const controls = useThree((s) => s.controls) as any;
   useFrame(() => { controls?.update(); });
+  return null;
+}
+
+// ─── Persists camera position across refresh / back-nav ──────────────────────
+// Saves the camera's spherical position (x/y/z in world units) to localStorage
+// whenever the user pauses spinning/zooming. On remount, restores it on the
+// first frame so the user lands back where they left off instead of being
+// snapped to the default [0,0,26] view. Target is always (0,0,0) on the globe
+// scene so saving the camera position alone is sufficient.
+const CAMERA_PERSIST_KEY = 'geknee:globe-camera-v1';
+function CameraPersister() {
+  const { camera } = useThree();
+  const controls = useThree((s) => s.controls) as any;
+  const restoredRef = useRef(false);
+  const lastSaveAtRef = useRef(0);
+  const lastSavedPosRef = useRef<[number, number, number]>([0, 0, 0]);
+
+  // Restore on first frame so OrbitControls is mounted and we can sync its
+  // internal spherical state via update(). Doing this in a useEffect would
+  // race with R3F's camera initialisation.
+  useFrame(() => {
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem(CAMERA_PERSIST_KEY) : null;
+        if (raw) {
+          const saved = JSON.parse(raw) as { x: number; y: number; z: number };
+          if (Number.isFinite(saved.x) && Number.isFinite(saved.y) && Number.isFinite(saved.z)) {
+            const dist = Math.hypot(saved.x, saved.y, saved.z);
+            // Clamp to OrbitControls' min/max distance so the restored point
+            // is reachable; otherwise the next update() snaps it anyway.
+            if (dist >= 10.5 && dist <= 45) {
+              camera.position.set(saved.x, saved.y, saved.z);
+              camera.lookAt(0, 0, 0);
+              controls?.update?.();
+            } else {
+              // Distance outside the live OrbitControls bounds — likely a stale
+              // entry from before a tuning change. Discard so the next save
+              // overwrites it with a valid one.
+              localStorage.removeItem(CAMERA_PERSIST_KEY);
+            }
+          } else {
+            localStorage.removeItem(CAMERA_PERSIST_KEY);
+          }
+        }
+      } catch {
+        // Corrupted JSON / no quota — clear so we don't keep hitting the
+        // same parse failure on every cold start.
+        try { localStorage.removeItem(CAMERA_PERSIST_KEY); } catch { /* ignore */ }
+      }
+    }
+
+    // Throttle saves to ~2/sec and only when the camera moved meaningfully.
+    const now = performance.now();
+    if (now - lastSaveAtRef.current < 500) return;
+    const [lx, ly, lz] = lastSavedPosRef.current;
+    const moved = Math.hypot(camera.position.x - lx, camera.position.y - ly, camera.position.z - lz);
+    if (moved < 0.05) return;
+    lastSaveAtRef.current = now;
+    lastSavedPosRef.current = [camera.position.x, camera.position.y, camera.position.z];
+    try {
+      localStorage.setItem(CAMERA_PERSIST_KEY, JSON.stringify({
+        x: camera.position.x, y: camera.position.y, z: camera.position.z,
+      }));
+    } catch { /* quota / private mode */ }
+  });
   return null;
 }
 
@@ -2512,32 +2583,35 @@ function GlobeScene() {
   }, [countries, states, terrainBitmap, bordersBitmap, terrainSettled, overlayCacheHit, gl]);
 
   // Per-frame tier-gated opacity for the two label overlays. Each tier
-  // fades in at its own camDist threshold so the user gets progressive
-  // disclosure that matches the legacy hover-label rules (GeoLabels
-  // zoomLevel ≥ 1 for states, CityLabels camDist < 22 for cities).
-  // 0.3-unit fade band before each threshold keeps the snap-on feel
-  // from the 576d712 commit (no slow ghost fades, but no instant pop
-  // either).
+  // fades in at its own upper-camDist threshold AND fades out at a lower
+  // threshold so the baked text doesn't stretch into "billboard" size when
+  // the user zooms all the way in. The mesh-based CityLabels (SDF text)
+  // take over below the lower threshold and self-scale via per-frame camDist.
   useFrame(() => {
     const d = camDistRef.current;
-    // Sharp tier snap with a 0.3-unit fade just before the threshold.
-    //   tierOpacity(d, 28)  → full at d ≤ 27.7, zero at d ≥ 28.0
-    //   tierOpacity(d, 22)  → full at d ≤ 21.7, zero at d ≥ 22.0
-    const tierOpacity = (dist: number, threshold: number) =>
-      dist >= threshold      ? 0
-      : dist <= threshold - 0.3 ? 1
-      : (threshold - dist) / 0.3;
+    // Two-sided fade window: full inside [low, high], 0.3-unit fade band at
+    // each edge so transitions feel snappy without popping.
+    const bandOpacity = (dist: number, low: number, high: number) => {
+      if (dist >= high || dist <= low - 0.3) return 0;
+      if (dist >= high - 0.3) return (high - dist) / 0.3;          // upper fade-out
+      if (dist <= low)        return (dist - (low - 0.3)) / 0.3;   // lower fade-out
+      return 1;
+    };
 
-    // States — fade in at the Country/Mid boundary (camDist 28).
+    // States overlay — visible in the Mid tier. Above camDist 28 the country
+    // tier is enough; below camDist 14 city detail dominates and the state
+    // labels start looking oversized.
     const stM = statesOverlayMaterialRef.current;
     if (stM) {
-      const o = tierOpacity(d, 28);
+      const o = bandOpacity(d, 14, 28);
       if (Math.abs(stM.opacity - o) > 0.001) stM.opacity = o;
     }
-    // Curated big cities — fade in at the Mid/Near boundary (camDist 22).
+    // Curated big-city overlay — visible in the Near tier. Below camDist 11
+    // the SDF CityLabels (mesh, zoom-scaled) carry the load and the baked
+    // text would otherwise blow up across the viewport.
     const ciM = citiesOverlayMaterialRef.current;
     if (ciM) {
-      const o = tierOpacity(d, 22);
+      const o = bandOpacity(d, 11, 22);
       if (Math.abs(ciM.opacity - o) > 0.001) ciM.opacity = o;
     }
   });
@@ -2675,8 +2749,45 @@ function GlobeScene() {
   const _yAxis  = useRef(new THREE.Vector3(0, 1, 0)).current;
   const _deltaQ = useRef(new THREE.Quaternion()).current;
 
+  // Persistence companion to CameraPersister: globe rotation lives on
+  // currentQ + globeRef.quaternion (the camera barely rotates), so saving
+  // position alone snaps the user back to a different patch of Earth on
+  // refresh. We persist the quaternion's (x,y,z,w) and restore on the first
+  // frame, then throttle re-saves to ~2 Hz when the user is interacting.
+  const qRestoredRef = useRef(false);
+  const lastQSaveAtRef = useRef(0);
+  const lastSavedQRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
+
   useFrame(({ clock, camera }, delta) => {
     if (!globeRef.current) return;
+
+    // ── Restore the user's saved spot on the first frame ───────────────────
+    // Defensive: a corrupted localStorage entry must NEVER take the globe
+    // down. Bad JSON, non-finite components, or non-unit quaternions are all
+    // routed to the catch → default identity rotation.
+    if (!qRestoredRef.current) {
+      qRestoredRef.current = true;
+      try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem('geknee:globe-rotation-v1') : null;
+        if (raw) {
+          const s = JSON.parse(raw) as { x: number; y: number; z: number; w: number };
+          if ([s.x, s.y, s.z, s.w].every(Number.isFinite)) {
+            currentQ.current.set(s.x, s.y, s.z, s.w);
+            // Normalize so a slightly-drifted saved quaternion can't introduce
+            // shear into globeRef.quaternion — Three.js silently produces a
+            // skewed matrix when fed a non-unit quaternion.
+            currentQ.current.normalize();
+            globeRef.current.quaternion.copy(currentQ.current);
+          } else {
+            localStorage.removeItem('geknee:globe-rotation-v1');
+          }
+        }
+      } catch {
+        // Corrupted JSON / no quota — clear the bad entry so we don't keep
+        // hitting the same parse failure on every cold start.
+        try { localStorage.removeItem('geknee:globe-rotation-v1'); } catch { /* ignore */ }
+      }
+    }
 
     const pending = consumeGlobeTarget();
     if (pending && !animRef.current) {
@@ -2771,6 +2882,23 @@ function GlobeScene() {
       setCamDist(rounded);
       // Publish for any chrome that wants to render a zoom badge.
       window.dispatchEvent(new CustomEvent("geknee:camdist", { detail: { camDist: rounded } }));
+    }
+
+    // ── Throttled quaternion persistence (~2 Hz, only when changed) ──────
+    const now = performance.now();
+    if (now - lastQSaveAtRef.current >= 500) {
+      const q = currentQ.current;
+      const [lx, ly, lz, lw] = lastSavedQRef.current;
+      // Smallest meaningful rotation delta: ~0.01 radian. Saves nothing when
+      // the globe is idle so we don't write to localStorage every 500ms forever.
+      const moved = Math.abs(q.x - lx) + Math.abs(q.y - ly) + Math.abs(q.z - lz) + Math.abs(q.w - lw);
+      if (moved > 0.001) {
+        lastQSaveAtRef.current = now;
+        lastSavedQRef.current = [q.x, q.y, q.z, q.w];
+        try {
+          localStorage.setItem('geknee:globe-rotation-v1', JSON.stringify({ x: q.x, y: q.y, z: q.z, w: q.w }));
+        } catch { /* quota / private mode */ }
+      }
     }
 
     // City map entry is now an explicit two-tap on the city card (Open map button)
@@ -2938,11 +3066,6 @@ function GlobeScene() {
         )}
 
 
-        {/* Sparkle burst during fly-to animation (desktop only) */}
-        {flying && !isMobile && (
-          <Sparkles count={isMobile ? 24 : 60} scale={R * 2.5} size={3} speed={1.5} color="#88bbff" opacity={0.6} />
-        )}
-
         {/* Animals removed — now unlockable via the Explorer Collection shop */}
 
         {/* Landmarks — Lm self-gates on isCollected so only unlocked monuments appear.
@@ -2988,13 +3111,117 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [upgradeOpen,   setUpgradeOpen]   = useState(false);
   const [shopOpen,      setShopOpen]      = useState(false);
-  const [cityMap, setCityMap] = useState<{ name: string; lat: number; lon: number } | null>(null);
+  const [shopInitialMk, setShopInitialMk] = useState<string | null>(null);
+  const [cityMap, setCityMap] = useState<{ name: string; lat: number; lon: number } | null>(() => {
+    // Restore the user's CityMapView on refresh so they pick up exactly where
+    // they left off (matches the globe-camera persistence). Cleared by the
+    // Return-to-globe button via setCityMap(null) below.
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('geknee:active-citymap-v1');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { name: string; lat: number; lon: number };
+      if (typeof parsed?.name === 'string' && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lon)) {
+        return parsed;
+      }
+    } catch { /* corrupted JSON — fall through to default null */ }
+    return null;
+  });
+  // Mirror cityMap → localStorage so refresh restores it. Cleared on close.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (cityMap) {
+        localStorage.setItem('geknee:active-citymap-v1', JSON.stringify(cityMap));
+      } else {
+        localStorage.removeItem('geknee:active-citymap-v1');
+      }
+    } catch { /* quota / private mode */ }
+  }, [cityMap]);
   const [collectedMonuments, setCollectedMonumentsState] = useState<{ monumentId: string; skin: string; active: boolean }[]>([]);
   const [notifUnread,   setNotifUnread]   = useState(0);
   const [globeReady,    setGlobeReady]    = useState(false);
   // Bumped to force a Canvas remount when WebGL context is lost (Safari tab
   // switch, GPU pressure, dev HMR). Without this, the canvas stays blank.
   const [glKey, setGlKey] = useState(0);
+  // Watchdog: if the earth texture hasn't applied within the timeout below,
+  // assume something in the load pipeline is wedged (failed JSON fetch, blocked
+  // CDN, dropped WebGL context with no recovery) and flip this true. The blue
+  // sphere stays visible but the loading-overlay swaps to a "globe didn't
+  // load" panel with a one-click reset. Mirrors the chromeless gate above.
+  const [globeStuck, setGlobeStuck] = useState(false);
+  const stuckFiredRef = useRef(false);
+
+  // ── Escape hatch: window.__geknee.resetGlobe() ─────────────────────────────
+  // Clears every persisted view-state key and forces a fresh Canvas mount.
+  // Use this when (a) the globe is stuck on the static backdrop, (b) a stale
+  // 2D map is hijacking the surface after refresh, or (c) we ship a schema
+  // change to one of the persistence keys. Documented in CLAUDE.md so future
+  // sessions know about it without grepping.
+  const resetGlobe = () => {
+    const PERSIST_KEYS = [
+      'geknee:globe-camera-v1',
+      'geknee:globe-rotation-v1',
+      'geknee:active-citymap-v1',
+    ];
+    for (const k of PERSIST_KEYS) {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+    }
+    setCityMap(null);
+    setGlobeStuck(false);
+    stuckFiredRef.current = false;
+    setGlKey((k) => k + 1);
+    // eslint-disable-next-line no-console
+    console.info('[geknee] globe state reset — Canvas remounted, persistence cleared.');
+  };
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as { __geknee?: { resetGlobe: () => void } };
+    w.__geknee = { resetGlobe };
+    return () => { delete w.__geknee; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Watchdog: detect a stuck globe load ─────────────────────────────────
+  // Runs on each Canvas mount (keyed by glKey so a reset re-arms it). If
+  // globeReady doesn't fire within 10s — i.e. createEarthTexture never
+  // resolved — we send telemetry and surface the retry UI. If `globeReady`
+  // lands AFTER we tripped (slow connection, recovered context), we also
+  // emit a `globe_load_recovered` event so we can separate "users who
+  // recovered on their own" from "users actually stuck."
+  useEffect(() => {
+    if (chromeless) return;
+    if (globeReady) return;
+    const WATCHDOG_MS = 10_000;
+    const t = setTimeout(() => {
+      if (stuckFiredRef.current) return;
+      stuckFiredRef.current = true;
+      setGlobeStuck(true);
+      try {
+        track('globe_load_failed', {
+          glKey,
+          path: typeof window !== 'undefined' ? window.location.pathname : '',
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        });
+        captureError(new Error('Globe load watchdog tripped'), {
+          glKey,
+          // No PII — just the env knobs we need to triage.
+          isMobile,
+          isLowEnd,
+        });
+      } catch { /* never let telemetry break the page */ }
+    }, WATCHDOG_MS);
+    return () => clearTimeout(t);
+  }, [glKey, globeReady, chromeless]);
+  // Pair: if the texture eventually lands after we tripped, log the recovery
+  // so we can tell stuck-permanently apart from slow-then-recovered.
+  useEffect(() => {
+    if (globeReady && stuckFiredRef.current) {
+      try { track('globe_load_recovered', { glKey }); } catch { /* ignore */ }
+      stuckFiredRef.current = false;
+      setGlobeStuck(false);
+    }
+  }, [globeReady, glKey]);
 
   // Pause the R3F render loop while the app is backgrounded. On Capacitor
   // (iOS/Android), useFrame ticking in the background burns battery AND keeps
@@ -3025,6 +3252,26 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
     };
   }, []);
 
+  // ── Pause globe rendering when CityMapView covers the screen ────────────
+  // Safari Mac was killing the tab with "this webpage was reloaded because
+  // it was using significant memory" — the 3D globe + 8K earth texture +
+  // Google Maps tiles + AdvancedMarker DOM trees + R3F's useFrame loop
+  // running at 60fps under a fully-occluding 2D map blew past Safari's
+  // budget. While the 2D map is open, the globe is 100% covered (zIndex
+  // 1000 portal) so there's nothing to render — pause its frame loop
+  // entirely. Mid-loop GLB downloads / texture bakes will resume on close.
+  const cityMapOpenForPause = cityMap !== null;
+  useEffect(() => {
+    if (cityMapOpenForPause) setRenderPaused(true);
+    // Don't auto-unpause on CityMap close — the visibilitychange listener
+    // above owns the resume path so we don't fight it. Manually unpause
+    // when CityMap closes only if the document is visible (i.e. user is
+    // back on the globe, not just minimised the window).
+    else if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      setRenderPaused(false);
+    }
+  }, [cityMapOpenForPause]);
+
   // M1.2 — Memory-pressure proxy. iOS doesn't expose UIApplication memory
   // warnings to web/Capacitor, so we use sustained background time as a
   // proxy: 30s of renderPaused → dispatch geknee:mem-pressure. Listeners
@@ -3054,6 +3301,20 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
     };
     window.addEventListener('geknee:opencitymap', h);
     return () => window.removeEventListener('geknee:opencitymap', h);
+  }, []);
+
+  // Globe-tap on a collected monument opens the collection scoped to that mk,
+  // so the user can review the achievement and switch skins without hunting
+  // through the grid.
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ mk: string }>).detail;
+      if (!d?.mk) return;
+      setShopInitialMk(d.mk);
+      setShopOpen(true);
+    };
+    window.addEventListener('geknee:open-monument-shop', h);
+    return () => window.removeEventListener('geknee:open-monument-shop', h);
   }, []);
   const router = useRouter();
   const { data: session } = useSession();
@@ -3230,6 +3491,25 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
             e.preventDefault();
             setGlobeReady(false);
             window.dispatchEvent(new Event("geknee:webgl-fallback"));
+            // Desktop: try to recover. Listen once for `webglcontextrestored`;
+            // if it fires within 4s we bump glKey to remount and rebuild the
+            // scene against the fresh context. iOS Safari is skipped because
+            // back-to-back contexts under memory pressure crash the tab (the
+            // original reason this handler was conservative).
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            if (isIOS) return;
+            let restored = false;
+            const onRestored = () => {
+              restored = true;
+              setGlKey((k) => k + 1);
+            };
+            gl.domElement.addEventListener("webglcontextrestored", onRestored, { once: true });
+            // Fallback: if the browser doesn't fire `restored` (Turbopack HMR
+            // sometimes drops the event), force a remount after 4s so the user
+            // isn't stuck on the static backdrop.
+            setTimeout(() => {
+              if (!restored) setGlKey((k) => k + 1);
+            }, 4000);
           }, false);
         }}
       >
@@ -3246,6 +3526,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           touches={{ ONE: 0, TWO: 2 }}
         />
         <DampingUpdater />
+        <CameraPersister />
         <DprController />
         <GlobeScene />
         {/* @react-three/postprocessing's EffectComposer was crashing the
@@ -3259,23 +3540,59 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
       </Canvas>
 
       {/* Globe loading overlay. Suppressed in chromeless mode so the host
-          surface (AtlasShell) stays visible while the globe builds its texture. */}
+          surface (AtlasShell) stays visible while the globe builds its texture.
+          When the watchdog trips (globeStuck), the spinner copy swaps to a
+          retry panel so users aren't staring at "Loading Globe…" forever. */}
       {!chromeless && !globeReady && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 50,
           background: "rgba(4,5,16,0.92)",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 16,
+          gap: 16, padding: 24,
         }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: "50%",
-            border: "3px solid rgba(167, 139, 250,0.25)",
-            borderTopColor: "#a78bfa",
-            animation: "spin 0.9s linear infinite",
-          }} />
-          <span style={{ color: "#818cf8", fontSize: 13, fontWeight: 600, letterSpacing: "0.08em" }}>
-            Loading Globe…
-          </span>
+          {!globeStuck ? (
+            <>
+              <div style={{
+                width: 48, height: 48, borderRadius: "50%",
+                border: "3px solid rgba(167, 139, 250,0.25)",
+                borderTopColor: "#a78bfa",
+                animation: "spin 0.9s linear infinite",
+              }} />
+              <span style={{ color: "#818cf8", fontSize: 13, fontWeight: 600, letterSpacing: "0.08em" }}>
+                Loading Globe…
+              </span>
+            </>
+          ) : (
+            <div style={{
+              maxWidth: 420, textAlign: "center",
+              background: "rgba(13,13,36,0.85)",
+              border: "1px solid rgba(167,139,250,0.35)",
+              borderRadius: 14, padding: "20px 22px",
+              fontFamily: "var(--font-ui), Inter, system-ui, sans-serif",
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+                Globe didn&apos;t load
+              </div>
+              <div style={{ fontSize: 13, color: "#c0bce0", lineHeight: 1.5, marginBottom: 16 }}>
+                The earth texture took longer than 10&nbsp;seconds. Most often this means a
+                cached view got corrupted or a network request stalled. Resetting the saved
+                state and rebuilding the canvas usually fixes it.
+              </div>
+              <button
+                type="button"
+                onClick={resetGlobe}
+                style={{
+                  background: "#a78bfa", border: "none",
+                  color: "#0d0d24", fontWeight: 700, fontSize: 13,
+                  padding: "10px 18px", borderRadius: 10,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >Reset and reload the globe</button>
+              <div style={{ marginTop: 10, fontSize: 11, color: "#7a78a0" }}>
+                Or run <code style={{ color: "#a78bfa" }}>window.__geknee.resetGlobe()</code> from DevTools.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -3466,7 +3783,7 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           stays eager because users open it almost every session. */}
       {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
       <TripSocialPanel open={panelOpen} onClose={() => setPanelOpen(false)} currentLocation={location} />
-      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => setShopOpen(false)} />}
+      {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => { setShopOpen(false); setShopInitialMk(null); }} initialMk={shopInitialMk} />}
       {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
       {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
@@ -3507,7 +3824,12 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
             return out;
           })()}
           onClose={() => {
-            zoomCamera(20);
+            // Orient the globe to the same city the user was zoomed into,
+            // so closing the 2D map feels like a continuous pull-back rather
+            // than a jump to a random patch of Earth.
+            const cm = cityMap;
+            if (cm) flyToGlobe(cm.lat, cm.lon, () => zoomCamera(20));
+            else zoomCamera(20);
             setCityMap(null);
           }}
         />,

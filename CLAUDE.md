@@ -46,6 +46,60 @@ Claude will read `PLAN.md`, implement all `[APPROVED]` items, and commit the cha
 - AI: Anthropic SDK at `app/api/chat/`
 - Mobile: `touch-action: none` on canvas, `100svh` for Safari
 
+## Globe state persistence
+
+Three localStorage keys carry the user's view across refresh/back-nav. All three are read defensively (try/catch, bounds checks, quaternion normalize) and bad entries self-clear on the next mount. **Bump the `vN` suffix when you change the payload shape** — the readers do not migrate.
+
+| Key | Owner | Shape |
+|---|---|---|
+| `geknee:globe-camera-v1` | `CameraPersister` | `{x,y,z}` camera position, clamped to OrbitControls min/maxDistance |
+| `geknee:globe-rotation-v1` | `GlobeScene` quaternion useFrame | `{x,y,z,w}` globe rotation, normalized before applying |
+| `geknee:active-citymap-v1` | `LocationClient.cityMap` state | `{name,lat,lon}` — restored on cold start, removed on Return-to-globe |
+
+## Recovery
+
+- **Stuck globe / static backdrop / weird saved view** → call `window.__geknee.resetGlobe()` in DevTools. Clears all three persistence keys, drops any active 2D map, and bumps the Canvas key so the scene rebuilds from defaults. Wired in `LocationClient.tsx`.
+- **WebGL context loss** is handled in two paths: iOS gets the safe fallback (static backdrop, no remount — prior iOS-OOM crash loop) and desktop attempts recovery via `webglcontextrestored` + a 4s timeout fallback to bump `glKey`.
+
+## Memory budget — keep Safari from auto-reloading
+
+Safari (Mac + iOS) reloads tabs that exceed its memory budget with the banner *"This webpage was reloaded because it was using significant memory."* The geknee planner is right at the edge because it stacks:
+
+- A WebGL 3D globe with an 8K earth texture (~256 MB GPU)
+- A second WebGL canvas (Google Maps via CityMapView)
+- AdvancedMarkerElement DOM trees (SVG + gradient + SMIL nodes)
+- The persistence layer (camera, rotation, draft pins, global pin list)
+
+**Active mitigations (do not undo without measuring):**
+
+1. **Globe frame loop pauses when CityMapView is mounted.** `LocationClient.tsx` flips `renderPaused=true` while `cityMap !== null` so R3F's `useFrame` stops ticking under the fully-occluding 2D map. Resume only fires on CityMap close AND `document.visibilityState === 'visible'` to avoid fighting the existing visibilitychange handler.
+2. **On-map marker cap of 50.** `CityMapView.dropPin` truncates `droppedMarkersRef` once it exceeds 50; older drops are removed from the map but stay in `geknee:pin-draft:<city>` localStorage for the trip-planner cold-load path.
+3. **Global pin list cap of 200.** `geknee:pins-all` is FIFO-trimmed at 200 entries (was 500). The trip-planner radius lookup only needs recent pins.
+4. **Texture cap on mobile.** `createEarthTexture` uses 4096 px on mobile (vs 8192 on desktop) per the existing logic in `LocationClient.tsx`.
+
+**Signals you broke the budget:**
+
+- Safari banner: "was using significant memory."
+- `THREE.WebGLRenderer: Context Lost.` in the dev log paired with the `geknee:webgl-fallback` event.
+- `globe_load_failed` PostHog event spike.
+
+When debugging, prefer Activity Monitor (or Web Inspector → Timelines → Memory) over guessing — the 8K texture is the single biggest consumer and easy to mistake for something subtle.
+
+## Globe load canary (prod)
+
+A 10s watchdog in `LocationClient.tsx` flags users whose earth texture never resolved — typically a stalled JSON fetch, blocked CDN asset, or a WebGL context that died without firing `restored`. The watchdog:
+
+1. Fires a PostHog `globe_load_failed` event with `{ glKey, path, userAgent }`.
+2. Sends the same incident to Sentry via `captureError` with `{ glKey, isMobile, isLowEnd }` for grouping.
+3. Swaps the in-page loading spinner for a retry panel that calls `resetGlobe()` in one click.
+4. If the texture eventually arrives, fires `globe_load_recovered` so you can compute true "stuck globe" rate as `failed - recovered`.
+
+**Monitoring queries:**
+
+- PostHog → Insights → `globe_load_failed` count per day; expected baseline is single-digit per 1k page views. Spike = ship-broke or CDN regression.
+- Sentry → search `Globe load watchdog tripped` (groups by error message). Use the `glKey` extra to see whether resets clustered around the same Canvas mount.
+- Pair the two events: `(failed - recovered) / pageviews` is the "user stayed stuck" rate. Alert if it exceeds 0.5% over a rolling hour.
+
 ## Observability MCPs — use these before guessing at production bugs
 
 Both are installed in Claude Code's MCP config. They cover different halves of the triage story:

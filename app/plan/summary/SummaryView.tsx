@@ -422,6 +422,101 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
       setBaselineBookmarkIds([]);
     }
   }, [bookmarksKey, draftKey, baselineKey]);
+  // Geographic-radius pin handoff: pins dropped in ANY city within ~50 km of
+  // this trip's destination flow into the planner. This is the "nearby city"
+  // path — exact-name match is still handled by the per-city draftKey scan
+  // above, so this only loosens the rule, never tightens it.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !location) return;
+    let cancelled = false;
+    const RADIUS_KM = 50;
+    // Equirectangular approximation — fine at <100 km scale and ~100×
+    // cheaper than great-circle Haversine. Plenty accurate for "within
+    // the same trip area."
+    const distKm = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+      const x = (b.lon - a.lon) * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+      const y = b.lat - a.lat;
+      return Math.sqrt(x * x + y * y) * 111.32; // 1° latitude ≈ 111.32 km
+    };
+    (async () => {
+      try {
+        const res = await fetch(`/api/geocode?address=${encodeURIComponent(location)}`);
+        if (!res.ok || cancelled) return;
+        const tripCoords = await res.json() as { lat: number; lng: number } | null;
+        if (!tripCoords || cancelled) return;
+        const raw = window.localStorage.getItem('geknee:pins-all');
+        if (!raw) return;
+        type GlobalPin = { lat: number; lon: number; label?: string; addedAt: number; city: string };
+        const pins = JSON.parse(raw) as GlobalPin[];
+        const tripPoint = { lat: tripCoords.lat, lon: tripCoords.lng };
+        const nearby = pins.filter(p => distKm(tripPoint, { lat: p.lat, lon: p.lon }) <= RADIUS_KM);
+        if (nearby.length === 0 || cancelled) return;
+        setBookmarks(prev => {
+          const seen = new Set(prev.map(b => b.id));
+          const adds: Bookmark[] = [];
+          for (const p of nearby) {
+            const id = `pin-draft:${p.lat.toFixed(5)}:${p.lon.toFixed(5)}`;
+            if (seen.has(id)) continue;
+            adds.push({
+              id,
+              name: p.label || 'Pinned location',
+              coords: [p.lon, p.lat],
+              category: 'other',
+            });
+          }
+          return adds.length ? prev.concat(adds) : prev;
+        });
+      } catch { /* network / parse error — exact-city handoff still works */ }
+    })();
+    return () => { cancelled = true; };
+  }, [location]);
+
+  // Hot-import pin drops from a live CityMapView in another route/window.
+  // Cold-load path is the localStorage scan above; this just covers the case
+  // where the planner is already mounted when the user drops a pin in a city
+  // that exactly matches OR is geographically near the trip destination.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    let cachedTripCoords: { lat: number; lng: number } | null = null;
+    const RADIUS_KM = 50;
+    const distKm = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+      const x = (b.lon - a.lon) * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+      const y = b.lat - a.lat;
+      return Math.sqrt(x * x + y * y) * 111.32;
+    };
+    const ensureTripCoords = async () => {
+      if (cachedTripCoords || !location) return cachedTripCoords;
+      try {
+        const res = await fetch(`/api/geocode?address=${encodeURIComponent(location)}`);
+        if (!res.ok || cancelled) return null;
+        cachedTripCoords = await res.json() as { lat: number; lng: number } | null;
+        return cachedTripCoords;
+      } catch { return null; }
+    };
+    const onPinAdded = async (e: Event) => {
+      const d = (e as CustomEvent<{ city: string; lat: number; lon: number; label?: string }>).detail;
+      if (!d) return;
+      // Fast path: exact city match (no geocode needed).
+      const exactMatch = (location || '').toLowerCase() === d.city.toLowerCase();
+      let withinRadius = false;
+      if (!exactMatch) {
+        const tc = await ensureTripCoords();
+        if (!tc || cancelled) return;
+        withinRadius = distKm({ lat: tc.lat, lon: tc.lng }, { lat: d.lat, lon: d.lon }) <= RADIUS_KM;
+      }
+      if (!exactMatch && !withinRadius) return;
+      const id = `pin-draft:${d.lat.toFixed(5)}:${d.lon.toFixed(5)}`;
+      setBookmarks(prev => prev.some(b => b.id === id) ? prev : prev.concat([{
+        id,
+        name: d.label || 'Pinned location',
+        coords: [d.lon, d.lat],
+        category: 'other',
+      }]));
+    };
+    window.addEventListener('geknee:pin-added', onPinAdded);
+    return () => { cancelled = true; window.removeEventListener('geknee:pin-added', onPinAdded); };
+  }, [location]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (hydratedKeyRef.current !== bookmarksKey) return;

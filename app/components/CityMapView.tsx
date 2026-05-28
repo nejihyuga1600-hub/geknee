@@ -46,6 +46,16 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
   const unmountedRef = useRef(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monumentCirclesRef = useRef<google.maps.Circle[]>([]);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Inline toast confirming a pin was saved to the trip handoff. Cleared
+  // ~2.4s after the latest drop so consecutive taps just bump the message.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function flashToast(message: string) {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2400);
+  }
   // M1 — session token: reused across autocomplete→fetchFields pairs to collapse
   // per-request SKU charges into one session SKU charge (~$970/mo savings at 6k trips/mo).
   const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
@@ -104,6 +114,27 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     const round = (n: number) => Math.round(n * 1e5) / 1e5;
     if (cur.some(p => round(p.lat) === round(pin.lat) && round(p.lon) === round(pin.lon))) return;
     writeDraft([...cur, pin]);
+
+    // Also append to the global pin list so a trip planned for a *nearby*
+    // city (within the radius SummaryView applies) can still surface this
+    // pin. Per-city localStorage above stays the canonical store for the
+    // exact-city handoff; this is purely the geographic-radius escape hatch.
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('geknee:pins-all');
+      type GlobalPin = PinDraft & { city: string };
+      const list = raw ? (JSON.parse(raw) as GlobalPin[]) : [];
+      if (list.some(p => round(p.lat) === round(pin.lat) && round(p.lon) === round(pin.lon))) return;
+      const next = list.concat([{ ...pin, city: name }]);
+      // Cap at the most recent 500 to keep the entry under the 5 MB
+      // localStorage budget — older pins age out FIFO.
+      // Halved from 500 → 200 entries. The trip-planner geographic-radius
+      // lookup only needs recent pins (and the user can always re-add).
+      // Keeping this list bounded matters because it's restored to memory
+      // on every CityMapView mount on every city visit.
+      const trimmed = next.length > 200 ? next.slice(next.length - 200) : next;
+      localStorage.setItem('geknee:pins-all', JSON.stringify(trimmed));
+    } catch { /* quota / private mode — per-city handoff still works */ }
   }
   function removeDraft(pinLat: number, pinLon: number) {
     const round = (n: number) => Math.round(n * 1e5) / 1e5;
@@ -178,11 +209,32 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         pm.remove();
         droppedMarkersRef.current = droppedMarkersRef.current.filter(m => m !== pm);
         removeDraft(pinLat, pinLng);
+        flashToast('Pin removed from trip');
       },
     });
     droppedMarkersRef.current.push(pm);
+    // Cap the on-map marker count to keep Safari memory under control.
+    // Each AdvancedMarkerElement carries an SVG + gradient + 2 SMIL animate
+    // nodes — at 100+ pins on-screen Safari's tab gets aggressive about
+    // reclaiming memory and reloads the page. 50 is plenty for a single
+    // city's trip plan; older drops fall off but stay in localStorage so
+    // they re-import for the trip planner via the geographic-radius path.
+    const MAX_ON_MAP = 50;
+    if (droppedMarkersRef.current.length > MAX_ON_MAP) {
+      const toRemove = droppedMarkersRef.current.splice(0, droppedMarkersRef.current.length - MAX_ON_MAP);
+      for (const m of toRemove) m.remove();
+    }
     if (!opts?.skipPersist) {
       appendDraft({ lat: pinLat, lon: pinLng, label, addedAt: Date.now() });
+      flashToast(label ? `"${label}" saved to ${name} trip` : `Pin saved to ${name} trip`);
+      // Broadcast for any live trip planner mounted in another route/window
+      // so it can hot-import this pin without waiting for a route remount.
+      // SummaryView's localStorage scan still handles the cold-load path.
+      try {
+        window.dispatchEvent(new CustomEvent('geknee:pin-added', {
+          detail: { city: name, lat: pinLat, lon: pinLng, label, addedAt: Date.now() },
+        }));
+      } catch { /* SSR-safe; window may be undefined in edge cases */ }
     }
   }
 
@@ -235,6 +287,14 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
     if (!MAP_ID || MAP_ID === 'DEMO_MAP_ID') {
       console.warn('[CityMapView] NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID not set — using DEMO_MAP_ID.');
     }
+    // CRITICAL: reset unmountedRef on each mount. React StrictMode (dev) mounts
+    // → cleans up → remounts the same useRef object, so without this line the
+    // ref stays `true` forever after the first StrictMode cleanup and EVERY
+    // POI click silently short-circuits at the `if (unmountedRef.current)`
+    // guard below. The async Place.fetchFields path was the user-visible
+    // symptom: clicking a green POI did nothing because the handler bailed
+    // before reaching dropPin.
+    unmountedRef.current = false;
 
     let map: google.maps.Map;
     let clickListener: google.maps.MapsEventListener;
@@ -253,6 +313,12 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
           // 'greedy' lets single-finger touch drag pan the map (instead of
           // scrolling the page), matching the prior Mapbox touch-action:none parity.
           gestureHandling: 'greedy',
+          // POIs ARE clickable so we can capture their placeId + name, then
+          // suppress Google's default info bubble via e.stop() in the click
+          // listener below and drop our own purple pin at that exact spot.
+          // The "claim" animation on the purple pin gives the visual sense
+          // of converting Google's green POI label into the user's pin.
+          clickableIcons: true,
           zoomControl: true,
           zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
           fullscreenControl: false,
@@ -261,6 +327,21 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         });
         mapRef.current = map;
 
+        // Google Maps caches its initial container size and doesn't always
+        // reflow on viewport changes (rotate, devtools open, sheet expand).
+        // Observe the container and trigger a resize so tiles re-fill and
+        // controls stay aligned after every layout change.
+        if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+          const ro = new ResizeObserver(() => {
+            if (!mapRef.current) return;
+            const c = mapRef.current.getCenter();
+            google.maps.event.trigger(mapRef.current, 'resize');
+            if (c) mapRef.current.setCenter(c);
+          });
+          ro.observe(containerRef.current);
+          resizeObserverRef.current = ro;
+        }
+
         // Places API (New) needs no service object — calls are static methods / instance methods.
 
         zoomListener = map.addListener('zoom_changed', () => {
@@ -268,8 +349,34 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
           if (z !== undefined && z < RETURN_TO_GLOBE_ZOOM) onCloseRef.current();
         });
 
-        clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+        clickListener = map.addListener('click', (e: google.maps.MapMouseEvent | google.maps.IconMouseEvent) => {
           if (!e.latLng) return;
+          // POI clicks expose placeId on IconMouseEvent. Stop the default
+          // Google infowindow so our purple pin "claims" the POI instead.
+          const placeId = (e as google.maps.IconMouseEvent).placeId;
+          if (placeId) {
+            (e as google.maps.IconMouseEvent).stop?.();
+            // Resolve the POI's display name (free under Basic field mask).
+            // Reuses the same session token so autocomplete + this resolution
+            // collapse into one SKU billing event.
+            (async () => {
+              try {
+                if (!sessionTokenRef.current) makeNewSession();
+                const place = new google.maps.places.Place({ id: placeId });
+                await place.fetchFields({ fields: ['displayName', 'location'] });
+                if (unmountedRef.current) return;
+                const loc = place.location as google.maps.LatLng | null;
+                const lng = loc?.lng() ?? e.latLng!.lng();
+                const latitude = loc?.lat() ?? e.latLng!.lat();
+                const name = (place.displayName as string | undefined) ?? undefined;
+                dropPin(lng, latitude, name);
+              } catch {
+                // Fall back to the raw click location if the lookup fails.
+                dropPin(e.latLng!.lng(), e.latLng!.lat());
+              }
+            })();
+            return;
+          }
           dropPin(e.latLng.lng(), e.latLng.lat());
         });
 
@@ -289,6 +396,11 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       cancelled = true;
       unmountedRef.current = true;
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       if (clickListener) google.maps.event.removeListener(clickListener);
       if (zoomListener) google.maps.event.removeListener(zoomListener);
       droppedMarkersRef.current.forEach(m => m.remove());
@@ -307,8 +419,29 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       background: '#060816',
       animation: 'mapFadeIn 0.3s ease-out',
     }}>
-      <style>{`@keyframes mapFadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
+      <style>{`@keyframes mapFadeIn { from { opacity: 0 } to { opacity: 1 } } @keyframes geknee-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute', bottom: 32, left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(167,139,250,0.95)',
+            color: '#fff', fontFamily: 'var(--font-ui), Inter, system-ui, sans-serif',
+            fontSize: 13, fontWeight: 600,
+            padding: '10px 18px', borderRadius: 12,
+            border: '1px solid rgba(255,255,255,0.2)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+            animation: 'geknee-toast-in 0.18s ease-out',
+            pointerEvents: 'none', zIndex: 5,
+            maxWidth: 'calc(100vw - 48px)', whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >{toast}</div>
+      )}
 
       {mapsError && (
         <div style={{
@@ -326,13 +459,21 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
       )}
 
       <div style={{
-        position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)',
+        // Anchored to the top-right so it never collides with the search bar
+        // (which can grow to nearly the full viewport width on narrow screens).
+        // The city name truncates instead of pushing the close button off-screen.
+        position: 'absolute', top: 18, right: 18,
         background: 'rgba(6,8,22,0.85)', border: '1px solid rgba(100,210,255,0.4)',
         WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)', borderRadius: 10,
         color: '#fff', fontSize: 13, fontWeight: 700,
         padding: '8px 8px 8px 16px', display: 'flex', gap: 10, alignItems: 'center',
+        maxWidth: 'calc(100vw - 36px)', minWidth: 0,
       }}>
-        <span style={{ pointerEvents: 'none' }}>{name}</span>
+        <span style={{
+          pointerEvents: 'none',
+          minWidth: 0, maxWidth: 180,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{name}</span>
         <button
           type="button"
           onClick={() => onCloseRef.current()}
