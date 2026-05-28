@@ -359,6 +359,12 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   const [panelTab, setPanelTab] = useState<'pins' | 'recs'>('pins');
   const [optimizingItinerary, setOptimizingItinerary] = useState(false);
   const [lastOptimized, setLastOptimized] = useState<Date | null>(null);
+  // Mobile static-first gate for the itinerary-tab map. Saved trips show a
+  // /api/og-trip-map thumbnail by default on phones (where Safari is most
+  // likely to OOM); the live UnifiedTripMap mounts only after the user
+  // taps. Desktop always renders live. Resets when tripId changes.
+  const [mapInteractive, setMapInteractive] = useState(false);
+  useEffect(() => { setMapInteractive(false); }, [savedTripId]);
   const mapControlRef = useRef<{ panTo: (coords: [number, number]) => void; openPlace: (placeId: string, coords: [number, number]) => void } | null>(null);
 
   // Persist pins across refresh, keyed by destination so each trip has its
@@ -2450,25 +2456,60 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                     height: isMobile ? 'auto' : 'calc(100svh - 88px)',
                   }}
                 >
-                  <UnifiedTripMap
-                    sections={sections}
-                    location={location}
-                    sticky={false}
-                    height={isMobile ? 320 : undefined}
-                    fillHeight={!isMobile}
-                    bookmarks={bookmarks}
-                    onAddBookmark={handlePinFromMap}
-                    onRemoveBookmark={(id) => {
-                      setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
-                      setPendingBookmarkIds((prev) => {
-                        if (!prev.has(id)) return prev;
-                        const next = new Set(prev); next.delete(id); return next;
-                      });
-                    }}
-                    pinChangeCount={pinChangeCount}
-                    onRegenerate={requestGeneration}
-                    tripId={savedTripId ?? undefined}
-                  />
+                  {isMobile && savedTripId && !mapInteractive ? (
+                    <button
+                      type="button"
+                      onClick={() => setMapInteractive(true)}
+                      aria-label="Load interactive map"
+                      style={{
+                        position: 'relative', display: 'block', width: '100%', height: 320,
+                        padding: 0, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14,
+                        overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)',
+                      }}
+                    >
+                      <img
+                        src={`/api/og-trip-map/${savedTripId}`}
+                        alt="Trip map preview"
+                        loading="lazy"
+                        decoding="async"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 45%)',
+                        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                        padding: 16, pointerEvents: 'none',
+                      }}>
+                        <span style={{
+                          background: 'rgba(167,139,250,0.95)', color: '#0b0b0f',
+                          padding: '8px 16px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+                          letterSpacing: 0.3, textTransform: 'uppercase',
+                        }}>
+                          Tap to interact
+                        </span>
+                      </div>
+                    </button>
+                  ) : (
+                    <UnifiedTripMap
+                      sections={sections}
+                      location={location}
+                      sticky={false}
+                      height={isMobile ? 320 : undefined}
+                      fillHeight={!isMobile}
+                      bookmarks={bookmarks}
+                      onAddBookmark={handlePinFromMap}
+                      onRemoveBookmark={(id) => {
+                        setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                        setPendingBookmarkIds((prev) => {
+                          if (!prev.has(id)) return prev;
+                          const next = new Set(prev); next.delete(id); return next;
+                        });
+                      }}
+                      pinChangeCount={pinChangeCount}
+                      onRegenerate={requestGeneration}
+                      tripId={savedTripId ?? undefined}
+                    />
+                  )}
                 </div>
               )}
             </div>
