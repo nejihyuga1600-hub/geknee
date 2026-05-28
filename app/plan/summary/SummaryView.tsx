@@ -40,13 +40,6 @@ import { Sparkle } from '@/lib/icons';
 // Lazy-loaded so the maps SDK doesn't ship until the itinerary tab opens.
 const UnifiedTripMap = dynamic(() => import('./UnifiedTripMap'), { ssr: false });
 
-const PlanningMapDynamic = dynamic(() => import('./PlanningMap'), {
-  ssr: false,
-  loading: () => (
-    <div style={{ height: 460, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }} />
-  ),
-});
-
 // ── Types ──────────────────────────────────────────────────────────────────────
 // `Section` and `ActivityGroup` now live in lib/itinerary-parse.ts so the
 // Live trip surface can reuse the same parser without pulling the summary
