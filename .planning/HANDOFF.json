@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-28T22:19:28.370Z",
+  "context": "default",
+  "phase": null,
+  "phase_name": "GeKnee Instagram ad pipeline — build + first daily post",
+  "phase_dir": ".planning",
+  "plan": null,
+  "task": 8,
+  "total_tasks": 10,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Install claude-ads + competitive-ads-extractor skill packs into ~/geknee/.agents/skills/", "status": "done"},
+    {"id": 2, "name": "Generate 8 Instagram-ready static ads + 6 audience-targeted ads in ~/geknee/ad-assets/instagram/", "status": "done"},
+    {"id": 3, "name": "Capture real geknee app screenshots (globe + planner) + composite 2 real-app ads", "status": "done"},
+    {"id": 4, "name": "Build geknee-meta MCP server (Instagram Graph API + Meta Marketing API) at ~/geknee/.agents/mcp-meta/", "status": "done"},
+    {"id": 5, "name": "Build ig-poster browser-use pipeline at ~/geknee/.agents/ig-poster/ (post.py + update-profile-pic.py + launch-chrome.sh)", "status": "done"},
+    {"id": 6, "name": "Create /geknee-daily-ad skill at ~/geknee/.claude/skills/geknee-daily-ad/SKILL.md", "status": "done"},
+    {"id": 7, "name": "Write 18 production captions (3 variants x 6 audiences) at ~/geknee/ad-assets/captions.md", "status": "done"},
+    {"id": 8, "name": "Post first daily ad (A1 Overwhelmed Planner) to @gekneetravel", "status": "in_progress", "progress": "Image generated (daily-2026-05-28-A1.jpg, scored 10/10). Caption written. CDP Chrome launched at ~/.gekneetravel-chrome-data profile. User logged into IG manually, opened Create-new-post dialog. AppleScript fired to navigate file picker to the daily ad. post.py background task was stopped because user is intervening manually. Unconfirmed whether file picker arrived at the right file."}
+  ],
+  "remaining_tasks": [
+    {"id": 9, "name": "Complete A1 post flow (verify file selected -> Next -> caption -> Share). Update ~/geknee/ad-assets/.last-posted.json on success.", "status": "not_started"},
+    {"id": 10, "name": "Schedule /geknee-daily-ad via /schedule cron OR commit to manual daily trigger.", "status": "not_started"}
+  ],
+  "blockers": [
+    {"description": "Meta Business Manager verification is pending. Blocks the geknee-meta MCP from being wired (no instagram_content_publish or ads_management scopes until verification clears).", "type": "external", "workaround": "Use ig-poster (browser-use + CDP) for posting until verification clears. ig-poster does NOT manage ad campaigns — only feed posts."},
+    {"description": "macOS native file picker (NSOpenPanel) is OS-level, not DOM. browser-use cannot drive it through CDP. AppleScript via osascript can (Cmd+Shift+G shortcut).", "type": "technical", "workaround": "Either (a) AppleScript-drive the picker, (b) have post.py find the hidden <input type='file'> and setInputFiles via CDP directly bypassing the picker, or (c) user clicks manually. Today's run used (a) — outcome unverified."},
+    {"description": "Recent Chrome versions silently ignore --remote-debugging-port on the default Chrome profile (anti-credential-theft policy). DevToolsActivePort file never gets written.", "type": "technical", "workaround": "Use a dedicated profile dir. launch-chrome.sh now points at ~/.gekneetravel-chrome-data instead of the default profile. User must log into IG in this Chrome ONCE — cookies persist for future runs."}
+  ],
+  "human_actions_pending": [
+    {"action": "Complete or abort today's A1 post in the open IG Create-new-post dialog. Either (a) finish manually clicking through Next/Next/caption/Share, or (b) close it and rerun post.py cleanly after terminal reboot.", "context": "Image and caption are ready. CDP Chrome should still be up after terminal reboot (Chrome PID is independent of the shell that launched it).", "blocking": true},
+    {"action": "Pursue Meta Business verification when ready (resolve whatever Meta requested — usually domain ownership confirmation + matching business docs).", "context": "Until cleared, the geknee-meta MCP server stays unconfigured. ig-poster + the daily skill works in the interim.", "blocking": false},
+    {"action": "Grant Accessibility permission to the terminal app (System Settings -> Privacy & Security -> Accessibility) so future AppleScript calls to System Events succeed.", "context": "AppleScript silently fails on keystroke commands when the calling app lacks Accessibility permission. Affects only AppleScript-driven file pickers, not browser-use directly.", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Use ig-poster (browser-use + CDP attach) instead of waiting for Meta verification to unblock posting.", "rationale": "Meta Business verification is days-to-weeks. Browser-use against the user's real logged-in Chrome (with hardened agent prompt + ≤2 posts/day cadence) is the lowest-risk workaround. Higher detection risk than API, but acceptable for posting frequency and brand size."},
+    {"decision": "Use a dedicated Chrome profile dir (~/.gekneetravel-chrome-data) instead of the default profile.", "rationale": "Recent Chrome blocks --remote-debugging-port on the default profile. Dedicated profile restores CDP; one-time manual login persists in cookies."},
+    {"decision": "Default to v5-appicon for IG profile pic, then user overrode to /brand/geknee-mascot.jpg (the canonical mascot used by AtlasShell, GenieCharacters, GenieCharacter, GlobalChat).", "rationale": "User chose ad-to-app consistency over thumbnail crispness. Hand-drawn mascot matches what users see in the live app."},
+    {"decision": "Caption pool delivered at ~/geknee/ad-assets/captions.md with 3 variants per audience (V1/V2/V3) — daily skill rotates per audience to keep feed fresh.", "rationale": "IG and Andromeda both penalize identical captions across posts. V1/V2/V3 cycle gives ~3 weeks per audience before repetition."},
+    {"decision": "Generated 6 audience-targeted statics (A1-A6) plus 2 real-app composites (gk-ad-real-1-globe.png, gk-ad-real-2-planner.png) instead of 12 mixed.", "rationale": "Andromeda creative-as-targeting rubric rewards concept/format/visual/hook/headline diversity. 6 distinct audiences = LOW Entity-ID cluster risk. Real-app ads carry highest ad-to-app trust."}
+  ],
+  "uncommitted_files": [
+    ".agents/ig-poster/",
+    ".agents/mcp-meta/",
+    ".agents/skills/",
+    "ad-assets/",
+    "public/brand/geknee-mascot.jpg (no change — referenced)"
+  ],
+  "next_action": "After terminal reboot: open Claude Code in ~/geknee, run /gsd-resume-work, then read .planning/.continue-here.md. The immediate question is: did today's A1 post get published, or is the IG Create-new-post dialog still open in the CDP Chrome window? Check by visiting @gekneetravel — if the post is live, log it; if not, complete or rerun.",
+  "context_notes": "Pipeline is fully built. The blocker is Meta Business verification (external, days/weeks). Workaround is ig-poster which works today. First daily post (A1 Barcelona itinerary, scored 10/10) was mid-flight when paused — user took manual control to navigate the file picker, AppleScript was fired to assist, post.py background task was stopped to avoid collision. Resume by confirming today's post status via @gekneetravel profile view."
+}
