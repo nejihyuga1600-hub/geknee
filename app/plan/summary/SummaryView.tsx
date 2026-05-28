@@ -2456,7 +2456,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                     height: isMobile ? 'auto' : 'calc(100svh - 88px)',
                   }}
                 >
-                  {isMobile && savedTripId && !mapInteractive ? (
+                  {isMobile && !mapInteractive && (savedTripId || location) ? (
                     <button
                       type="button"
                       onClick={() => setMapInteractive(true)}
@@ -2468,7 +2468,9 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                       }}
                     >
                       <img
-                        src={`/api/og-trip-map/${savedTripId}`}
+                        src={savedTripId
+                          ? `/api/og-trip-map/${savedTripId}`
+                          : `/api/staticmap?location=${encodeURIComponent(location)}&w=640&h=320&zoom=11`}
                         alt="Trip map preview"
                         loading="lazy"
                         decoding="async"
