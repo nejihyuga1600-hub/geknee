@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "schema_notes": "v2 adds carousel support: 'filenames' is an ordered list of slide paths. Single-image posts have a 1-element list. v1 used 'filename' (string).",
+  "posts": [
+    {
+      "date": "2026-05-28",
+      "audience": "A1",
+      "audience_name": "Overwhelmed Planner",
+      "format": "carousel",
+      "slide_count": 5,
+      "filenames": [
+        "ad-assets/instagram/daily/daily-2026-05-28-A1-slide1.jpg",
+        "ad-assets/instagram/daily/daily-2026-05-28-A1-slide2.jpg",
+        "ad-assets/instagram/daily/daily-2026-05-28-A1-slide3.png",
+        "ad-assets/instagram/daily/daily-2026-05-28-A1-slide4.png",
+        "ad-assets/instagram/daily/daily-2026-05-28-A1-slide5.jpg"
+      ],
+      "slide_arc": ["hook", "problem", "real-app/planner", "real-app/globe", "cta"],
+      "slide_sources": ["ai-gen", "ai-gen-fresh", "real-composite", "real-composite", "ai-gen-fresh"],
+      "score": 10,
+      "variant": "V1",
+      "caption_file": "ad-assets/instagram/daily/caption-2026-05-28-A1.txt",
+      "caption_chars": 388,
+      "outcome": "POSTED",
+      "ig_post_url": "https://www.instagram.com/p/DY5ncObjepc/",
+      "posted_via": "ig-poster + CDP Share-click",
+      "notes": "First carousel post. Dry-run validated all 5 uploads + caption; Share clicked via CDP after dry-run approval."
+    }
+  ]
+}
