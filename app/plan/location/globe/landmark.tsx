@@ -564,18 +564,21 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
     `${BLOB_BASE}/${MONUMENT_FILE_PREFIX[mk!] ?? mk}_${effectiveSkin}.glb` : undefined;
   const model   = mk ? MODELS[mk] : undefined;
   const density = LM_DENSITY.get(p) ?? 1;
-  // Global landmark size multiplier — every monument rendered at 2.34x the
-  // uniform `s` so the Meshy GLBs read clearly. Per-monument size overrides
-  // were removed at user request — Eiffel/Stonehenge/Pyramid no longer
-  // override their declared `s`. All monuments render at the Colosseum's
-  // effective size (s=0.4 baseline) so the globe reads uniformly.
-  // The `s` prop on Lm is now ignored visually; it remains in the API for
-  // backwards compatibility with callers but doesn't affect rendering.
-  const LANDMARK_BOOST = 2.925;
+  // Sizing rule (geknee, 2026-05-29):
+  //   1. FIT IN COUNTRY: monument's max visible diameter (effS × zoomMul,
+  //      where zoomMul ∈ [1, 2]) must fit inside the host country. The
+  //      smallest country containing any wired monument is ~100km wide,
+  //      so the cap is effS × 2 ≤ 0.6 globe units (≈ 380 km — globe R=10
+  //      and Earth R=6371 km gives 1 unit ≈ 637 km).
+  //   2. NO OVERLAP: handled by `density` above (LM_DENSITY scales down
+  //      monuments in crowded clusters below DENSITY_THR degrees apart).
+  // LANDMARK_BOOST is the global tuning knob; per-monument overrides in
+  // MONUMENT_SCALE_OVERRIDE (skins.ts) handle outliers (e.g. waterfalls
+  // whose GLB bbox is unusually wide).
+  // The `s` prop on Lm is ignored — kept for API compatibility.
+  const LANDMARK_BOOST = 0.75;
   const UNIFORM_S = 0.4;
   void s; // declared override intentionally ignored
-  // Per-monument scale override (skins.ts) targets specific outliers whose
-  // GLBs render visually larger than the uniform baseline (e.g. iguazuFalls).
   const monumentOverride = mk ? (MONUMENT_SCALE_OVERRIDE[mk] ?? 1) : 1;
   const effS = UNIFORM_S * density * LANDMARK_BOOST * monumentOverride;
 

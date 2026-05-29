@@ -89,7 +89,9 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
 // Use values > 1 to grow tiny detail monuments. Keep edits small (±20%
 // per pass) and verify in Safari before tuning further.
 export const MONUMENT_SCALE_OVERRIDE: Record<string, number> = {
-  iguazuFalls: 0.5,
+  // Empty by default — global LANDMARK_BOOST in landmark.tsx handles the
+  // uniform rule. Add per-monument entries only after visual confirmation
+  // that a specific monument's GLB has an aspect-ratio outlier.
 };
 
 // Raw lat/lon for each collectable monument. Consumed by:
