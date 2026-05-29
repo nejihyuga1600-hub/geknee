@@ -74,6 +74,7 @@ function AllLandmarks() {
 
       {/* ── Christ the Redeemer ───────────────────────────────────────────────── */}
       <Lm p={L.christRedeem} info={INFO.christRedeem} mk="christRedeem">
+        <group scale={0.85}>
         {/* Stone pedestal */}
         <Box p={[0,0.07,0]}    s={[0.16,0.14,0.16]}  c="#b0a890" M={MatStone}/>
         {/* Robe/body — soapstone */}
@@ -87,6 +88,7 @@ function AllLandmarks() {
         <Ball p={[0.4,0.54,0]}  r={0.04} c="#ffe8c8" M={MatMarble}/>
         {/* Feet at robe base */}
         <Box p={[0,0.12,0.06]} s={[0.1,0.04,0.05]}  c="#e8e4d0" M={MatMarble}/>
+        </group>
       </Lm>
 
       {/* ── Machu Picchu ──────────────────────────────────────────────────────── */}
@@ -542,7 +544,6 @@ function AllLandmarks() {
 
       {/* ── Niagara Falls ─────────────────────────────────────────────────────── */}
       <Lm p={L.niagaraFalls} info={INFO.niagaraFalls}>
-        <group scale={1.5}>
         {/* Horseshoe cliff top */}
         <Box p={[0,0.36,0]}       s={[0.74,0.06,0.14]} c="#6898a8"/>
         <Box p={[-0.29,0.36,0.1]} s={[0.14,0.06,0.12]} c="#6898a8"/>
@@ -557,11 +558,11 @@ function AllLandmarks() {
         <Ball p={[0,0.04,0.18]}   r={0.17} c="#c8e8f8"/>
         <Ball p={[-0.2,0.06,0.16]} r={0.1} c="#d0eeff"/>
         <Ball p={[0.2,0.06,0.16]}  r={0.1} c="#d0eeff"/>
-        </group>
       </Lm>
 
       {/* ── Iguazu Falls ──────────────────────────────────────────────────────── */}
       <Lm p={L.iguazuFalls} info={INFO.iguazuFalls} mk="iguazuFalls">
+        <group scale={0.85}>
         {/* U-shaped cliff — Devil's Throat */}
         <Box p={[0,0.32,0]}        s={[0.86,0.06,0.14]} c="#50a060"/>
         <Box p={[-0.33,0.32,0.1]}  s={[0.14,0.06,0.12]} c="#50a060"/>
@@ -575,10 +576,12 @@ function AllLandmarks() {
         <Ball p={[0.14,0.29,0.02]}  r={0.04} c="#408040"/>
         {/* Spray mist */}
         <Ball p={[0,0.04,0.18]}    r={0.2}  c="#c0e8f8"/>
+        </group>
       </Lm>
 
       {/* ── Galápagos Islands ─────────────────────────────────────────────────── */}
       <Lm p={L.galapagos} info={INFO.galapagos} mk="galapagos">
+        <group scale={0.85}>
         {/* Ocean base */}
         <Box p={[0,0.01,0]}         s={[0.76,0.02,0.6]}  c="#1880b8"/>
         {/* Isabela — largest island, shield volcano */}
@@ -592,11 +595,11 @@ function AllLandmarks() {
         <Ball p={[-0.24,0.05,-0.12]} r={0.1}  c="#786060"/>
         <Cone p={[-0.24,0.14,-0.12]} r={0.07} h={0.12} seg={8} c="#684848"/>
         <Ball p={[-0.24,0.19,-0.12]} r={0.028} c="#301010"/>
+        </group>
       </Lm>
 
       {/* ── Plitvice Lakes ────────────────────────────────────────────────────── */}
       <Lm p={L.plitviceLakes} info={INFO.plitviceLakes}>
-        <group scale={1.5}>
         {/* Forest floor */}
         <Box p={[0,0.02,0]}          s={[0.66,0.04,0.5]}  c="#408040"/>
         {/* Cascading travertine lake terraces */}
@@ -612,7 +615,6 @@ function AllLandmarks() {
         {/* Forest trees */}
         <Cone p={[-0.24,0.14,0]}     r={0.06} h={0.18} seg={6} c="#308030"/>
         <Cone p={[0.22,0.08,-0.12]}  r={0.05} h={0.15} seg={6} c="#308030"/>
-        </group>
       </Lm>
 
       {/* ── Swiss Alps ────────────────────────────────────────────────────────── */}
@@ -767,11 +769,9 @@ function AllLandmarks() {
       </Lm>
       {/* connecticutMark */}
       <Lm p={L.connecticutMark} info={INFO.connecticutMark}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#8855aa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#8855aa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#8855aa"/></mesh>
-        </group>
       </Lm>
       {/* delawareCape */}
       <Lm p={L.delawareCape} info={INFO.delawareCape}>
@@ -805,35 +805,27 @@ function AllLandmarks() {
       </Lm>
       {/* illinoisBean */}
       <Lm p={L.illinoisBean} info={INFO.illinoisBean}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#aabbcc" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#aabbcc"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#aabbcc"/></mesh>
-        </group>
       </Lm>
       {/* indianaSpeedway */}
       <Lm p={L.indianaSpeedway} info={INFO.indianaSpeedway}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc4422" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc4422"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc4422"/></mesh>
-        </group>
       </Lm>
       {/* iowaFields */}
       <Lm p={L.iowaFields} info={INFO.iowaFields}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#669944" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#669944"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#669944"/></mesh>
-        </group>
       </Lm>
       {/* kansasPrairie */}
       <Lm p={L.kansasPrairie} info={INFO.kansasPrairie}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#88aa55" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#88aa55"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#88aa55"/></mesh>
-        </group>
       </Lm>
       {/* kentuckyMammoth */}
       <Lm p={L.kentuckyMammoth} info={INFO.kentuckyMammoth}>
@@ -865,35 +857,27 @@ function AllLandmarks() {
       </Lm>
       {/* massFreedom */}
       <Lm p={L.massFreedom} info={INFO.massFreedom}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc5533" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc5533"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc5533"/></mesh>
-        </group>
       </Lm>
       {/* michiganPictured */}
       <Lm p={L.michiganPictured} info={INFO.michiganPictured}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#4488cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#4488cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#4488cc"/></mesh>
-        </group>
       </Lm>
       {/* minnesotaMall */}
       <Lm p={L.minnesotaMall} info={INFO.minnesotaMall}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#4466aa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#4466aa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#4466aa"/></mesh>
-        </group>
       </Lm>
       {/* mississippiNatch */}
       <Lm p={L.mississippiNatch} info={INFO.mississippiNatch}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#887766" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#887766"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#887766"/></mesh>
-        </group>
       </Lm>
       {/* missouriArch */}
       <Lm p={L.missouriArch} info={INFO.missouriArch}>
@@ -930,19 +914,15 @@ function AllLandmarks() {
       </Lm>
       {/* njAtlantic */}
       <Lm p={L.njAtlantic} info={INFO.njAtlantic}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#4466bb" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#4466bb"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#4466bb"/></mesh>
-        </group>
       </Lm>
       {/* nmWhiteSands */}
       <Lm p={L.nmWhiteSands} info={INFO.nmWhiteSands}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#eeeedc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#eeeedc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#eeeedc"/></mesh>
-        </group>
       </Lm>
       {/* nyEmpire */}
       <Lm p={L.nyEmpire} info={INFO.nyEmpire}>
@@ -965,27 +945,21 @@ function AllLandmarks() {
       </Lm>
       {/* ohioRock */}
       <Lm p={L.ohioRock} info={INFO.ohioRock}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#4466aa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#4466aa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#4466aa"/></mesh>
-        </group>
       </Lm>
       {/* oklahomaMemorial */}
       <Lm p={L.oklahomaMemorial} info={INFO.oklahomaMemorial}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#886655" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#886655"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#886655"/></mesh>
-        </group>
       </Lm>
       {/* oregonCrater */}
       <Lm p={L.oregonCrater} info={INFO.oregonCrater}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2266aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
-        </group>
       </Lm>
       {/* paLibertyBell */}
       <Lm p={L.paLibertyBell} info={INFO.paLibertyBell}>
@@ -995,11 +969,9 @@ function AllLandmarks() {
       </Lm>
       {/* riCliffWalk */}
       <Lm p={L.riCliffWalk} info={INFO.riCliffWalk}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#778899" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#778899"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#778899"/></mesh>
-        </group>
       </Lm>
       {/* scFortSumter */}
       <Lm p={L.scFortSumter} info={INFO.scFortSumter}>
@@ -1010,11 +982,9 @@ function AllLandmarks() {
       </Lm>
       {/* tnGraceland */}
       <Lm p={L.tnGraceland} info={INFO.tnGraceland}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#884433" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#884433"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#884433"/></mesh>
-        </group>
       </Lm>
       {/* txAlamo */}
       <Lm p={L.txAlamo} info={INFO.txAlamo}>
@@ -1052,19 +1022,15 @@ function AllLandmarks() {
       </Lm>
       {/* wvNewRiver */}
       <Lm p={L.wvNewRiver} info={INFO.wvNewRiver}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#666688" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#666688"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#666688"/></mesh>
-        </group>
       </Lm>
       {/* wiHouseRock */}
       <Lm p={L.wiHouseRock} info={INFO.wiHouseRock}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#664422" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#664422"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#664422"/></mesh>
-        </group>
       </Lm>
       {/* wyOldFaithful */}
       <Lm p={L.wyOldFaithful} info={INFO.wyOldFaithful}>
@@ -1130,19 +1096,15 @@ function AllLandmarks() {
       </Lm>
       {/* bordeauxWine */}
       <Lm p={L.bordeauxWine} info={INFO.bordeauxWine}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#882233" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#882233"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#882233"/></mesh>
-        </group>
       </Lm>
       {/* colmarAlsace */}
       <Lm p={L.colmarAlsace} info={INFO.colmarAlsace}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#dd8844" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#dd8844"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#dd8844"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Spain ════════════════════════════════════════════════════════ */}
@@ -1155,11 +1117,9 @@ function AllLandmarks() {
       </Lm>
       {/* parkGuell */}
       <Lm p={L.parkGuell} info={INFO.parkGuell}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#cc5533" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#cc5533"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#cc5533"/></mesh>
-        </group>
       </Lm>
       {/* sevilleCathedral */}
       <Lm p={L.sevilleCathedral} info={INFO.sevilleCathedral}>
@@ -1170,11 +1130,9 @@ function AllLandmarks() {
       </Lm>
       {/* guggenheimBilbao */}
       <Lm p={L.guggenheimBilbao} info={INFO.guggenheimBilbao}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#8899cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#8899cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#8899cc"/></mesh>
-        </group>
       </Lm>
       {/* teideVolcano */}
       <Lm p={L.teideVolcano} info={INFO.teideVolcano}>
@@ -1208,11 +1166,9 @@ function AllLandmarks() {
       </Lm>
       {/* pampalonaFiesta */}
       <Lm p={L.pampalonaFiesta} info={INFO.pampalonaFiesta}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc3322" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc3322"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc3322"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Italy ════════════════════════════════════════════════════════ */}
@@ -1225,19 +1181,15 @@ function AllLandmarks() {
       </Lm>
       {/* veniceCanals */}
       <Lm p={L.veniceCanals} info={INFO.veniceCanals}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#3388cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
-        </group>
       </Lm>
       {/* amalfiCoast */}
       <Lm p={L.amalfiCoast} info={INFO.amalfiCoast}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#ee8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#ee8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#ee8833"/></mesh>
-        </group>
       </Lm>
       {/* vaticanCity */}
       <Lm p={L.vaticanCity} info={INFO.vaticanCity}>
@@ -1254,19 +1206,15 @@ function AllLandmarks() {
       </Lm>
       {/* cinqueTerre */}
       <Lm p={L.cinqueTerre} info={INFO.cinqueTerre}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#ee8844" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#ee8844"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#ee8844"/></mesh>
-        </group>
       </Lm>
       {/* lakeComo */}
       <Lm p={L.lakeComo} info={INFO.lakeComo}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#3399bb" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#3399bb"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#3399bb"/></mesh>
-        </group>
       </Lm>
       {/* dolomites */}
       <Lm p={L.dolomites} info={INFO.dolomites}>
@@ -1276,19 +1224,15 @@ function AllLandmarks() {
       </Lm>
       {/* treviFountain */}
       <Lm p={L.treviFountain} info={INFO.treviFountain}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d0c890" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d0c890"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d0c890"/></mesh>
-        </group>
       </Lm>
       {/* siciliaTemple */}
       <Lm p={L.siciliaTemple} info={INFO.siciliaTemple}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d4b870" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d4b870"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d4b870"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ United Kingdom ═══════════════════════════════════════════════ */}
@@ -1322,27 +1266,21 @@ function AllLandmarks() {
       </Lm>
       {/* bathRomans */}
       <Lm p={L.bathRomans} info={INFO.bathRomans}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d4c890" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d4c890"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d4c890"/></mesh>
-        </group>
       </Lm>
       {/* giantsCauseway */}
       <Lm p={L.giantsCauseway} info={INFO.giantsCauseway}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#446688" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#446688"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#446688"/></mesh>
-        </group>
       </Lm>
       {/* lakeDistrict */}
       <Lm p={L.lakeDistrict} info={INFO.lakeDistrict}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#5588aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#5588aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#5588aa"/></mesh>
-        </group>
       </Lm>
       {/* windsorCastle */}
       <Lm p={L.windsorCastle} info={INFO.windsorCastle}>
@@ -1360,11 +1298,9 @@ function AllLandmarks() {
       </Lm>
       {/* cotswolds */}
       <Lm p={L.cotswolds} info={INFO.cotswolds}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#aa9944" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#aa9944"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#aa9944"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Germany ══════════════════════════════════════════════════════ */}
@@ -1392,11 +1328,9 @@ function AllLandmarks() {
       </Lm>
       {/* rhineValley */}
       <Lm p={L.rhineValley} info={INFO.rhineValley}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#2266aa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#2266aa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#2266aa"/></mesh>
-        </group>
       </Lm>
       {/* blackForest */}
       <Lm p={L.blackForest} info={INFO.blackForest}>
@@ -1419,11 +1353,9 @@ function AllLandmarks() {
       </Lm>
       {/* hamburgHarbor */}
       <Lm p={L.hamburgHarbor} info={INFO.hamburgHarbor}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#334466" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#334466"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#334466"/></mesh>
-        </group>
       </Lm>
       {/* rothenburg */}
       <Lm p={L.rothenburg} info={INFO.rothenburg}>
@@ -1434,11 +1366,9 @@ function AllLandmarks() {
       </Lm>
       {/* munichMarien */}
       <Lm p={L.munichMarien} info={INFO.munichMarien}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8822" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Japan ════════════════════════════════════════════════════════ */}
@@ -1450,27 +1380,21 @@ function AllLandmarks() {
       </Lm>
       {/* fushimiInari */}
       <Lm p={L.fushimiInari} info={INFO.fushimiInari} mk="fushimiInari">
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc3322" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc3322"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc3322"/></mesh>
-        </group>
       </Lm>
       {/* hiroshimaPeace */}
       <Lm p={L.hiroshimaPeace} info={INFO.hiroshimaPeace}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#888888" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#888888"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#888888"/></mesh>
-        </group>
       </Lm>
       {/* naraDeer */}
       <Lm p={L.naraDeer} info={INFO.naraDeer}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
       {/* osakaCastle */}
       <Lm p={L.osakaCastle} info={INFO.osakaCastle} mk="osakaCastle">
@@ -1481,11 +1405,9 @@ function AllLandmarks() {
       </Lm>
       {/* arashiyamaBamboo */}
       <Lm p={L.arashiyamaBamboo} info={INFO.arashiyamaBamboo}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
       {/* himejCastle */}
       <Lm p={L.himejCastle} info={INFO.himejCastle}>
@@ -1496,27 +1418,21 @@ function AllLandmarks() {
       </Lm>
       {/* hokkaidoLav */}
       <Lm p={L.hokkaidoLav} info={INFO.hokkaidoLav}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#9944cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#9944cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#9944cc"/></mesh>
-        </group>
       </Lm>
       {/* shibuyaCrossing */}
       <Lm p={L.shibuyaCrossing} info={INFO.shibuyaCrossing}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#334466" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#334466"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#334466"/></mesh>
-        </group>
       </Lm>
       {/* kyotoTemple */}
       <Lm p={L.kyotoTemple} info={INFO.kyotoTemple}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8822" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Australia ════════════════════════════════════════════════════ */}
@@ -1545,11 +1461,9 @@ function AllLandmarks() {
       </Lm>
       {/* kakaduNP */}
       <Lm p={L.kakaduNP} info={INFO.kakaduNP}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
       {/* whitsundays */}
       <Lm p={L.whitsundays} info={INFO.whitsundays}>
@@ -1563,11 +1477,9 @@ function AllLandmarks() {
       </Lm>
       {/* daintreeRF */}
       <Lm p={L.daintreeRF} info={INFO.daintreeRF}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#228833" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#228833"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#228833"/></mesh>
-        </group>
       </Lm>
       {/* purnululu */}
       <Lm p={L.purnululu} info={INFO.purnululu}>
@@ -1592,11 +1504,9 @@ function AllLandmarks() {
       </Lm>
       {/* terracottaArmy */}
       <Lm p={L.terracottaArmy} info={INFO.terracottaArmy} mk="terracottaArmy">
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#c8a866" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#c8a866"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#c8a866"/></mesh>
-        </group>
       </Lm>
       {/* liRiverChina */}
       <Lm p={L.liRiverChina} info={INFO.liRiverChina}>
@@ -1625,11 +1535,9 @@ function AllLandmarks() {
       </Lm>
       {/* westLakeHangzhou */}
       <Lm p={L.westLakeHangzhou} info={INFO.westLakeHangzhou}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#33aacc" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#33aacc"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#33aacc"/></mesh>
-        </group>
       </Lm>
       {/* guilinKarst */}
       <Lm p={L.guilinKarst} info={INFO.guilinKarst}>
@@ -1639,19 +1547,15 @@ function AllLandmarks() {
       </Lm>
       {/* summerPalaceB */}
       <Lm p={L.summerPalaceB} info={INFO.summerPalaceB}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8822" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8822"/></mesh>
-        </group>
       </Lm>
       {/* lijiangOldTown */}
       <Lm p={L.lijiangOldTown} info={INFO.lijiangOldTown}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#aa6633" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#aa6633"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#aa6633"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ India ════════════════════════════════════════════════════════ */}
@@ -1669,11 +1573,9 @@ function AllLandmarks() {
       </Lm>
       {/* varanasiGhats */}
       <Lm p={L.varanasiGhats} info={INFO.varanasiGhats}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#ff8822" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#ff8822"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#ff8822"/></mesh>
-        </group>
       </Lm>
       {/* goaBeaches */}
       <Lm p={L.goaBeaches} info={INFO.goaBeaches}>
@@ -1703,19 +1605,15 @@ function AllLandmarks() {
       </Lm>
       {/* ajantaCaves */}
       <Lm p={L.ajantaCaves} info={INFO.ajantaCaves}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc9944" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc9944"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc9944"/></mesh>
-        </group>
       </Lm>
       {/* ranthambore */}
       <Lm p={L.ranthambore} info={INFO.ranthambore}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
       {/* delhiQutub */}
       <Lm p={L.delhiQutub} info={INFO.delhiQutub}>
@@ -1764,11 +1662,9 @@ function AllLandmarks() {
       </Lm>
       {/* erawanFalls */}
       <Lm p={L.erawanFalls} info={INFO.erawanFalls}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2299aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2299aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2299aa"/></mesh>
-        </group>
       </Lm>
       {/* sukhothai */}
       <Lm p={L.sukhothai} info={INFO.sukhothai}>
@@ -1795,19 +1691,15 @@ function AllLandmarks() {
       </Lm>
       {/* delphi */}
       <Lm p={L.delphi} info={INFO.delphi}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#c8b870" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#c8b870"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#c8b870"/></mesh>
-        </group>
       </Lm>
       {/* olympia */}
       <Lm p={L.olympia} info={INFO.olympia}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#c8b060" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#c8b060"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#c8b060"/></mesh>
-        </group>
       </Lm>
       {/* rhodesOldCity */}
       <Lm p={L.rhodesOldCity} info={INFO.rhodesOldCity}>
@@ -1825,19 +1717,15 @@ function AllLandmarks() {
       </Lm>
       {/* knossosCrete */}
       <Lm p={L.knossosCrete} info={INFO.knossosCrete}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc9944" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc9944"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc9944"/></mesh>
-        </group>
       </Lm>
       {/* mykonos */}
       <Lm p={L.mykonos} info={INFO.mykonos}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#3388ff" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#3388ff"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#3388ff"/></mesh>
-        </group>
       </Lm>
       {/* navagioBeach */}
       <Lm p={L.navagioBeach} info={INFO.navagioBeach}>
@@ -1855,19 +1743,15 @@ function AllLandmarks() {
       {/* ══ Turkey ═══════════════════════════════════════════════════════ */}
       {/* pamukkale */}
       <Lm p={L.pamukkale} info={INFO.pamukkale}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#f0f0f0" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#f0f0f0"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#f0f0f0"/></mesh>
-        </group>
       </Lm>
       {/* ephesus */}
       <Lm p={L.ephesus} info={INFO.ephesus}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#c8a866" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#c8a866"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#c8a866"/></mesh>
-        </group>
       </Lm>
       {/* blueMosque */}
       <Lm p={L.blueMosque} info={INFO.blueMosque}>
@@ -1883,19 +1767,15 @@ function AllLandmarks() {
       </Lm>
       {/* bodrumTurkey */}
       <Lm p={L.bodrumTurkey} info={INFO.bodrumTurkey}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#3388cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
-        </group>
       </Lm>
       {/* gobekliTepe */}
       <Lm p={L.gobekliTepe} info={INFO.gobekliTepe}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#997755" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#997755"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#997755"/></mesh>
-        </group>
       </Lm>
       {/* nemrutDag */}
       <Lm p={L.nemrutDag} info={INFO.nemrutDag}>
@@ -1914,11 +1794,9 @@ function AllLandmarks() {
       {/* ══ Brazil ═══════════════════════════════════════════════════════ */}
       {/* amazonManaus */}
       <Lm p={L.amazonManaus} info={INFO.amazonManaus}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#228833" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#228833"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#228833"/></mesh>
-        </group>
       </Lm>
       {/* copacabana */}
       <Lm p={L.copacabana} info={INFO.copacabana}>
@@ -1927,11 +1805,9 @@ function AllLandmarks() {
       </Lm>
       {/* pantanal */}
       <Lm p={L.pantanal} info={INFO.pantanal}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#44aa66" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#44aa66"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#44aa66"/></mesh>
-        </group>
       </Lm>
       {/* fernandoNoronha */}
       <Lm p={L.fernandoNoronha} info={INFO.fernandoNoronha}>
@@ -1940,27 +1816,21 @@ function AllLandmarks() {
       </Lm>
       {/* salvadorHistoric */}
       <Lm p={L.salvadorHistoric} info={INFO.salvadorHistoric}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc6633" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
-        </group>
       </Lm>
       {/* lencoisM */}
       <Lm p={L.lencoisM} info={INFO.lencoisM}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#ddccaa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#ddccaa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#ddccaa"/></mesh>
-        </group>
       </Lm>
       {/* ouroPreto */}
       <Lm p={L.ouroPreto} info={INFO.ouroPreto}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#884422" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#884422"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#884422"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Mexico ═══════════════════════════════════════════════════════ */}
@@ -2015,11 +1885,9 @@ function AllLandmarks() {
       </Lm>
       {/* guanajuatoMx */}
       <Lm p={L.guanajuatoMx} info={INFO.guanajuatoMx}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
       {/* caboSanLucas */}
       <Lm p={L.caboSanLucas} info={INFO.caboSanLucas}>
@@ -2030,27 +1898,21 @@ function AllLandmarks() {
       {/* ══ Peru ═════════════════════════════════════════════════════════ */}
       {/* lakeTiticaca */}
       <Lm p={L.lakeTiticaca} info={INFO.lakeTiticaca}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2266aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
-        </group>
       </Lm>
       {/* nazcaLines */}
       <Lm p={L.nazcaLines} info={INFO.nazcaLines}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc9966" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc9966"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc9966"/></mesh>
-        </group>
       </Lm>
       {/* cusco */}
       <Lm p={L.cusco} info={INFO.cusco}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
       {/* colcaCanyon */}
       <Lm p={L.colcaCanyon} info={INFO.colcaCanyon}>
@@ -2060,45 +1922,35 @@ function AllLandmarks() {
       </Lm>
       {/* chanChan */}
       <Lm p={L.chanChan} info={INFO.chanChan}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc9966" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc9966"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc9966"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Egypt ════════════════════════════════════════════════════════ */}
       {/* valleyOfKings */}
       <Lm p={L.valleyOfKings} info={INFO.valleyOfKings}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#c8a844" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#c8a844"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#c8a844"/></mesh>
-        </group>
       </Lm>
       {/* karnakTemple */}
       <Lm p={L.karnakTemple} info={INFO.karnakTemple}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d4b860" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d4b860"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d4b860"/></mesh>
-        </group>
       </Lm>
       {/* luxorTemple */}
       <Lm p={L.luxorTemple} info={INFO.luxorTemple}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d4b860" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d4b860"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d4b860"/></mesh>
-        </group>
       </Lm>
       {/* alexandriaEgypt */}
       <Lm p={L.alexandriaEgypt} info={INFO.alexandriaEgypt}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#3388cc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#3388cc"/></mesh>
-        </group>
       </Lm>
       {/* mountSinai */}
       <Lm p={L.mountSinai} info={INFO.mountSinai}>
@@ -2110,19 +1962,15 @@ function AllLandmarks() {
       {/* ══ Africa ═══════════════════════════════════════════════════════ */}
       {/* maasaiMara */}
       <Lm p={L.maasaiMara} info={INFO.maasaiMara} mk="maasaiMara">
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
       {/* serengeti */}
       <Lm p={L.serengeti} info={INFO.serengeti}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#aa9944" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#aa9944"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#aa9944"/></mesh>
-        </group>
       </Lm>
       {/* kilimanjaro */}
       <Lm p={L.kilimanjaro} info={INFO.kilimanjaro} mk="kilimanjaro">
@@ -2132,11 +1980,9 @@ function AllLandmarks() {
       </Lm>
       {/* krugerNP */}
       <Lm p={L.krugerNP} info={INFO.krugerNP}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
       {/* capePointSA */}
       <Lm p={L.capePointSA} info={INFO.capePointSA}>
@@ -2164,11 +2010,9 @@ function AllLandmarks() {
       </Lm>
       {/* lalibelaEth */}
       <Lm p={L.lalibelaEth} info={INFO.lalibelaEth}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc6644" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc6644"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc6644"/></mesh>
-        </group>
       </Lm>
       {/* drakensberg */}
       <Lm p={L.drakensberg} info={INFO.drakensberg}>
@@ -2178,19 +2022,15 @@ function AllLandmarks() {
       </Lm>
       {/* nairobiNP */}
       <Lm p={L.nairobiNP} info={INFO.nairobiNP}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
       {/* ngorongoroCrater */}
       <Lm p={L.ngorongoroCrater} info={INFO.ngorongoroCrater}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa66" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa66"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa66"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Iceland ══════════════════════════════════════════════════════ */}
@@ -2209,37 +2049,29 @@ function AllLandmarks() {
       </Lm>
       {/* skogafoss */}
       <Lm p={L.skogafoss} info={INFO.skogafoss}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2288cc" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2288cc"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2288cc"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Norway ═══════════════════════════════════════════════════════ */}
       {/* geirangerfjord */}
       <Lm p={L.geirangerfjord} info={INFO.geirangerfjord}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2277aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2277aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2277aa"/></mesh>
-        </group>
       </Lm>
       {/* tromsoLights */}
       <Lm p={L.tromsoLights} info={INFO.tromsoLights}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#44aacc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#44aacc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#44aacc" emissive="#44aacc" emissiveIntensity={0.3}/></mesh>
-        </group>
       </Lm>
       {/* bergenWharf */}
       <Lm p={L.bergenWharf} info={INFO.bergenWharf}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc6633" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Canada ═══════════════════════════════════════════════════════ */}
@@ -2264,21 +2096,17 @@ function AllLandmarks() {
       </Lm>
       {/* haida */}
       <Lm p={L.haida} info={INFO.haida}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#228844" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#228844"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#228844"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ New Zealand ══════════════════════════════════════════════════ */}
       {/* hobbiton */}
       <Lm p={L.hobbiton} info={INFO.hobbiton}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
       {/* rotoruaNZ */}
       <Lm p={L.rotoruaNZ} info={INFO.rotoruaNZ}>
@@ -2315,11 +2143,9 @@ function AllLandmarks() {
       </Lm>
       {/* lakeBaikal */}
       <Lm p={L.lakeBaikal} info={INFO.lakeBaikal}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#2266aa" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#2266aa"/></mesh>
-        </group>
       </Lm>
       {/* hermitageSPB */}
       <Lm p={L.hermitageSPB} info={INFO.hermitageSPB}>
@@ -2332,37 +2158,29 @@ function AllLandmarks() {
       {/* ══ Vietnam ══════════════════════════════════════════════════════ */}
       {/* hoiAnVietnam */}
       <Lm p={L.hoiAnVietnam} info={INFO.hoiAnVietnam}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
       {/* hanoiHoanKiem */}
       <Lm p={L.hanoiHoanKiem} info={INFO.hanoiHoanKiem}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#33aa88" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#33aa88"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#33aa88"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Indonesia ════════════════════════════════════════════════════ */}
       {/* baliUluwatu */}
       <Lm p={L.baliUluwatu} info={INFO.baliUluwatu}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
       {/* komodoPark */}
       <Lm p={L.komodoPark} info={INFO.komodoPark}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
       {/* prambananJava */}
       <Lm p={L.prambananJava} info={INFO.prambananJava}>
@@ -2393,19 +2211,15 @@ function AllLandmarks() {
       {/* ══ Netherlands ══════════════════════════════════════════════════ */}
       {/* keukenhofTulips */}
       <Lm p={L.keukenhofTulips} info={INFO.keukenhofTulips}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#ee44aa" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#ee44aa"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#ee44aa"/></mesh>
-        </group>
       </Lm>
       {/* kinderdijkMills */}
       <Lm p={L.kinderdijkMills} info={INFO.kinderdijkMills}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Czech Republic ═══════════════════════════════════════════════ */}
@@ -2420,11 +2234,9 @@ function AllLandmarks() {
       {/* ══ Austria ══════════════════════════════════════════════════════ */}
       {/* hallstatt */}
       <Lm p={L.hallstatt} info={INFO.hallstatt}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#44aacc" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#44aacc"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#44aacc"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Switzerland ══════════════════════════════════════════════════ */}
@@ -2438,11 +2250,9 @@ function AllLandmarks() {
       {/* ══ Cambodia ═════════════════════════════════════════════════════ */}
       {/* taProhm */}
       <Lm p={L.taProhm} info={INFO.taProhm}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#88aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#88aa44"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Sri Lanka ════════════════════════════════════════════════════ */}
@@ -2454,11 +2264,9 @@ function AllLandmarks() {
       </Lm>
       {/* dalleTeaFields */}
       <Lm p={L.dalleTeaFields} info={INFO.dalleTeaFields}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ South Korea ══════════════════════════════════════════════════ */}
@@ -2471,11 +2279,9 @@ function AllLandmarks() {
       </Lm>
       {/* jejuIsland */}
       <Lm p={L.jejuIsland} info={INFO.jejuIsland}>
-        <group scale={2.1}>
         <mesh position={[0,0.1,0]}><sphereGeometry args={[0.22,12,8]}/><meshStandardMaterial color="#44aa44" roughness={0.8}/></mesh>
         <mesh position={[0.15,0.18,0.1]}><sphereGeometry args={[0.14,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
         <mesh position={[-0.1,0.14,-0.12]}><sphereGeometry args={[0.12,10,6]}/><meshStandardMaterial color="#44aa44"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Argentina ════════════════════════════════════════════════════ */}
@@ -2501,11 +2307,9 @@ function AllLandmarks() {
       </Lm>
       {/* easterIsland */}
       <Lm p={L.easterIsland} info={INFO.easterIsland}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#887766" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#887766"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#887766"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Colombia ═════════════════════════════════════════════════════ */}
@@ -2520,21 +2324,17 @@ function AllLandmarks() {
       {/* ══ Cuba ═════════════════════════════════════════════════════════ */}
       {/* havanaOldCity */}
       <Lm p={L.havanaOldCity} info={INFO.havanaOldCity}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc6633" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc6633"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Nepal ════════════════════════════════════════════════════════ */}
       {/* kathmanduPatan */}
       <Lm p={L.kathmanduPatan} info={INFO.kathmanduPatan}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#cc8833" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#cc8833"/></mesh>
-        </group>
       </Lm>
 
       {/* ══ Myanmar ══════════════════════════════════════════════════════ */}
@@ -2551,11 +2351,9 @@ function AllLandmarks() {
       {/* ══ Iran ═════════════════════════════════════════════════════════ */}
       {/* persepolisIran */}
       <Lm p={L.persepolisIran} info={INFO.persepolisIran}>
-        <group scale={1.7}>
         <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.09,0.11,0.12,8]}/><meshStandardMaterial color="#d4aa60" roughness={0.6}/></mesh>
         <mesh position={[0,0.21,0]}><cylinderGeometry args={[0.045,0.09,0.18,8]}/><meshStandardMaterial color="#d4aa60"/></mesh>
         <mesh position={[0,0.33,0]}><sphereGeometry args={[0.065,12,8]}/><meshStandardMaterial color="#d4aa60"/></mesh>
-        </group>
       </Lm>
 
     </>
