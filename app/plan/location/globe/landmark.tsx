@@ -566,17 +566,16 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const density = LM_DENSITY.get(p) ?? 1;
   // Sizing rule (geknee, 2026-05-29):
   //   1. FIT IN COUNTRY: monument's max visible diameter (effS × zoomMul,
-  //      where zoomMul ∈ [1, 2]) must fit inside the host country. The
-  //      smallest country containing any wired monument is ~100km wide,
-  //      so the cap is effS × 2 ≤ 0.6 globe units (≈ 380 km — globe R=10
-  //      and Earth R=6371 km gives 1 unit ≈ 637 km).
+  //      where zoomMul ∈ [1, 2]) must fit inside the host country. At
+  //      max zoom-out: effS × 2 = 1.125 × 0.4 × 2 ≈ 0.9 globe units
+  //      (≈ 573 km — globe R=10 and Earth R=6371 km gives 1 unit ≈ 637 km).
   //   2. NO OVERLAP: handled by `density` above (LM_DENSITY scales down
   //      monuments in crowded clusters below DENSITY_THR degrees apart).
   // LANDMARK_BOOST is the global tuning knob; per-monument overrides in
   // MONUMENT_SCALE_OVERRIDE (skins.ts) handle outliers (e.g. waterfalls
   // whose GLB bbox is unusually wide).
   // The `s` prop on Lm is ignored — kept for API compatibility.
-  const LANDMARK_BOOST = 0.75;
+  const LANDMARK_BOOST = 1.125;
   const UNIFORM_S = 0.4;
   void s; // declared override intentionally ignored
   const monumentOverride = mk ? (MONUMENT_SCALE_OVERRIDE[mk] ?? 1) : 1;
