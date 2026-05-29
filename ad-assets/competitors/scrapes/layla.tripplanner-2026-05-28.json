@@ -1,0 +1,89 @@
+{
+  "handle": "layla.tripplanner",
+  "scraped_at": "2026-05-28T22:55:00Z",
+  "scraped_from_account": "yumiphobakery.richmond",
+  "scraper_run_complete": false,
+  "scraper_run_note": "Stopped after post 4. Posts 5+6 hit CDP WebSocket reconnection failures — IG appears to throttle after ~4 rapid post-opens. Data salvaged from agent memory snapshot at step 17.",
+  "profile": {
+    "display_name": "Layla AI Trip Planner",
+    "bio": "Stop planning. Start travelling. ✈️\n+1.7M trips planned 🌎\nStart with telling me the trip your after 👇",
+    "external_url": "app.layla.ai/download",
+    "follower_count": 412000,
+    "following_count": 270,
+    "post_count": 3988
+  },
+  "recent_posts": [
+    {
+      "rank": 1,
+      "pinned": true,
+      "post_url": "https://www.instagram.com/layla.tripplanner/p/DSVV_AFDKUV/",
+      "post_type": "carousel",
+      "slide_count": 4,
+      "caption_excerpt": "Hey there, I'm Layla! 🙌\nI'm your new travel partner. Think of me as part planner, part organizer, part 'I've got this' energy when trip planning feels overwhelming (yes, I do it all). 💪\nI take the stress out of planning so you can get back to the fun part, actually dreaming about your trip. 🤩 I help you let go of the chaos (I know those 47 tabs won't close themselves 👀)",
+      "hashtag_count": 8,
+      "likes_visible": null,
+      "comments_visible": 9,
+      "reposts_visible": 8,
+      "posted_at_relative": "23w",
+      "posted_at_approx": "Dec 16",
+      "edited": false
+    },
+    {
+      "rank": 2,
+      "pinned": true,
+      "post_url": "https://www.instagram.com/layla.tripplanner/p/DSVTPAijBom/",
+      "post_type": "carousel",
+      "slide_count": 5,
+      "hashtag_count": 9,
+      "likes_visible": null,
+      "comments_visible": 4,
+      "reposts_visible": 3,
+      "posted_at_relative": "23w",
+      "posted_at_approx": "Dec 16",
+      "edited": true
+    },
+    {
+      "rank": 3,
+      "pinned": true,
+      "post_url": "https://www.instagram.com/layla.tripplanner/p/DSVTbkNjMbp/",
+      "post_type": "carousel",
+      "slide_count": 5,
+      "caption_excerpt": "This is how I've planned over 1,248,643 trips so far. 🌍\nNot with forms or filters. ❌ But with real conversations. You give me a prompt, I ask questions, compare options, and build something that actually works.\nSimple. Collaborative. Surprisingly fun.\nAre you ready? 🚀",
+      "hashtags": ["LaylaAI", "LaylaTripPlanner", "TripPlanner", "AIPlanner", "TravelOrganizer", "StressFreeTravel", "PlanLessTravelMore", "SmartTravel"],
+      "hashtag_count": 8,
+      "likes_visible": null,
+      "comments_visible": 3,
+      "reposts_visible": 3,
+      "posted_at_relative": "23w",
+      "posted_at_approx": "Dec 16",
+      "edited": true
+    },
+    {
+      "rank": 4,
+      "pinned": false,
+      "post_url": "https://www.instagram.com/layla.tripplanner/p/DW1KxKuF_Yj/",
+      "post_type": "carousel",
+      "slide_count": 7,
+      "caption_excerpt": "The World Cup is coming to the US...",
+      "hashtags": ["worldcup2026", "worldcuptravel", "worldcuptrip", "travelhack", "travelmore"],
+      "hashtag_count": 5,
+      "likes_visible": 25,
+      "comments_visible": 2,
+      "reposts_visible": 1,
+      "posted_at_relative": "7w",
+      "posted_at_approx": "Apr 7"
+    }
+  ],
+  "blocked": false,
+  "block_reason": null,
+  "insights": [
+    "412K followers but recent posts (post 4 @ 7w) get 25 likes = 0.006% engagement rate. Pinned posts (post 1-3) carry the social proof signal.",
+    "Hashtag strategy is split: 4/8 brand-self-referential (#LaylaAI, #LaylaTripPlanner), 4/8 category (#TripPlanner, #AIPlanner). Zero broad-travel tags (#travel, #wanderlust). Strategy is brand-search recall, not reach.",
+    "Like counts are HIDDEN on all posts. They use the public Instagram 'Hide like counts' feature.",
+    "Voice: warm, conversational, heavy emoji use, long-form captions. Direct contrast with our editorial-restrained voice + single ✦ glyph.",
+    "Caption pattern: specific big numbers (1.2M trips, +1.7M trips planned) used as proof IN captions, not just bio.",
+    "Recent format: 7-slide carousel for World Cup 2026 trend-jumping content. Trend-relevance is a deliberate cadence lever.",
+    "Confirmed: their bio CTA points to app.layla.ai/download — they convert to MOBILE APP installs, not web. Our 'geknee.com' CTA is a web conversion — different funnel.",
+    "Caption hook of post 1 uses '47 tabs won't close themselves' — same pain frame as our A1 V1 ('47 tabs. Sticky notes. A maybe Tokyo? that turns into nothing'). Direct overlap. Differentiate harder."
+  ]
+}
