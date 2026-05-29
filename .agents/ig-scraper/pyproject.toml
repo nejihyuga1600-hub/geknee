@@ -1,0 +1,9 @@
+[project]
+name = "ig-scraper"
+version = "0.1.0"
+description = "Read-only IG competitor benchmarking via browser-use + CDP attach."
+requires-python = ">=3.12"
+dependencies = [
+    "browser-use>=0.12.9",
+    "python-dotenv>=1.0.0",
+]

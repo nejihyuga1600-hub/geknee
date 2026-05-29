@@ -1,0 +1,33 @@
+# IG handles for ig-scraper. One per line. # comments allowed.
+# Source of truth: ad-assets/competitors/list.md
+# Last updated: 2026-05-28
+
+# --- Segment 1: AI travel planners ---
+layla.tripplanner
+mindtrip.ai
+iplanai
+guidegeek.ai
+# wonderplan, tripplannerai, curiosio — no public IG handle surfaced yet
+
+# --- Segment 2: Travel inspo / discovery (Cloudflare-blocked websites; IG is the right channel) ---
+atlasobscura
+lonelyplanet
+cntraveler
+beautifuldestinations
+natgeotravel
+travelandleisure
+
+# --- Segment 3: Travel-tech utilities ---
+going
+hopper
+skyscanner
+kayak
+# wanderlog — no public IG handle surfaced yet
+
+# --- Segment 4: Indie creators (PLACEHOLDER — replace with your picks) ---
+nomadicmatt
+theblondeabroad
+lostleblanc
+damonandjo
+drewbinsky
+evazubeck
