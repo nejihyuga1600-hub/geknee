@@ -29,7 +29,26 @@ cp .env.example .env
 uv sync
 ```
 
-The CDP Chrome from `ig-poster/launch-chrome.sh` is reused — no separate Chrome instance needed.
+### Why a separate Chrome
+
+Run this scraper from a SECOND Chrome instance signed into your PERSONAL Instagram account — NOT @gekneetravel.
+
+Reasons:
+- Visiting competitor profiles from the brand account leaks profile-views into their business insights.
+- The IG algorithm tags @gekneetravel as interested in those competitors and starts surfacing their content in our brand feed's "Suggested for you" — polluting the recommendation signal we want clean.
+- The two Chromes coexist: ig-poster on `http://localhost:9222` (brand login) + ig-scraper on `http://localhost:9223` (personal login).
+
+### Launch the scraper Chrome
+
+```bash
+bash ~/geknee/.agents/ig-scraper/launch-chrome.sh
+# A new Chrome window opens at instagram.com on port 9223.
+# Sign into your PERSONAL IG account (not the brand) in this window.
+# Cookies persist in ~/.gkscrape-chrome-data for future runs.
+
+# Verify CDP:
+curl -s http://localhost:9223/json/version | head -5
+```
 
 ## Run a benchmark pass
 

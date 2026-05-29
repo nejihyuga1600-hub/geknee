@@ -115,7 +115,8 @@ async def main():
     g.add_argument("--handle", help="Single IG handle (no @ prefix)")
     g.add_argument("--handles-file", help="Path to UTF-8 file with one handle per line")
     p.add_argument("--posts", type=int, default=12, help="Recent posts to capture per profile")
-    p.add_argument("--cdp-url", default="http://localhost:9222")
+    p.add_argument("--cdp-url", default="http://localhost:9223",
+                   help="CDP URL of the ig-scraper Chrome (port 9223 by convention — do NOT use ig-poster's brand Chrome on 9222)")
     p.add_argument("--out-dir", default="~/geknee/ad-assets/competitors/scrapes")
     p.add_argument("--max-steps", type=int, default=80)
     p.add_argument("--pause-between-profiles", type=int, default=60, help="Seconds to wait between profiles")

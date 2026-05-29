@@ -37,6 +37,15 @@ Free to try → geknee.com
 
 #travelplanning #aitripplanner #travel #wanderlust #tripplanning
 
+### V4
+"AI trip planner" is a category. GeKnee is a 3D globe.
+
+Spin Earth. Tap a city. The Genie writes the days — places, times, the reason for each stop. Free.
+
+→ geknee.com
+
+#travelplanning #aitripplanner #tripplanner #travelapp #aiitinerary
+
 ---
 
 ## A2 — Spontaneous Explorer
@@ -67,6 +76,15 @@ Spin the globe. Pick a city. Tell the Genie what kind of trip — "foodie weeken
 geknee.com
 
 #travelinspo #wanderlust #traveltips #travelapp #wheretotravel
+
+### V4
+While the other AI planners ask you to type, GeKnee asks you to spin. ✦
+
+Tap any point on Earth. Get a real trip — when to go, what's beautiful, what you'd actually do. The globe is the planner.
+
+geknee.com
+
+#travelinspo #wanderlust #aitravelplanner #travelapp #wheretotravel
 
 ---
 
@@ -99,6 +117,15 @@ geknee.com
 
 #grouptrip #travel #travelwithfriends #squadgoals #travelapp
 
+### V4
+Group trip planned in the time it takes to send the first WhatsApp.
+
+GeKnee turns "where should we go?" into a shared trip everyone can see — vote on activities, swap stops, no 400-message thread. Plan in minutes, not weeks.
+
+→ geknee.com
+
+#grouptravel #travelplanning #travelwithfriends #aitripplanner #grouptrip
+
 ---
 
 ## A4 — Frequent Flyer / Nomad
@@ -129,6 +156,15 @@ GeKnee is the boring layer that makes the fun layer possible. Flights, routes, F
 geknee.com
 
 #nomadlife #travelhacks #digitalnomad #frequentflyer #travel
+
+### V4
+The boring layer, automated. ✦
+
+Flights, FX, visas, daily plan — under one trip. GeKnee handles the logistics so you do the parts only you can do. Built for people who travel as a job.
+
+geknee.com
+
+#digitalnomad #nomadlife #travelhacks #remotework #frequentflyer
 
 ---
 
@@ -161,6 +197,15 @@ geknee.com
 
 #travelgoals #bucketlist #travel #wanderlust #travelapp
 
+### V4
+Every other "AI travel planner" thinks it's done when you book.
+
+GeKnee starts then. Stand under a monument. Phone verifies you're there. Badge unlocks. Rarity tiers from Bronze to Diamond. The only travel app that knows you actually went.
+
+geknee.com
+
+#travelgoals #bucketlist #travel #travelapp #wanderlust
+
 ---
 
 ## A6 — On-Trip Traveler
@@ -191,3 +236,12 @@ GeKnee live trip: crowds, weather, Street View, and "what's worth doing in the n
 geknee.com
 
 #travel #travelhacks #livetravel #cityguide #travelapp #citytravel
+
+### V4
+Trip planning is the boring half. GeKnee runs the trip.
+
+Live mode: which museum closes in 22 minutes, where the queue is thin, when the light is best. Quiet, ad-free, on the ground. A real companion.
+
+→ geknee.com
+
+#travel #livetravel #travelhacks #cityguide #travelapp #citytravel
