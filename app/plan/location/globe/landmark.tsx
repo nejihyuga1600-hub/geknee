@@ -45,6 +45,7 @@ import {
   AVAILABLE_SKINS,
   MONUMENT_LATLON,
   SKIN_RING_COLOR,
+  MONUMENT_SCALE_OVERRIDE,
 } from "./skins";
 
 // ─── Landmark system ──────────────────────────────────────────────────────────
@@ -573,7 +574,10 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   const LANDMARK_BOOST = 2.925;
   const UNIFORM_S = 0.4;
   void s; // declared override intentionally ignored
-  const effS = UNIFORM_S * density * LANDMARK_BOOST;
+  // Per-monument scale override (skins.ts) targets specific outliers whose
+  // GLBs render visually larger than the uniform baseline (e.g. iguazuFalls).
+  const monumentOverride = mk ? (MONUMENT_SCALE_OVERRIDE[mk] ?? 1) : 1;
+  const effS = UNIFORM_S * density * LANDMARK_BOOST * monumentOverride;
 
   // ─── Animation state refs ───────────────────────────────────────────────────
   const prevCollectedRef = useRef(isCollected);

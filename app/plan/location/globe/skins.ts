@@ -81,6 +81,17 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   fushimiInari:   new Set(['bronze']),
 };
 
+// Per-monument visual scale override, applied on top of the uniform landmark
+// boost in landmark.tsx (effS). Default for any monument not listed = 1.0.
+// Use values < 1 to shrink monuments whose GLBs are visually larger than the
+// uniform baseline (typically wide-aspect-ratio ones like waterfalls or
+// island clusters where the maxDim normalization over-inflates them).
+// Use values > 1 to grow tiny detail monuments. Keep edits small (±20%
+// per pass) and verify in Safari before tuning further.
+export const MONUMENT_SCALE_OVERRIDE: Record<string, number> = {
+  iguazuFalls: 0.5,
+};
+
 // Raw lat/lon for each collectable monument. Consumed by:
 //   - CityMapView (Google Maps Circle overlays at real coords)
 //   - /u/[handle] profile page (labels)
