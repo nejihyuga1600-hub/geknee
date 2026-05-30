@@ -567,15 +567,17 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   // Sizing rule (geknee, 2026-05-29):
   //   1. FIT IN COUNTRY: monument's max visible diameter (effS × zoomMul,
   //      where zoomMul ∈ [1, 2]) must fit inside the host country. At
-  //      max zoom-out: effS × 2 = 1.125 × 0.4 × 2 ≈ 0.9 globe units
-  //      (≈ 573 km — globe R=10 and Earth R=6371 km gives 1 unit ≈ 637 km).
+  //      max zoom-out: effS × 2 = 1.40625 × 0.4 × 2 ≈ 1.125 globe units
+  //      (≈ 717 km — globe R=10, Earth R=6371 km, 1 unit ≈ 637 km).
   //   2. NO OVERLAP: handled by `density` above (LM_DENSITY scales down
   //      monuments in crowded clusters below DENSITY_THR degrees apart).
-  // LANDMARK_BOOST is the global tuning knob; per-monument overrides in
-  // MONUMENT_SCALE_OVERRIDE (skins.ts) handle outliers (e.g. waterfalls
-  // whose GLB bbox is unusually wide).
+  //   3. UPPER LIMIT: iguazuFalls's pre-2026-05-29 visual size is the
+  //      cap. No monument should render larger than that. iguazuFalls
+  //      gets a 0.5 override (skins.ts) to bring it under the cap.
+  // LANDMARK_BOOST is the global tuning knob; MONUMENT_SCALE_OVERRIDE
+  // (skins.ts) handles per-monument outliers.
   // The `s` prop on Lm is ignored — kept for API compatibility.
-  const LANDMARK_BOOST = 1.125;
+  const LANDMARK_BOOST = 1.40625;
   const UNIFORM_S = 0.4;
   void s; // declared override intentionally ignored
   const monumentOverride = mk ? (MONUMENT_SCALE_OVERRIDE[mk] ?? 1) : 1;
