@@ -55,6 +55,8 @@
 	<string>geknee saves shareable trip recap images to your photo library when you tap Save.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>geknee uses your location to suggest nearby landmarks, plan routes, and verify monument check-ins while the app is open.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>geknee only uses your location while the app is open. This string is required because the Capacitor Geolocation SDK references the always-and-when-in-use API even when the app does not request background location.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
