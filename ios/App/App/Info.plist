@@ -47,6 +47,14 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>geknee uses the camera so you can capture photos at landmarks to add to your trip vault.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>geknee accesses your photo library so you can attach existing photos to trips and monument collections.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>geknee saves shareable trip recap images to your photo library when you tap Save.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>geknee uses your location to suggest nearby landmarks, plan routes, and verify monument check-ins while the app is open.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
