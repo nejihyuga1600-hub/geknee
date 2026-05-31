@@ -9,7 +9,7 @@
 //   skins.ts     — monument skin registry (file prefixes, available skins, ring colors)
 //   locations.ts — pre-computed landmark positions + density map
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Html, Text, Billboard } from "@react-three/drei";
 import { safePreloadGLB } from "./safeGLB";
 
@@ -165,6 +165,7 @@ class ModelErrorBoundary extends Component<
 // then multiplies by `scale` so it matches the surrounding Lm s-wrapper size.
 export function GlbModel({ path, scale }: { path: string; scale: number }) {
   const { scene } = useGLTF(path, undefined, true);
+  const { gl } = useThree();
   const obj = useMemo(() => {
     const c = scene.clone();
     const box = new THREE.Box3().setFromObject(c);
@@ -176,8 +177,37 @@ export function GlbModel({ path, scale }: { path: string; scale: number }) {
       c.scale.setScalar(norm);
       c.position.y = -box.min.y * norm;    // lift base to y=0 (globe surface)
     }
+    // Sharpen textures at distance. Default anisotropy on Three textures is 1,
+    // which is why monuments at globe-wide camera distances render as blurry
+    // blobs — the GPU samples the highest-mipmap (~16px) face on every pixel.
+    // Bumping to the GPU's max (typically 16) lets the sampler pull from the
+    // actual texture lod at glancing angles + far distances. Trilinear mip
+    // filter on top makes the transitions between LODs invisible.
+    const maxAniso = gl.capabilities.getMaxAnisotropy();
+    c.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (!m) continue;
+        // Walk every common texture slot on standard PBR materials.
+        const slots: Array<keyof THREE.MeshStandardMaterial> = [
+          'map', 'normalMap', 'roughnessMap', 'metalnessMap',
+          'aoMap', 'emissiveMap', 'bumpMap', 'displacementMap',
+        ];
+        for (const s of slots) {
+          const tex = (m as unknown as Record<string, THREE.Texture | null>)[s as string];
+          if (!tex || tex.anisotropy === maxAniso) continue;
+          tex.anisotropy   = maxAniso;
+          tex.minFilter    = THREE.LinearMipmapLinearFilter;
+          tex.magFilter    = THREE.LinearFilter;
+          tex.generateMipmaps = true;
+          tex.needsUpdate  = true;
+        }
+      }
+    });
     return c;
-  }, [scene, scale]);
+  }, [scene, scale, gl]);
   return <primitive object={obj} frustumCulled={false} />;
 }
 

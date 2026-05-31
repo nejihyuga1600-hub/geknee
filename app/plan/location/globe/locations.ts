@@ -3,7 +3,27 @@
 // no DOM, no runtime state.
 
 import * as THREE from "three";
-import { geo, DENSITY_THR, DENSITY_MIN, type SurfPos } from "./geo";
+import { geo, R, DENSITY_THR, DENSITY_MIN, type SurfPos } from "./geo";
+
+// Visual de-clutter priority (top = most popular = anchored on its real lat/lon
+// and never moves). Anything not listed is treated as lowest priority and may
+// be tangentially shifted off the more-popular monument's anchor by ~1.8°. Only
+// the rendered SurfPos changes — MONUMENT_LATLON (skins.ts) stays exact so trip
+// planning, search, and collection auth still use the true coordinates.
+//
+// Source for the top 9: app/plan/location/atlas/destinations.ts
+// POPULAR_SUGGESTIONS — duplicated here as a literal to avoid a circular
+// import (destinations.ts imports MONUMENT_LATLON from skins.ts which is
+// peer to this file, but the rank itself is editorial).
+const POPULARITY_RANK = [
+  'eiffelTower', 'tajMahal', 'colosseum', 'machuPicchu', 'greatWall',
+  'pyramidGiza', 'tokyoSkytree', 'statueLiberty', 'sydneyOpera',
+  // Next tier — remaining New Seven Wonders
+  'christRedeem', 'chichenItza', 'petra',
+  // Iconic monuments familiar to most travellers
+  'bigBen', 'sagradaFamilia', 'acropolis', 'stonehenge', 'angkorWat',
+  'goldenGate', 'neuschwanstein', 'borobudur',
+] as const;
 
 // Pre-computed positions for every landmark (runs once at module load)
 export const L = {
@@ -486,6 +506,69 @@ export const L = {
   sydneyHarbourBridge: geo(-33.852, 151.211),
   rotuaGeothermal:     geo(-38.137, 176.252),
 };
+
+// ─── Visual de-clutter pass (runs once at module load) ──────────────────────
+// Some monuments are geographically co-located (Sydney Opera House +
+// Harbour Bridge ~50m apart, Sagrada + nearby Catalan landmarks, etc.) so
+// they render directly on top of one another at globe-wide camera distances.
+// Walk all monuments in popularity order: each landmark anchors at its true
+// lat/lon, then we check every later (less-popular) landmark and tangentially
+// shift it ~1.8° away if it lands within 1.5° of a higher-priority one.
+//
+// The shift mutates L[key].pos/q to a new SurfPos. MONUMENT_LATLON in
+// skins.ts is untouched — collection auth, trip planning, and search still
+// use the precise coords. Only the rendered globe position moves.
+(() => {
+  const MIN_SEP_DEG = 1.5;   // pairs closer than this get de-cluttered
+  const SHIFT_DEG   = 1.8;   // amount the less-popular monument moves
+
+  const rankOf = (k: string): number => {
+    const i = (POPULARITY_RANK as readonly string[]).indexOf(k);
+    return i === -1 ? POPULARITY_RANK.length : i;
+  };
+
+  const Lmut = L as unknown as Record<string, SurfPos>;
+  // Inverse of geo() — derive lat/lon from a sphere-surface position.
+  const toLatLon = (p: SurfPos): [number, number] => {
+    const [x, y, z] = p.pos;
+    const lat = (Math.asin(Math.max(-1, Math.min(1, y / R))) * 180) / Math.PI;
+    const lon = (Math.atan2(-z, x) * 180) / Math.PI;
+    return [lat, lon];
+  };
+
+  const keys = Object.keys(Lmut).sort((a, b) => rankOf(a) - rankOf(b));
+
+  for (let i = 1; i < keys.length; i++) {
+    const ki = keys[i];
+    let [latI, lonI] = toLatLon(Lmut[ki]);
+    for (let j = 0; j < i; j++) {
+      const kj = keys[j];
+      const [latJ, lonJ] = toLatLon(Lmut[kj]);
+      // Angular separation via dot product of unit vectors.
+      const φi = (latI * Math.PI) / 180, λi = (lonI * Math.PI) / 180;
+      const φj = (latJ * Math.PI) / 180, λj = (lonJ * Math.PI) / 180;
+      const dot =
+        Math.cos(φi) * Math.cos(φj) * Math.cos(λi - λj) +
+        Math.sin(φi) * Math.sin(φj);
+      const angDeg = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+      if (angDeg >= MIN_SEP_DEG) continue;
+
+      // Shift ki away from kj in lat/lon space. For nearly-identical points
+      // (Sydney pair) pick a deterministic eastward bearing so the result is
+      // stable across reloads.
+      let dlat = latI - latJ;
+      let dlon = lonI - lonJ;
+      const len = Math.hypot(dlat, dlon);
+      if (len < 1e-6) { dlat = 0; dlon = 1; }
+      const norm = Math.hypot(dlat, dlon) || 1;
+      latI = latJ + (dlat / norm) * SHIFT_DEG;
+      lonI = lonJ + (dlon / norm) * SHIFT_DEG;
+    }
+    // Replace SurfPos with the de-cluttered position. The quaternion is
+    // re-derived by geo() so the model still stands upright on the sphere.
+    Lmut[ki] = geo(latI, lonI);
+  }
+})();
 
 // ─── Landmark density scale (precomputed at module load) ──────────────────────
 // For each landmark, find its nearest angular neighbour. If landmarks are
