@@ -135,7 +135,14 @@ export const MODELS: Record<string, { path: string; scale: number }> = {};
 // preload when reachable. With Vercel Blob currently 403-locked (see
 // docs/MEMORY_OPTIMIZATION_PLAN.md Phase 1.1), this kills the 50+ console
 // errors that fired on every page load.
-if (typeof window !== 'undefined') {
+// Skip eager preload entirely inside Capacitor's WKWebView — 31 GLBs at
+// 5-10MB each blow iOS's per-process memory budget and trigger the
+// WebView OOM kill loop (PostHog $pageview every 3-4s). Lazy load each
+// GLB only when its monument enters the camera-facing hemisphere
+// (existing IS_MOBILE viewport-gate already handles that).
+const _isCapacitorShell = typeof window !== 'undefined' &&
+  !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+if (typeof window !== 'undefined' && !_isCapacitorShell) {
   for (const [mk, prefix] of Object.entries(MONUMENT_FILE_PREFIX)) {
     const skins = AVAILABLE_SKINS[mk];
     if (!skins || skins.size === 0) continue;
