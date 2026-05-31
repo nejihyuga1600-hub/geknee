@@ -1918,19 +1918,21 @@ function CityLabels({ camDist }: { camDist: number }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraVersion, smallVersion, popMin]);
 
-  // Collected monuments — used to nudge city labels off the monument GLB and
-  // draw a leader line so the user can still associate label and landmark.
-  const collectedSet = useCollectedMonumentSet();
-  const collectedMonumentPositions = useMemo(() => {
+  // All monument positions — used to nudge city labels off the monument disc.
+  // Was previously gated on the collected set, which meant labels still landed
+  // on top of monuments the viewer hadn't collected yet (the common case for
+  // new users — the "New York" + "Newark" labels stacked on Statue of Liberty
+  // in screenshots). Now any monument the globe can render, the city labels
+  // yield to. Module-load constant since MONUMENT_LATLON doesn't change.
+  void useCollectedMonumentSet(); // keep subscription to drop unused-hook lint
+  const allMonumentPositions = useMemo(() => {
     const out: { pos: [number, number, number]; unit: THREE.Vector3 }[] = [];
-    collectedSet.forEach((mk) => {
-      const ll = MONUMENT_LATLON[mk];
-      if (!ll) return;
+    for (const ll of Object.values(MONUMENT_LATLON)) {
       const p = geoPos(ll.lat, ll.lon, R * 1.001);
       out.push({ pos: p, unit: new THREE.Vector3(...p).normalize() });
-    });
+    }
     return out;
-  }, [collectedSet]);
+  }, []);
 
   // Greedy spatial dedup: sort tier-1 first, then pick cities that are
   // at least sepThresh° away from any already-selected city.
@@ -1952,8 +1954,8 @@ function CityLabels({ camDist }: { camDist: number }) {
     }
     // Density-based base size only. Per-frame zoom scaling lives in CityLabel's
     // useFrame so it's smooth at 60fps and doesn't rebuild SDF text meshes.
-    const NUDGE_TRIGGER_DEG = 2.0;   // monument within this arc → nudge label
-    const NUDGE_OFFSET_DEG  = 0.8;   // small upward bump — keeps label "just above" the monument
+    const NUDGE_TRIGGER_DEG = 3.0;   // monument within this arc → nudge label
+    const NUDGE_OFFSET_DEG  = 1.4;   // pushes label clearly above the monument disc
     const sphereR = R * 1.001;
     const NORTH = new THREE.Vector3(0, 1, 0);
     return selected.map((city, i) => {
@@ -1978,7 +1980,7 @@ function CityLabels({ camDist }: { camDist: number }) {
       // GLB instead of being shoved into another state. Earlier away-tangent
       // logic could land Rio's label in the ocean or NYC's in Pennsylvania.
       let onTopOfMonument = false;
-      for (const mon of collectedMonumentPositions) {
+      for (const mon of allMonumentPositions) {
         const dot = Math.max(-1, Math.min(1, u.dot(mon.unit)));
         const deg = Math.acos(dot) * (180 / Math.PI);
         if (deg < NUDGE_TRIGGER_DEG) { onTopOfMonument = true; break; }
@@ -2003,7 +2005,7 @@ function CityLabels({ camDist }: { camDist: number }) {
       // (sitting just above it) so a leader would be visual noise.
       return { ...city, pos, orientation, fontSize, leaderTo: undefined };
     });
-  }, [items, camDist, sepThresh, collectedMonumentPositions]);
+  }, [items, camDist, sepThresh, allMonumentPositions]);
 
   if (camDist >= 21) return null;
 
