@@ -48,13 +48,21 @@ export function initAnalytics() {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (!key) return;
   const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
+  // Detect Capacitor's WKWebView — session recording's DOM-mutation buffer
+  // overruns iOS's tighter per-process memory budget on the 3D globe page
+  // (~2s buffer fill → WebKit process kill → page reload loop observed in
+  // TestFlight; confirmed via PostHog $pageview cadence every 2-3s).
+  // Mobile Safari has a higher budget so it tolerates the recording
+  // overhead. Disable recording on the native shell only — pageviews +
+  // explicit events still fire so funnel analytics are unaffected.
+  const isCapacitor = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
   posthog.init(key, {
     api_host: host,
     person_profiles: 'identified_only',
     capture_pageview: true,
     capture_pageleave: true,
     autocapture: false, // opt into explicit events only — cheaper + easier to read
-    disable_session_recording: false,
+    disable_session_recording: isCapacitor,
     session_recording: {
       maskAllInputs: true,
       maskTextSelector: '[data-private]',
