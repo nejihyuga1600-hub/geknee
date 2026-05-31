@@ -1059,11 +1059,14 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
             during the unlock ceremony, idle intensity is 0). */}
         <pointLight ref={flashLightRef} position={[0, 0.5, 0]} color="#fffbe6" intensity={0} distance={3} />
 
-        {/* Per-monument spotlights removed at user request — they were
-            blowing out the PBR detail on Meshy GLBs. Monuments now rely
-            entirely on the scene-level lighting (ambient + key/fill from
-            GlobeScene), which renders the textures with their natural
-            contrast. */}
+        {/* Per-monument fill lights — soft. Previous iteration at 4.0+2.0
+            washed out the PBR maps; cutting them entirely made the skins
+            read flat. 1.4+0.7 is enough for the painted-in monument detail
+            to be visible from a globe-wide camera without blowing out the
+            ACES tone-mapped highlights. Tight distance=3 so neighbouring
+            monuments don't bleed into each other. */}
+        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={1.4} distance={3} decay={2} />
+        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={0.7} distance={3} decay={2} />
 
         {/* Persistent monument ring removed at user request — the rarity-
             tinted ring + the white "find me" outline were reading as visual

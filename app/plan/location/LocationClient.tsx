@@ -712,10 +712,17 @@ function createEarthTexture(
     // Box size is ~64px at the 8K bake scale ≈ 3° lat/lon — wider than the
     // visible disc plus a small margin so labels can't crowd the rim either.
     const MONUMENT_RESERVE_PX = 64 * (W / 8192);
+    // Kept as its own list (in addition to `placed`) so the city-dot pass
+    // below can skip dots that land on a monument without also skipping dots
+    // that land near a country/state label — the latter is fine, the former
+    // visually stacks a white dot on the monument disc.
+    const monumentBoxes: Array<{ x: number; y: number; w: number; h: number }> = [];
     for (const ll of Object.values(MONUMENT_LATLON)) {
       const mx = ((ll.lon + 180) / 360) * W;
       const my = ((90 - ll.lat) / 180) * H;
-      placed.push({ x: mx, y: my, w: MONUMENT_RESERVE_PX, h: MONUMENT_RESERVE_PX });
+      const box = { x: mx, y: my, w: MONUMENT_RESERVE_PX, h: MONUMENT_RESERVE_PX };
+      placed.push(box);
+      monumentBoxes.push(box);
     }
 
     type Candidate = {
@@ -861,6 +868,16 @@ function createEarthTexture(
         if (city.lat > 85 || city.lat < -85) continue;
         const x = (city.lon + 180) / 360 * W;
         const y = (90 - city.lat) / 180 * H;
+        // Skip cities whose DOT lands on a monument reservation. The monument
+        // disc already occupies that pixel real estate; a white city dot
+        // stacked on it reads as visual noise (NY dot on Statue of Liberty,
+        // Cusco dot on Machu Picchu, etc.).
+        let onMonument = false;
+        for (const b of monumentBoxes) {
+          if (Math.abs(x - b.x) < b.w / 2 + DOT_R &&
+              Math.abs(y - b.y) < b.h / 2 + DOT_R) { onMonument = true; break; }
+        }
+        if (onMonument) continue;
         const pop = city.p ?? 1_000_000;
         const popFactor = Math.min(1, Math.max(0.5, Math.log10(Math.max(pop, 10_000) / 10_000) / 3));
         const size = Math.max(CITY_MIN_FONT, CITY_MAX_FONT * popFactor);
