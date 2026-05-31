@@ -24,6 +24,14 @@ const isLowEnd = typeof navigator !== "undefined" && (
 // the 8K upload alongside everything else the user has open.
 const isMidRam = typeof navigator !== "undefined" &&
   ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 16) <= 8;
+// Capacitor WKWebView has a much tighter memory budget than mobile Safari —
+// iOS terminates the WebView process under pressure. 4K texture (~64MB)
+// triggers the OOM loop in TestFlight (observed via PostHog: $pageview
+// fires every 3-4s, faster than the 10s globe canary). Cap at 2048 for
+// the app shell (~16MB). Surface map is lower res but barely noticeable
+// at planet-scale zoom.
+const isCapacitor = typeof window !== "undefined" &&
+  !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
@@ -2554,7 +2562,7 @@ function GlobeScene() {
     // upload at ~32MB on iOS WKWebView instead of the 128MB+ that an 8K
     // canvas implies. Phones can't perceive the difference (sphere shows
     // only ~0.05% of texels on-screen at any moment).
-    const texCap = (isMobile || isMidRam) ? 4096 : 8192;
+    const texCap = isCapacitor ? 2048 : ((isMobile || isMidRam) ? 4096 : 8192);
     // Overlay canvas scale: mobile keeps 1:1 (memory-constrained), desktop
     // renders the label overlay at 2× so the state + city labels stay
     // crisp when the user zooms in to the "Local" tier where they fade in.
@@ -2701,7 +2709,7 @@ function GlobeScene() {
           // iOS standalone PWAs (~250MB tab budget). Cap at 4096 on mobile —
           // imperceptible on phone screens (sphere shows ~0.05% of texels at
           // once) and drops GPU upload to 32MB. Desktop keeps 8K.
-          const texW = Math.min(maxTex, (isMobile || isMidRam) ? 4096 : 8192), texH = texW / 2;
+          const texW = Math.min(maxTex, isCapacitor ? 2048 : ((isMobile || isMidRam) ? 4096 : 8192)), texH = texW / 2;
           const bmp  = await createImageBitmap(blob, { resizeWidth: texW, resizeHeight: texH, resizeQuality: "high" });
           if (cancelled) { bmp.close?.(); break; }
           loadedBitmap = bmp;
@@ -2727,7 +2735,7 @@ function GlobeScene() {
         // Match the base canvas dimensions used by createEarthTexture so
         // the drawImage 1:1 maps. Mobile drops to 4K alongside terrain.
         const maxTex = gl.capabilities.maxTextureSize;
-        const W = Math.min(maxTex, (isMobile || isMidRam) ? 4096 : 8192), H = W / 2;
+        const W = Math.min(maxTex, isCapacitor ? 2048 : ((isMobile || isMidRam) ? 4096 : 8192)), H = W / 2;
         const bmp = await createImageBitmap(blob, { resizeWidth: W, resizeHeight: H, resizeQuality: 'high' });
         if (cancelled) { bmp.close?.(); return; }
         setBordersBitmap(bmp);
