@@ -18,6 +18,12 @@ const isLowEnd = typeof navigator !== "undefined" && (
   ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 4 ||
   (navigator.hardwareConcurrency ?? 8) <= 4
 );
+// Mid-RAM heuristic: <=8GB devices get the mobile-grade 4K earth texture
+// instead of the desktop 8K (32MB vs 128MB GPU upload). Catches MacBooks
+// under heavy multi-app pressure where Safari's per-tab budget can't fit
+// the 8K upload alongside everything else the user has open.
+const isMidRam = typeof navigator !== "undefined" &&
+  ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 16) <= 8;
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 import { consumeGlobeTarget, consumeCameraZoom, flyToGlobe, zoomCamera, resetGlobeTilt, consumeResetTilt } from "@/lib/globeAnim";
@@ -63,6 +69,7 @@ import {
   _setCollectedOrder,
   _setActiveSkins,
   _setViewerAuthed,
+  _setElevationSampler,
   _setOnGlobeReady,
   _triggerLmNav,
   _triggerLmNavDirect,
@@ -688,6 +695,20 @@ function createEarthTexture(
     } catch { /* SSR or detached document — fall through */ }
     const fontFamily = uiFont;
     const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+    // Reserve a pixel box for every monument so the country/state/city label
+    // passes below treat each monument disc as occupied and slide their text
+    // off it. Without this, country labels like "Peru" stack directly on top
+    // of Machu Picchu (monuments are 3D scene objects, labels are baked into
+    // this equirect canvas, so the two systems were unaware of each other).
+    // Box size is ~64px at the 8K bake scale ≈ 3° lat/lon — wider than the
+    // visible disc plus a small margin so labels can't crowd the rim either.
+    const MONUMENT_RESERVE_PX = 64 * (W / 8192);
+    for (const ll of Object.values(MONUMENT_LATLON)) {
+      const mx = ((ll.lon + 180) / 360) * W;
+      const my = ((90 - ll.lat) / 180) * H;
+      placed.push({ x: mx, y: my, w: MONUMENT_RESERVE_PX, h: MONUMENT_RESERVE_PX });
+    }
 
     type Candidate = {
       name: string; rawName: string; cx: number; cy: number;
@@ -2533,7 +2554,7 @@ function GlobeScene() {
     // upload at ~32MB on iOS WKWebView instead of the 128MB+ that an 8K
     // canvas implies. Phones can't perceive the difference (sphere shows
     // only ~0.05% of texels on-screen at any moment).
-    const texCap = isMobile ? 4096 : 8192;
+    const texCap = (isMobile || isMidRam) ? 4096 : 8192;
     // Overlay canvas scale: mobile keeps 1:1 (memory-constrained), desktop
     // renders the label overlay at 2× so the state + city labels stay
     // crisp when the user zooms in to the "Local" tier where they fade in.
@@ -2680,7 +2701,7 @@ function GlobeScene() {
           // iOS standalone PWAs (~250MB tab budget). Cap at 4096 on mobile —
           // imperceptible on phone screens (sphere shows ~0.05% of texels at
           // once) and drops GPU upload to 32MB. Desktop keeps 8K.
-          const texW = Math.min(maxTex, isMobile ? 4096 : 8192), texH = texW / 2;
+          const texW = Math.min(maxTex, (isMobile || isMidRam) ? 4096 : 8192), texH = texW / 2;
           const bmp  = await createImageBitmap(blob, { resizeWidth: texW, resizeHeight: texH, resizeQuality: "high" });
           if (cancelled) { bmp.close?.(); break; }
           loadedBitmap = bmp;
@@ -2706,7 +2727,7 @@ function GlobeScene() {
         // Match the base canvas dimensions used by createEarthTexture so
         // the drawImage 1:1 maps. Mobile drops to 4K alongside terrain.
         const maxTex = gl.capabilities.maxTextureSize;
-        const W = Math.min(maxTex, isMobile ? 4096 : 8192), H = W / 2;
+        const W = Math.min(maxTex, (isMobile || isMidRam) ? 4096 : 8192), H = W / 2;
         const bmp = await createImageBitmap(blob, { resizeWidth: W, resizeHeight: H, resizeQuality: 'high' });
         if (cancelled) { bmp.close?.(); return; }
         setBordersBitmap(bmp);
@@ -2730,6 +2751,40 @@ function GlobeScene() {
           t.needsUpdate = true;
           loadedBump = t;
           setBumpMap(t);
+
+          // Mirror the displacement into a CPU-side sampler so landmarks can
+          // lift themselves out of high terrain (Andes / Himalayas / Alps).
+          // Same image, sampled with the SphereGeometry UV convention so the
+          // landmark sees the exact same height the vertex shader did.
+          try {
+            const off = document.createElement('canvas');
+            // Quarter-res buffer (~2MB pinned vs ~8MB at 2048 wide). 1024×512
+            // gives 0.35° lat/lon per cell — plenty for monument anchors which
+            // are typically tens of km from any other monument or border.
+            const w = Math.min(img.naturalWidth, 1024);
+            const h = Math.round(img.naturalHeight * (w / img.naturalWidth));
+            off.width = w; off.height = h;
+            const ctx = off.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              const data = ctx.getImageData(0, 0, w, h).data;
+              // Returns [0,1] sampled at the SphereGeometry UV for pos.
+              _setElevationSampler((pos) => {
+                const len = Math.hypot(pos[0], pos[1], pos[2]) || 1;
+                const nx = pos[0] / len, ny = pos[1] / len, nz = pos[2] / len;
+                let phi = Math.atan2(nz, -nx);     // [-PI, PI]
+                if (phi < 0) phi += Math.PI * 2;
+                const u = phi / (Math.PI * 2);     // [0, 1)
+                const vGeom = Math.acos(Math.max(-1, Math.min(1, ny))) / Math.PI;
+                // Image pixel y matches v_geom directly: north pole → row 0.
+                const px = Math.min(w - 1, Math.max(0, Math.floor(u * w)));
+                const py = Math.min(h - 1, Math.max(0, Math.floor(vGeom * h)));
+                return data[(py * w + px) * 4] / 255;
+              });
+            }
+          } catch {
+            // Canvas tainted or OOM — landmarks just stay at sphere surface.
+          }
         } else {
           t.dispose(); // too low-res — skip and release
         }
@@ -3235,6 +3290,47 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
       setGlobeStuck(false);
     }
   }, [globeReady, glKey]);
+
+  // Proactive memory-pressure guard. Polls performance.memory (Chromium-only;
+  // Safari/Firefox no-op since the API is absent there) and trips the static-
+  // backdrop fallback BEFORE Safari/Chrome kills the tab with the "this
+  // webpage was reloaded because it was using significant memory" banner.
+  //
+  // Two consecutive samples above 75% of the heap ceiling = bail. Reusing the
+  // existing geknee:webgl-fallback event so the user sees the same recovery
+  // affordance as the post-context-loss path.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    type PM = { usedJSHeapSize: number; jsHeapSizeLimit: number };
+    const perf = (performance as unknown as { memory?: PM });
+    if (!perf.memory) return; // Safari/Firefox — no API, nothing to do.
+    let consecutive = 0;
+    let fired = false;
+    const t = setInterval(() => {
+      if (fired) return;
+      const m = perf.memory;
+      if (!m || !m.jsHeapSizeLimit) return;
+      const ratio = m.usedJSHeapSize / m.jsHeapSizeLimit;
+      if (ratio > 0.75) {
+        consecutive++;
+        if (consecutive >= 2) {
+          fired = true;
+          try {
+            track('globe_preemptive_fallback', {
+              ratio: Math.round(ratio * 100) / 100,
+              usedMB: Math.round(m.usedJSHeapSize / 1024 / 1024),
+              limitMB: Math.round(m.jsHeapSizeLimit / 1024 / 1024),
+            });
+          } catch { /* never let telemetry break the page */ }
+          window.dispatchEvent(new Event("geknee:webgl-fallback"));
+          clearInterval(t);
+        }
+      } else {
+        consecutive = 0;
+      }
+    }, 10_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Pause the R3F render loop while the app is backgrounded. On Capacitor
   // (iOS/Android), useFrame ticking in the background burns battery AND keeps

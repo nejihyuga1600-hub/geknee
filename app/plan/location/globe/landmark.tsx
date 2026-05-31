@@ -37,7 +37,7 @@ import React, {
 import * as THREE from "three";
 import { createPortal } from "react-dom";
 
-import { type SurfPos } from "./geo";
+import { R, type SurfPos } from "./geo";
 import { type LmInfo } from "./info";
 import { LM_DENSITY } from "./locations";
 import {
@@ -493,6 +493,45 @@ export function useCollectedMonumentOrder(): CollectedOrderEntry[] {
   return _collectedOrder;
 }
 
+// ─── Elevation sampler bridge (LocationClient → Lm) ──────────────────────
+// Mirrors the SphereGeometry vertex displacement: globe terrain is lifted by
+// `sampledHeight * DISPLACEMENT_SCALE + DISPLACEMENT_BIAS`. Landmarks anchored
+// at the un-displaced R surface get buried inside mountains (Andes hid Machu
+// Picchu, Himalayas hid Taj from certain angles, etc.). LocationClient builds
+// a sampler from the same `/earth_bump.jpg` it feeds to the globe material and
+// hands it here; Lm uses it to push the landmark outward along the radial.
+//
+// Keep these two constants in sync with the <Sphere> material props in
+// LocationClient.tsx — search "displacementScale={bumpMap".
+const DISPLACEMENT_SCALE = 0.65;
+const DISPLACEMENT_BIAS  = -0.12;
+
+type ElevationSampler = (pos: [number, number, number]) => number; // returns [0,1]
+let _elevationSampler: ElevationSampler | null = null;
+export function _setElevationSampler(fn: ElevationSampler | null) {
+  _elevationSampler = fn;
+  _monumentVersion++;
+  _monumentListeners.forEach(cb => cb());
+}
+
+// Lifts a sphere-surface position outward along the radial so the landmark
+// sits on top of the displaced terrain. Returns the original position
+// unchanged when no sampler is installed or the sample sits below sea level.
+export function useElevationLiftedPos(pos: [number, number, number]): [number, number, number] {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setTick(t => t + 1);
+    _monumentListeners.add(cb);
+    return () => { _monumentListeners.delete(cb); };
+  }, []);
+  if (!_elevationSampler) return pos;
+  const sampled = _elevationSampler(pos);
+  const lift = sampled * DISPLACEMENT_SCALE + DISPLACEMENT_BIAS;
+  if (!(lift > 0)) return pos;
+  const k = (R + lift) / R;
+  return [pos[0] * k, pos[1] * k, pos[2] * k];
+}
+
 // ─── Pending unlock bridge (Lm + MonumentShop → page chrome share-toast) ─────
 // Fires when a monument transitions from uncollected → collected so the page
 // can surface a share prompt. Keeps the toast UI out of the 3D scene.
@@ -528,6 +567,9 @@ export function usePendingUnlock(): PendingUnlock | null {
 
 export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
   const { isCollected, activeSkin, viewerAuthed } = useMonumentBridge(mk);
+  // Lift along the radial so the landmark sits on top of the displaced
+  // terrain rather than being buried inside it (Andes/Himalayas/Alps).
+  const liftedPos = useElevationLiftedPos(p.pos);
   const [hovered, setHovered]         = useState(false);
   const [mobileActive, setMobileActive] = useState(false);
   // Lightweight preview tier (bronze when available — typically ~17MB vs
@@ -958,7 +1000,7 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   if (!shouldRender) return null;
 
   return (
-    <group position={p.pos} quaternion={p.q}>
+    <group position={liftedPos} quaternion={p.q}>
       <group ref={zoomWrapperRef}>
       <group scale={effS}>
         <group ref={modelGroupRef}>

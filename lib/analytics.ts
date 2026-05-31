@@ -29,7 +29,12 @@ export type AnalyticsEvent =
   // texture lands AFTER the watchdog tripped (rare but happens on slow
   // connections); pair the two in PostHog to compute true "stuck globe" rate.
   | 'globe_load_failed'
-  | 'globe_load_recovered';
+  | 'globe_load_recovered'
+  // Proactive memory-pressure guard tripped — swapped to the static backdrop
+  // before Safari/Chrome killed the tab. Chromium-only (Safari has no
+  // performance.memory). Pair with globe_load_failed to tell preemptive
+  // bail-outs apart from "user actually stared at a blank sphere".
+  | 'globe_preemptive_fallback';
 
 let initialized = false;
 

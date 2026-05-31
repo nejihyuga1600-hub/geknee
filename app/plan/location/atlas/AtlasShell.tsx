@@ -12,7 +12,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { resetGlobeTilt } from "@/lib/globeAnim";
+import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
 import { currentIssueYear } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
 import {
@@ -288,6 +288,10 @@ export default function AtlasShell() {
     setDest(match.name);
     setSheet("open");
     setStep(1);
+    // Spin the background globe to the chosen destination + standard zoom.
+    // Matches the LocationClient pattern at line ~3031 (free-text destination
+    // navigation): fly first, then settle camera at distance 14.
+    flyToGlobe(match.lat, match.lon, () => zoomCamera(14));
   };
 
   const pickSuggestion = (s: Suggestion) => {
@@ -295,6 +299,7 @@ export default function AtlasShell() {
     setDest(s.name);
     setSheet("open");
     setStep(1);
+    flyToGlobe(s.lat, s.lon, () => zoomCamera(14));
   };
 
   return (
