@@ -2998,9 +2998,9 @@ function GlobeScene() {
           notch from the previous "Mario Galaxy was too bright" baseline so
           monuments don't read as silhouettes after the per-monument lights
           went away. Tune here if monuments look too dim/bright globally. */}
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[8, 5, 14]} intensity={1.4} color="#fff4d0" />
-      <pointLight position={[0, 3, 28]} intensity={1.4} color="#ffffff" />
+      <ambientLight intensity={1.05} />
+      <directionalLight position={[8, 5, 14]} intensity={1.6} color="#fff4d0" />
+      <pointLight position={[0, 3, 28]} intensity={1.6} color="#ffffff" />
       <pointLight position={[0, 20, 0]} intensity={0.5} color="#ffe8aa" />
       {/* Cool back-fill for atmospheric depth contrast */}
       <pointLight position={[-14, -8, -12]} intensity={0.4} color="#2040c0" />
@@ -3595,6 +3595,14 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         }}
         onCreated={({ gl }) => {
           gl.domElement.style.touchAction = "none";
+          // PBR colour pipeline — explicit so Meshy GLB diffuse/emissive maps
+          // don't get treated as linear and read muddy. ACES tone mapping
+          // gives the monuments a photographic highlight roll-off instead
+          // of clamping flat at 1.0; exposure 1.1 lifts mid-tones a notch
+          // so the textures show their detail against the bright Earth.
+          gl.outputColorSpace = THREE.SRGBColorSpace;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.1;
           // WebGL context loss handling. The previous remount-on-loss strategy
           // caused a crash cascade on iPhone Safari: iOS reclaimed the context
           // because it was tight on memory, we immediately bumped the Canvas
