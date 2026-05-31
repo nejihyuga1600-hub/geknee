@@ -2984,15 +2984,15 @@ function GlobeScene() {
           imperceptible at phone resolution and contributes to iOS PWA OOM. */}
       <Stars radius={140} depth={60} count={isMobile ? 1500 : 6000} factor={5} saturation={0} fade speed={0.4} />
 
-      {/* Scene-level lighting: pulled WAY down from the previous Mario Galaxy
-          intensities (ambient 1.4 / dir 1.6 / fill 2.0 / rim 1.0). Combined with
-          the bright yellow city rings + per-monument spotlights, the old values
-          produced a glaring halo around every landmark and washed out the
-          Meshy GLB silhouettes. Per-landmark pointLights inside Lm now do the
-          heavy lifting; the scene just provides bounce + shadow softening. */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[8, 5, 14]} intensity={1.0} color="#fff4d0" />
-      <pointLight position={[0, 3, 28]} intensity={1.0} color="#ffffff" />
+      {/* Scene-level lighting: per-monument spotlights were pulled (they
+          blew out the Meshy PBR materials), so the scene now does ALL the
+          lighting on landmarks. Ambient + key + a soft front fill, bumped a
+          notch from the previous "Mario Galaxy was too bright" baseline so
+          monuments don't read as silhouettes after the per-monument lights
+          went away. Tune here if monuments look too dim/bright globally. */}
+      <ambientLight intensity={0.9} />
+      <directionalLight position={[8, 5, 14]} intensity={1.4} color="#fff4d0" />
+      <pointLight position={[0, 3, 28]} intensity={1.4} color="#ffffff" />
       <pointLight position={[0, 20, 0]} intensity={0.5} color="#ffe8aa" />
       {/* Cool back-fill for atmospheric depth contrast */}
       <pointLight position={[-14, -8, -12]} intensity={0.4} color="#2040c0" />

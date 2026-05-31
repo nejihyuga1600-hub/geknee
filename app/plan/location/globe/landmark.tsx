@@ -1048,16 +1048,15 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
           )}
         </group>
 
-        {/* Flash point light for skin switch transition */}
+        {/* Flash point light for skin switch transition (kept — only fires
+            during the unlock ceremony, idle intensity is 0). */}
         <pointLight ref={flashLightRef} position={[0, 0.5, 0]} color="#fffbe6" intensity={0} distance={3} />
 
-        {/* Per-monument spotlights — these now do the heavy lifting since the
-            scene-level lighting was pulled down. 4.0 + 2.0 hits the Meshy PBR
-            materials cleanly without bleeding past distance=3 into neighbours.
-            (Earlier 6+3 over-baked combined with bright scene; 2+1 was invisible
-            after the scene cut. 4+2 is the sweet spot.) */}
-        <pointLight position={[1.2, 1.5, 1.2]}  color="#fff4d0" intensity={4.0} distance={3} decay={2} />
-        <pointLight position={[-1.2, 1.5, -1.2]} color="#dcefff" intensity={2.0} distance={3} decay={2} />
+        {/* Per-monument spotlights removed at user request — they were
+            blowing out the PBR detail on Meshy GLBs. Monuments now rely
+            entirely on the scene-level lighting (ambient + key/fill from
+            GlobeScene), which renders the textures with their natural
+            contrast. */}
 
         {/* Persistent monument ring removed at user request — the rarity-
             tinted ring + the white "find me" outline were reading as visual
