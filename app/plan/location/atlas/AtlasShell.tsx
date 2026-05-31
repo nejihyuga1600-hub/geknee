@@ -52,6 +52,12 @@ const PlannerGlobe = dynamic(() => import("../LocationClient"), {
 const FALLBACK_FLAG = "geknee_globe_fallback";
 function priorFallbackThisSession(): boolean {
   if (typeof window === "undefined") return false;
+  // Capacitor WKWebView's per-process memory budget can't hold the Three.js
+  // globe scene reliably — even after 2K texture + lazy GLB it OOM-kills
+  // ~every 2s. Default to the static backdrop on the iOS shell; the rest
+  // of the planner (genie, trip flow, plan-style, etc.) still works.
+  const isCapacitor = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+  if (isCapacitor) return true;
   try { return sessionStorage.getItem(FALLBACK_FLAG) === "1"; } catch { return false; }
 }
 
