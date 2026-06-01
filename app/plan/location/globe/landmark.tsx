@@ -142,13 +142,32 @@ export const MODELS: Record<string, { path: string; scale: number }> = {};
 // (existing IS_MOBILE viewport-gate already handles that).
 const _isCapacitorShell = typeof window !== 'undefined' &&
   !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+// Editorial: popular monuments where the silver GLB is roughly the same
+// size as bronze (checked on Blob — sydney/statueLiberty/greatWall silvers
+// are actually SMALLER than their bronzes; taj/machu/colosseum within ~5MB).
+// Eiffel silver is 47MB — excluded. Tokyo Skytree has no silver — excluded.
+// Net cost across the upgrade set is ≈ 0 with a visible quality lift on
+// the monuments the user is most likely to look at first.
+export const PREVIEW_TIER_UPGRADE = new Set([
+  'colosseum', 'tajMahal', 'greatWall', 'machuPicchu', 'pyramidGiza',
+  'statueLiberty', 'sydneyOpera',
+]);
+
+// Pick the preview tier for a monument — silver for the popular set above,
+// bronze otherwise. Exported so both the preload pass and the runtime
+// previewSkin computation in Lm stay in sync.
+export function previewTierFor(mk: string): 'silver' | 'bronze' | 'stone' | string | undefined {
+  const skins = AVAILABLE_SKINS[mk];
+  if (!skins || skins.size === 0) return undefined;
+  if (PREVIEW_TIER_UPGRADE.has(mk) && skins.has('silver')) return 'silver';
+  if (skins.has('bronze')) return 'bronze';
+  if (skins.has('stone')) return 'stone';
+  return [...skins][0];
+}
+
 if (typeof window !== 'undefined' && !_isCapacitorShell) {
   for (const [mk, prefix] of Object.entries(MONUMENT_FILE_PREFIX)) {
-    const skins = AVAILABLE_SKINS[mk];
-    if (!skins || skins.size === 0) continue;
-    const tier = skins.has('bronze') ? 'bronze'
-      : skins.has('stone') ? 'stone'
-      : [...skins][0];
+    const tier = previewTierFor(mk);
     if (tier) safePreloadGLB(`${BLOB_BASE}/${prefix}_${tier}.glb`);
   }
 }
@@ -621,11 +640,12 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
   //     (b) is the heaviest tier for monuments that do have it (47MB Eiffel
   //     stone vs 17MB Eiffel bronze) so the Suspense flashed the primitive
   //     for several seconds even on a fast connection.
+  // 'natural' stays the special-case top pick (where it exists) since it's
+  // designed as the "real world" look. Otherwise defer to previewTierFor()
+  // so the rendered tier matches what was eagerly preloaded above (silver
+  // for the popular set, bronze for everyone else).
   const previewSkin = mk && AVAILABLE_SKINS[mk]
-    ? (AVAILABLE_SKINS[mk].has('natural') ? 'natural'
-        : AVAILABLE_SKINS[mk].has('bronze') ? 'bronze'
-        : AVAILABLE_SKINS[mk].has('stone') ? 'stone'
-        : [...AVAILABLE_SKINS[mk]][0])
+    ? (AVAILABLE_SKINS[mk].has('natural') ? 'natural' : previewTierFor(mk))
     : undefined;
   const requestedSkin = (isCollected && activeSkin && activeSkin !== 'default')
     ? activeSkin
