@@ -711,7 +711,9 @@ function createEarthTexture(
     // this equirect canvas, so the two systems were unaware of each other).
     // Box size is ~64px at the 8K bake scale ≈ 3° lat/lon — wider than the
     // visible disc plus a small margin so labels can't crowd the rim either.
-    const MONUMENT_RESERVE_PX = 64 * (W / 8192);
+    // 96px @ 8K (~4.2° angular) — wider than the visible monument disc plus
+    // a margin so adjacent labels can't graze the rim either.
+    const MONUMENT_RESERVE_PX = 96 * (W / 8192);
     // Kept as its own list (in addition to `placed`) so the city-dot pass
     // below can skip dots that land on a monument without also skipping dots
     // that land near a country/state label — the latter is fine, the former
@@ -3176,8 +3178,14 @@ function GlobeScene() {
             mostly invisible click-hitbox sprites for country info popups, cheap to
             mount. CityLabels defers to the second frame because Troika SDF text
             mesh generation per visible city is the heaviest non-essential work. */}
-        <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />
-        {deferredMount && <CityLabels camDist={camDist} />}
+        {/* Capacitor WKWebView can't sustain the country + state + city
+            label layers — Troika SDF text atlases (one GPU texture per
+            unique glyph cluster) compound past the per-process memory
+            budget and trigger the WebView OOM kill loop. Skip the label
+            layers on the iOS app; keep the sphere + monuments (the brand
+            edge). */}
+        {!isCapacitor && <GeoLabels countries={countries} states={states} zoomLevel={zoomLevel} />}
+        {!isCapacitor && deferredMount && <CityLabels camDist={camDist} />}
 
       </group>
     </>

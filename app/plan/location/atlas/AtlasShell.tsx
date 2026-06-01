@@ -52,14 +52,6 @@ const PlannerGlobe = dynamic(() => import("../LocationClient"), {
 const FALLBACK_FLAG = "geknee_globe_fallback";
 function priorFallbackThisSession(): boolean {
   if (typeof window === "undefined") return false;
-  // DIAGNOSTIC: Capacitor WKWebView's blink loop persists even after
-  // texture+GLB+session-recording cuts. Force the static backdrop on
-  // Capacitor so we can isolate whether the Three.js scene is the
-  // killer or the issue lives elsewhere in AtlasShell. If blinking
-  // stops with this on, the scene is the cause. If it persists,
-  // something in AtlasShell mount itself is the cause.
-  const isCapacitor = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
-  if (isCapacitor) return true;
   try { return sessionStorage.getItem(FALLBACK_FLAG) === "1"; } catch { return false; }
 }
 
