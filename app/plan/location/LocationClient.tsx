@@ -1956,56 +1956,44 @@ function CityLabels({ camDist }: { camDist: number }) {
     }
     // Density-based base size only. Per-frame zoom scaling lives in CityLabel's
     // useFrame so it's smooth at 60fps and doesn't rebuild SDF text meshes.
-    const NUDGE_TRIGGER_DEG = 3.0;   // monument within this arc → nudge label
-    const NUDGE_OFFSET_DEG  = 1.4;   // pushes label clearly above the monument disc
-    const sphereR = R * 1.001;
-    const NORTH = new THREE.Vector3(0, 1, 0);
-    return selected.map((city, i) => {
+    // User rule (2026-05-31): remove anything that lands on a monument
+    // position. Was previously a nudge ("shift label slightly above the
+    // disc") which still left the label crowding the monument. Now any
+    // city whose anchor falls within 3° of a monument is dropped from
+    // the visible set entirely.
+    const SUPPRESS_TRIGGER_DEG = 3.0;
+    const filtered = selected.filter((_, i) => {
       const u = selUnits[i];
-      let minDeg = 180;
-      for (let j = 0; j < selUnits.length; j++) {
-        if (i === j) continue;
-        const dot = Math.max(-1, Math.min(1, u.dot(selUnits[j])));
-        const deg = Math.acos(dot) * (180 / Math.PI);
-        if (deg < minDeg) minDeg = deg;
-      }
-      // Mesh-based label sizing. Cities target 25% smaller than the
-      // country base font (0.13 → 0.0975), then another 25% smaller per
-      // the latest pass. Result: 0.0975 * 0.75 ≈ 0.073 world units at
-      // default density. Density-shrink floor scales with the base.
-      // Per-frame zoom scaling in CityLabel keeps the screen footprint
-      // roughly constant across camDist.
-      const fontSize = minDeg >= 6 ? 0.073 : Math.max(0.05, 0.073 * (minDeg / 6));
-
-      // If a collected monument is sitting near this city label, nudge the
-      // label slightly NORTH on the sphere so it floats above the monument
-      // GLB instead of being shoved into another state. Earlier away-tangent
-      // logic could land Rio's label in the ocean or NYC's in Pennsylvania.
-      let onTopOfMonument = false;
       for (const mon of allMonumentPositions) {
         const dot = Math.max(-1, Math.min(1, u.dot(mon.unit)));
         const deg = Math.acos(dot) * (180 / Math.PI);
-        if (deg < NUDGE_TRIGGER_DEG) { onTopOfMonument = true; break; }
+        if (deg < SUPPRESS_TRIGGER_DEG) return false;
       }
+      return true;
+    });
+    const filteredUnits = selected
+      .map((_, i) => selUnits[i])
+      .filter((_, i) => {
+        const u = selUnits[i];
+        for (const mon of allMonumentPositions) {
+          const dot = Math.max(-1, Math.min(1, u.dot(mon.unit)));
+          const deg = Math.acos(dot) * (180 / Math.PI);
+          if (deg < SUPPRESS_TRIGGER_DEG) return false;
+        }
+        return true;
+      });
 
-      let pos = city.pos;
-      if (onTopOfMonument) {
-        // Tangent at city pointing toward the north pole on the sphere.
-        // Falls back to an arbitrary tangent only at the poles.
-        const tangent = NORTH.clone().sub(u.clone().multiplyScalar(NORTH.dot(u)));
-        if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0);
-        tangent.normalize();
-        const axis = new THREE.Vector3().crossVectors(u, tangent).normalize();
-        const offsetVec = u.clone().applyAxisAngle(axis, NUDGE_OFFSET_DEG * Math.PI / 180).multiplyScalar(sphereR);
-        pos = [offsetVec.x, offsetVec.y, offsetVec.z];
+    return filtered.map((city, i) => {
+      const u = filteredUnits[i];
+      let minDeg = 180;
+      for (let j = 0; j < filteredUnits.length; j++) {
+        if (i === j) continue;
+        const dot = Math.max(-1, Math.min(1, u.dot(filteredUnits[j])));
+        const deg = Math.acos(dot) * (180 / Math.PI);
+        if (deg < minDeg) minDeg = deg;
       }
-
-      // Recompute orientation for the offset position so text still hugs the surface
-      const orientation = pos === city.pos ? city.orientation : computeOrientation(pos);
-
-      // No leader line — the label is now visually attached to the monument
-      // (sitting just above it) so a leader would be visual noise.
-      return { ...city, pos, orientation, fontSize, leaderTo: undefined };
+      const fontSize = minDeg >= 6 ? 0.073 : Math.max(0.05, 0.073 * (minDeg / 6));
+      return { ...city, pos: city.pos, orientation: city.orientation, fontSize, leaderTo: undefined };
     });
   }, [items, camDist, sepThresh, allMonumentPositions]);
 
