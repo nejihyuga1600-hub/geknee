@@ -327,6 +327,29 @@ export default function CityMapView({ name, lat, lon, monuments, onClose, embedd
         });
         mapRef.current = map;
 
+        // Hide Google's built-in locality + POI markers. They render as small
+        // white dots with the city/place name and end up sitting on top of
+        // our monument rings (e.g. "London" dot inside the Big Ben circle,
+        // "Paris" dot inside Eiffel's). The viewer is already inside this
+        // city via the title overlay, so the redundant pin is just noise.
+        // Uses the FeatureLayer API which requires a vector mapId (we set
+        // one above), so the style override is silently a no-op if mapId
+        // isn't applied.
+        try {
+          const FT = (google.maps as unknown as { FeatureType?: Record<string, string> }).FeatureType;
+          if (FT) {
+            const hidden: google.maps.FeatureStyleOptions = {
+              strokeOpacity: 0, fillOpacity: 0, strokeWeight: 0,
+            };
+            for (const key of ['POINT_OF_INTEREST', 'LOCALITY']) {
+              const t = FT[key];
+              if (!t) continue;
+              const layer = map.getFeatureLayer(t as google.maps.FeatureType);
+              if (layer) layer.style = hidden;
+            }
+          }
+        } catch { /* style API absent on older builds — leave default markers */ }
+
         // Google Maps caches its initial container size and doesn't always
         // reflow on viewport changes (rotate, devtools open, sheet expand).
         // Observe the container and trigger a resize so tiles re-fill and
