@@ -3591,7 +3591,15 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         // Halt the entire render loop when backgrounded (Capacitor app
         // background OR tab hidden). useFrame stops ticking; GPU stays
         // idle. Returns to "always" on resume.
-        frameloop={renderPaused ? "never" : "always"}
+        // Capacitor WKWebView has no JIT — JS runs ~3-5x slower than
+        // Safari, so the 60fps useFrame loop pins CPU and iOS kills
+        // the WebKit process every 2-3s. Switch to `demand` on the iOS
+        // app: OrbitControls calls invalidate() on user drag/pinch so
+        // renders still happen during interaction; the loop just doesn't
+        // run when the user isn't touching the globe. Root-cause fix
+        // for the TestFlight blink loop (memory cuts didn't help — it
+        // was always CPU).
+        frameloop={renderPaused ? "never" : (isCapacitor ? "demand" : "always")}
         // R3F fires onPointerMissed when a click hits the canvas but no
         // interactive 3D object intercepted it. We use that as "user clicked
         // empty space" → broadcast a dismiss signal so any open city/geo
