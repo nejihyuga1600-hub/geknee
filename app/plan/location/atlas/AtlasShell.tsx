@@ -179,6 +179,27 @@ export default function AtlasShell() {
     window.addEventListener("geknee:webgl-fallback", onFallback);
     return () => window.removeEventListener("geknee:webgl-fallback", onFallback);
   }, []);
+
+  // Capacitor cold-load mitigation: WKWebView's no-JIT runtime takes 2-3s
+  // just to parse + evaluate the JS bundle. If we mount the Three.js Canvas
+  // immediately on top of that, iOS's CPU watchdog kills the WebKit process
+  // before mount finishes, Capacitor auto-reloads, and the loop repeats
+  // (~20 cycles before SW cache warms enough for one mount to slip through).
+  //
+  // Defer Canvas mount for 4 seconds on Capacitor so the bundle parse +
+  // module eval + React first render complete first. The static backdrop
+  // shows during the wait so users see something immediately. After the
+  // delay, Canvas mounts against a settled WebView and survives.
+  const [globeMountReady, setGlobeMountReady] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const isCapacitor = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+    return !isCapacitor;
+  });
+  useEffect(() => {
+    if (globeMountReady) return;
+    const t = setTimeout(() => setGlobeMountReady(true), 4000);
+    return () => clearTimeout(t);
+  }, [globeMountReady]);
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState("");
   // Validation error shown below the destination input when the user
@@ -333,7 +354,7 @@ export default function AtlasShell() {
         transition: "transform 600ms cubic-bezier(0.23, 1, 0.32, 1)",
         willChange: "transform",
       }}>
-        {bypassGlobe ? <StaticGlobeBackdrop /> : <PlannerGlobe chromeless />}
+        {bypassGlobe || !globeMountReady ? <StaticGlobeBackdrop /> : <PlannerGlobe chromeless />}
       </div>
 
       {/* Top bar — paddingTop respects iOS standalone PWA safe-area so chips
