@@ -180,26 +180,19 @@ export default function AtlasShell() {
     return () => window.removeEventListener("geknee:webgl-fallback", onFallback);
   }, []);
 
-  // Capacitor cold-load mitigation: WKWebView's no-JIT runtime takes 2-3s
-  // just to parse + evaluate the JS bundle. If we mount the Three.js Canvas
-  // immediately on top of that, iOS's CPU watchdog kills the WebKit process
-  // before mount finishes, Capacitor auto-reloads, and the loop repeats
-  // (~20 cycles before SW cache warms enough for one mount to slip through).
-  //
-  // Defer Canvas mount for 4 seconds on Capacitor so the bundle parse +
-  // module eval + React first render complete first. The static backdrop
-  // shows during the wait so users see something immediately. After the
-  // delay, Canvas mounts against a settled WebView and survives.
-  const [globeMountReady, setGlobeMountReady] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const isCapacitor = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
-    return !isCapacitor;
-  });
-  useEffect(() => {
-    if (globeMountReady) return;
-    const t = setTimeout(() => setGlobeMountReady(true), 4000);
-    return () => clearTimeout(t);
-  }, [globeMountReady]);
+  // Capacitor: lazy-mount Three.js Canvas on user tap instead of on page
+  // mount. Defers the entire cold-load CPU burst (WKWebView has no JIT, so
+  // the Three.js mount + scene setup pins CPU for 3-5s — iOS's WebKit
+  // watchdog kills the process before mount finishes, Capacitor auto-
+  // reloads, blink loop). By gating on user tap we move the heavy work
+  // OUT of the initial-load window when the WebView is already busy
+  // parsing bundles + evaluating modules. The user has set intent ("I
+  // want to see the globe") so the brief mount stall is acceptable, and
+  // the static backdrop shows the brand surface up front so the planner
+  // chrome is immediately usable.
+  const _isCapacitorShell = typeof window !== "undefined" &&
+    !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+  const [globeMountReady, setGlobeMountReady] = useState(!_isCapacitorShell);
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState("");
   // Validation error shown below the destination input when the user
@@ -354,7 +347,39 @@ export default function AtlasShell() {
         transition: "transform 600ms cubic-bezier(0.23, 1, 0.32, 1)",
         willChange: "transform",
       }}>
-        {bypassGlobe || !globeMountReady ? <StaticGlobeBackdrop /> : <PlannerGlobe chromeless />}
+        {bypassGlobe ? (
+          <StaticGlobeBackdrop />
+        ) : !globeMountReady ? (
+          <>
+            <StaticGlobeBackdrop />
+            <button
+              type="button"
+              onClick={() => setGlobeMountReady(true)}
+              style={{
+                position: "fixed",
+                bottom: "calc(env(safe-area-inset-bottom) + 96px)",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 50,
+                background: "linear-gradient(135deg, #a78bfa 0%, #7dd3fc 100%)",
+                color: "#0a0a1f",
+                border: "none",
+                borderRadius: 999,
+                padding: "16px 32px",
+                fontSize: 16,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                boxShadow: "0 8px 32px rgba(167,139,250,0.45)",
+                cursor: "pointer",
+                fontFamily: "var(--font-ui), system-ui, sans-serif",
+              }}
+            >
+              Tap to open the globe
+            </button>
+          </>
+        ) : (
+          <PlannerGlobe chromeless />
+        )}
       </div>
 
       {/* Top bar — paddingTop respects iOS standalone PWA safe-area so chips

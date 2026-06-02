@@ -3587,7 +3587,22 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         key={glKey}
         style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100svh", zIndex: 1, touchAction: "none" }}
         camera={{ position: [0, 0, 26], fov: 50 }}
-        dpr={[1, isLowEnd ? 1 : isMobile ? 1.5 : 2]}
+        // Capacitor: force DPR 1 (no Retina) to halve the framebuffer
+        // memory and quarter the shader fragment work. Combined with
+        // antialias off + low-power GL context, this drops the cold-load
+        // GPU pressure that was tripping iOS's WebKit watchdog.
+        dpr={isCapacitor ? 1 : [1, isLowEnd ? 1 : isMobile ? 1.5 : 2]}
+        gl={isCapacitor ? {
+          powerPreference: 'low-power',
+          antialias: false,
+          alpha: false,
+          depth: true,
+          stencil: false,
+          preserveDrawingBuffer: false,
+          // failIfMajorPerformanceCaveat=false lets WKWebView use the
+          // software renderer instead of hard-failing the WebGL init.
+          failIfMajorPerformanceCaveat: false,
+        } : undefined}
         // Halt the entire render loop when backgrounded (Capacitor app
         // background OR tab hidden). useFrame stops ticking; GPU stays
         // idle. Returns to "always" on resume.
