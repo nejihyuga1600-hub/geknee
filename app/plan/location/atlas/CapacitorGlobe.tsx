@@ -70,25 +70,46 @@ export default function CapacitorGlobe() {
         "star-intensity": 0.6,
       });
 
-      // Drop a pin per wired monument. Geknee brand purple, anchored to
-      // the bottom-centre of the icon. Tap → dispatch the same event the
-      // Three.js globe uses so the monument card opens via existing chrome.
+      // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
+      // Re-run bin/snap-monuments.mjs to add more. Sprites are 1200x1600 PNG
+      // with transparent background — displayed at 56x75 on the globe.
+      const SPRITED = new Set([
+        "bigBen", "christRedeem", "colosseum", "eiffelTower", "greatWall",
+        "sagradaFamilia", "statueLiberty", "sydneyOpera", "tajMahal",
+      ]);
+
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        el.style.cssText = `
-          width: 28px; height: 28px; border-radius: 50%;
-          background: radial-gradient(circle at 35% 35%, #c4b5fd, #7c3aed);
-          border: 2px solid #fff;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.45), 0 0 0 3px rgba(167,139,250,0.25);
-          cursor: pointer;
-        `;
+        el.style.cursor = "pointer";
+        if (SPRITED.has(mk)) {
+          // Pre-rendered Meshy 3D monument as a 2D sprite — reads as 3D,
+          // costs as 2D. The actual GLB still loads in the monument card
+          // on tap so the rarity-tier reveal is preserved.
+          el.style.cssText += `
+            width: 56px; height: 75px;
+            background: url('/monument-snaps/${mk}.png') center/contain no-repeat;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.55));
+          `;
+        } else {
+          // No sprite yet — branded pin. Run bin/snap-monuments.mjs to
+          // upgrade this monument to a real 3D-render sprite.
+          el.style.cssText += `
+            width: 28px; height: 28px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #c4b5fd, #7c3aed);
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45), 0 0 0 3px rgba(167,139,250,0.25);
+          `;
+        }
         el.addEventListener("click", () => {
           window.dispatchEvent(
             new CustomEvent("geknee:monument-select", { detail: { mk } }),
           );
         });
-        new mapboxgl.Marker({ element: el, anchor: "center" })
+        new mapboxgl.Marker({
+          element: el,
+          anchor: SPRITED.has(mk) ? "bottom" : "center",
+        })
           .setLngLat([lon, lat])
           .addTo(map);
       }
