@@ -198,7 +198,15 @@ export default function AtlasShell() {
   // chrome is immediately usable.
   const _isCapacitorShell = typeof window !== "undefined" &&
     !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
-  const [globeMountReady, setGlobeMountReady] = useState(!_isCapacitorShell);
+  // Landing CTA ("Tap to open the globe") is first-open only. After the
+  // user taps once we persist geknee:seen-landing-v1 and every subsequent
+  // cold-launch auto-mounts the globe. Bump the vN suffix if the gate
+  // behavior changes — readers don't migrate.
+  const [globeMountReady, setGlobeMountReady] = useState(() => {
+    if (!_isCapacitorShell) return true;
+    try { return localStorage.getItem("geknee:seen-landing-v1") === "1"; }
+    catch { return false; }
+  });
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState("");
   // Validation error shown below the destination input when the user
@@ -360,7 +368,10 @@ export default function AtlasShell() {
             <StaticGlobeBackdrop />
             <button
               type="button"
-              onClick={() => setGlobeMountReady(true)}
+              onClick={() => {
+                try { localStorage.setItem("geknee:seen-landing-v1", "1"); } catch {}
+                setGlobeMountReady(true);
+              }}
               style={{
                 position: "fixed",
                 bottom: "calc(env(safe-area-inset-bottom) + 96px)",
