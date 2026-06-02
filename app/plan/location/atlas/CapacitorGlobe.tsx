@@ -64,12 +64,12 @@ export default function CapacitorGlobe() {
 
     mapRef.current = map;
 
-    // Bridge to the AtlasShell Initialize button. The button dispatches
-    // 'geknee:globe-initialize' on both web and iOS so the Mapbox globe
-    // resets the same way the Three.js globe does — back to center 0,20
-    // at zoom 1.2, no tilt, no bearing.
+    // Bridge to the AtlasShell Initialize button. Matches the Three.js
+    // globe's resetGlobeTilt — only the camera ANGLES home (pitch + bearing
+    // → 0), the center + zoom stay where the user left them. Initialize
+    // isn't "teleport home", it's "level out my view".
     const onInitialize = () => {
-      map.flyTo({ ...initialView, duration: 1200, essential: true });
+      map.easeTo({ pitch: 0, bearing: 0, duration: 1200, essential: true });
     };
     window.addEventListener("geknee:globe-initialize", onInitialize);
 
