@@ -514,7 +514,12 @@ export default function AtlasShell() {
           iOS standalone safe-area so it sits below the Dynamic Island. */}
       <div style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: "translateX(-50%)", zIndex: 11 }}>
         <button
-          onClick={() => resetGlobeTilt()}
+          onClick={() => {
+            // Three.js globe (web) listens through resetGlobeTilt;
+            // Mapbox globe (Capacitor) listens for the custom event.
+            resetGlobeTilt();
+            window.dispatchEvent(new Event("geknee:globe-initialize"));
+          }}
           title="Reset globe orientation"
           style={{
             background: "rgba(6,8,22,0.80)",

@@ -28,6 +28,7 @@
 // actually does on mobile) — but this WebView swap unblocks ship today.
 
 import { useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MONUMENT_LATLON } from "../globe/skins";
@@ -37,6 +38,9 @@ const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 export default function CapacitorGlobe() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const { data: session } = useSession();
+  const isAuthed = !!session?.user;
+  const initialView = { center: [0, 20] as [number, number], zoom: 1.2, pitch: 0, bearing: 0 };
 
   useEffect(() => {
     if (!containerRef.current || !TOKEN) return;
@@ -49,8 +53,8 @@ export default function CapacitorGlobe() {
       // style URL later if we want geknee brand colours.
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       projection: "globe",
-      center: [0, 20],
-      zoom: 1.2,
+      center: initialView.center,
+      zoom: initialView.zoom,
       // No interaction throttling — Mapbox handles touch on iOS natively.
       pitchWithRotate: true,
       // Faster mount on iOS: don't compute initial fog/atmosphere until
@@ -59,6 +63,15 @@ export default function CapacitorGlobe() {
     });
 
     mapRef.current = map;
+
+    // Bridge to the AtlasShell Initialize button. The button dispatches
+    // 'geknee:globe-initialize' on both web and iOS so the Mapbox globe
+    // resets the same way the Three.js globe does — back to center 0,20
+    // at zoom 1.2, no tilt, no bearing.
+    const onInitialize = () => {
+      map.flyTo({ ...initialView, duration: 1200, essential: true });
+    };
+    window.addEventListener("geknee:globe-initialize", onInitialize);
 
     map.on("style.load", () => {
       // Atmosphere settings — Mapbox's native rendering, free.
@@ -69,6 +82,10 @@ export default function CapacitorGlobe() {
         "space-color": "rgb(11, 11, 25)",
         "star-intensity": 0.6,
       });
+
+      // Guests don't see monuments — only authed users get the pins. Mirrors
+      // the Three.js globe behavior where Lm self-gates on viewerAuthed.
+      if (!isAuthed) return;
 
       // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
       // Re-run bin/snap-monuments.mjs to add more. Sprites are 1200x1600 PNG
@@ -109,6 +126,11 @@ export default function CapacitorGlobe() {
         new mapboxgl.Marker({
           element: el,
           anchor: SPRITED.has(mk) ? "bottom" : "center",
+          // Stay glued to the globe surface — tilt + rotate WITH the globe
+          // as the user spins, instead of staying screen-upright. Mapbox
+          // also auto-hides markers on the back side of the globe.
+          rotationAlignment: "map",
+          pitchAlignment: "map",
         })
           .setLngLat([lon, lat])
           .addTo(map);
@@ -116,10 +138,14 @@ export default function CapacitorGlobe() {
     });
 
     return () => {
+      window.removeEventListener("geknee:globe-initialize", onInitialize);
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  // Re-mount when auth state flips so signing in mid-session refreshes
+  // the markers (guest → authed users see their pins without a reload).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
 
   if (!TOKEN) {
     // Fallback when no token is configured — show the static gradient so
