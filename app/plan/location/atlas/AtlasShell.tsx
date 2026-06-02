@@ -39,6 +39,12 @@ const PlannerGlobe = dynamic(() => import("../LocationClient"), {
   ssr: false,
   loading: () => <StaticGlobeBackdrop />,
 });
+// Capacitor-only globe (Mapbox GL JS). Loaded lazily so web doesn't ship
+// the 230KB mapbox-gl bundle. See CapacitorGlobe.tsx for why this exists.
+const CapacitorGlobe = dynamic(() => import("./CapacitorGlobe"), {
+  ssr: false,
+  loading: () => <StaticGlobeBackdrop />,
+});
 
 // Globe bypass strategy: try the full WebGL globe everywhere by default.
 // Only swap to the static gradient backdrop if WebGL actually fails or the
@@ -377,6 +383,8 @@ export default function AtlasShell() {
               Tap to open the globe
             </button>
           </>
+        ) : _isCapacitorShell ? (
+          <CapacitorGlobe />
         ) : (
           <PlannerGlobe chromeless />
         )}
