@@ -3592,17 +3592,6 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
         // antialias off + low-power GL context, this drops the cold-load
         // GPU pressure that was tripping iOS's WebKit watchdog.
         dpr={isCapacitor ? 1 : [1, isLowEnd ? 1 : isMobile ? 1.5 : 2]}
-        gl={isCapacitor ? {
-          powerPreference: 'low-power',
-          antialias: false,
-          alpha: false,
-          depth: true,
-          stencil: false,
-          preserveDrawingBuffer: false,
-          // failIfMajorPerformanceCaveat=false lets WKWebView use the
-          // software renderer instead of hard-failing the WebGL init.
-          failIfMajorPerformanceCaveat: false,
-        } : undefined}
         // Halt the entire render loop when backgrounded (Capacitor app
         // background OR tab hidden). useFrame stops ticking; GPU stays
         // idle. Returns to "always" on resume.
@@ -3626,7 +3615,18 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
           window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key: '__dismiss__' } }));
           window.dispatchEvent(new CustomEvent('geknee:mobilegeo', { detail: { key: '__dismiss__' } }));
         }}
-        gl={{
+        gl={isCapacitor ? {
+          // Capacitor WKWebView: minimum-cost WebGL context. Halves
+          // framebuffer + skips MSAA + tells iOS this isn't a hero app
+          // so the GPU scheduler doesn't lean into it (avoids the
+          // CPU watchdog trip).
+          antialias: false,
+          powerPreference: 'low-power',
+          alpha: false,
+          stencil: false,
+          preserveDrawingBuffer: false,
+          failIfMajorPerformanceCaveat: false,
+        } : {
           antialias: !isMobile,
           powerPreference: isMobile ? "default" : "high-performance",
           failIfMajorPerformanceCaveat: false,
