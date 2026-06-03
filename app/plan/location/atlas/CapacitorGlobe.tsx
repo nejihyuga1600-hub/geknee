@@ -87,6 +87,50 @@ export default function CapacitorGlobe() {
       // the Three.js globe behavior where Lm self-gates on viewerAuthed.
       if (!isAuthed) return;
 
+      // ──── 3D monument layer (experimental: Mapbox v3 model layer) ────
+      // PoC for one monument: real GLB rendered in Mapbox's WebGL context
+      // at lat/lon. If this reads well at globe zoom, expand to the full
+      // set; if it's invisible/laggy, keep the 2D sprites as the answer.
+      // Source GLB pulled from Vercel Blob (15 MB), compressed to ~1 MB
+      // with gltf-transform optimize (meshopt + webp 1024px). Stored at
+      // /models/mapbox/<prefix>.glb so it's CDN-cached by Vercel.
+      const MODEL_3D: Record<string, { mk: string; lat: number; lon: number; scale: number }> = {
+        eiffel: { mk: "eiffelTower", lat: 48.8584, lon: 2.2945, scale: 50000 },
+      };
+      try {
+        for (const [id, meta] of Object.entries(MODEL_3D)) {
+          map.addModel(id, `/models/mapbox/${meta.mk === "eiffelTower" ? "eiffel_tower" : meta.mk}.glb`);
+        }
+        map.addSource("monument-models-3d", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: Object.entries(MODEL_3D).map(([id, meta]) => ({
+              type: "Feature",
+              properties: { "model-id": id, mk: meta.mk, scale: meta.scale },
+              geometry: { type: "Point", coordinates: [meta.lon, meta.lat] },
+            })),
+          },
+        });
+        map.addLayer({
+          id: "monument-models-3d-layer",
+          type: "model",
+          source: "monument-models-3d",
+          layout: {
+            "model-id": ["get", "model-id"],
+          },
+          paint: {
+            // model-scale is in world meters. At globe zoom (~1.2) a real
+            // 330m Eiffel Tower is sub-pixel; crank uniform scale so it
+            // reads at globe view. Tune per monument as we add more.
+            "model-scale": ["literal", [50000, 50000, 50000]],
+            "model-cast-shadows": false,
+          },
+        });
+      } catch (err) {
+        console.warn("[CapacitorGlobe] model layer init failed", err);
+      }
+
       // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
       // Re-run bin/snap-monuments.mjs to add more. Sprites are 1200x1600 PNG
       // with transparent background — displayed at 56x75 on the globe.

@@ -197,7 +197,11 @@ export default function AtlasShell() {
   // the static backdrop shows the brand surface up front so the planner
   // chrome is immediately usable.
   const _isCapacitorShell = typeof window !== "undefined" &&
-    !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+    (!!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+      // Dev-only browser test for the Mapbox globe — visit /plan/location?mapbox-globe=1
+      // to render the iOS branch in a desktop browser. Useful for verifying the
+      // 3D model layer at globe zoom without queuing an iOS build.
+      || (typeof location !== "undefined" && new URLSearchParams(location.search).has("mapbox-globe")));
   // Landing CTA ("Tap to open the globe") is first-open only. After the
   // user taps once we persist geknee:seen-landing-v1 and every subsequent
   // cold-launch auto-mounts the globe. Bump the vN suffix if the gate
