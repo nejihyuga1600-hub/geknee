@@ -64,6 +64,19 @@ export default function CapacitorGlobe() {
 
     mapRef.current = map;
 
+    // Surface Mapbox errors visibly — WKWebView swallows console output and
+    // silent style/tile failures show as "black globe with markers", which
+    // is identical to a successful mount visually. Route everything to
+    // Sentry-equivalent logging and a debug overlay element.
+    map.on("error", (e) => {
+      const msg = (e?.error?.message || String(e?.error) || "unknown").slice(0, 200);
+      console.warn("[CapacitorGlobe mapbox error]", msg, e);
+      try {
+        const el = document.getElementById("mapbox-err-overlay");
+        if (el) el.textContent = `mapbox: ${msg}`;
+      } catch {}
+    });
+
     // Bridge to the AtlasShell Initialize button. Matches the Three.js
     // globe's resetGlobeTilt — only the camera ANGLES home (pitch + bearing
     // → 0), the center + zoom stay where the user left them. Initialize
@@ -87,48 +100,42 @@ export default function CapacitorGlobe() {
       // the Three.js globe behavior where Lm self-gates on viewerAuthed.
       if (!isAuthed) return;
 
-      // ──── 3D monument layer (experimental: Mapbox v3 model layer) ────
-      // PoC for one monument: real GLB rendered in Mapbox's WebGL context
-      // at lat/lon. If this reads well at globe zoom, expand to the full
-      // set; if it's invisible/laggy, keep the 2D sprites as the answer.
-      // Source GLB pulled from Vercel Blob (15 MB), compressed to ~1 MB
-      // with gltf-transform optimize (meshopt + webp 1024px). Stored at
-      // /models/mapbox/<prefix>.glb so it's CDN-cached by Vercel.
-      const MODEL_3D: Record<string, { mk: string; lat: number; lon: number; scale: number }> = {
-        eiffel: { mk: "eiffelTower", lat: 48.8584, lon: 2.2945, scale: 50000 },
-      };
-      try {
-        for (const [id, meta] of Object.entries(MODEL_3D)) {
-          map.addModel(id, `/models/mapbox/${meta.mk === "eiffelTower" ? "eiffel_tower" : meta.mk}.glb`);
+      // ──── 3D monument layer DISABLED ────
+      // The Mapbox v3 model layer (experimental) was blanking the satellite
+      // raster tiles on iOS WKWebView — confirmed in the field 2026-06-03.
+      // The atmosphere + markers continued rendering but tiles went black,
+      // which means the model layer's WebGL state was corrupting the raster
+      // pass. Gated behind ?mapbox-3d=1 so it only activates for explicit
+      // PoC testing in a desktop browser, never on iOS.
+      const enable3DModels = typeof location !== "undefined" &&
+        new URLSearchParams(location.search).has("mapbox-3d");
+      if (enable3DModels) {
+        try {
+          map.addModel("eiffel", "/models/mapbox/eiffel_tower.glb");
+          map.addSource("monument-models-3d", {
+            type: "geojson",
+            data: {
+              type: "FeatureCollection",
+              features: [{
+                type: "Feature",
+                properties: { "model-id": "eiffel" },
+                geometry: { type: "Point", coordinates: [2.2945, 48.8584] },
+              }],
+            },
+          });
+          map.addLayer({
+            id: "monument-models-3d-layer",
+            type: "model",
+            source: "monument-models-3d",
+            layout: { "model-id": ["get", "model-id"] },
+            paint: {
+              "model-scale": ["literal", [50000, 50000, 50000]],
+              "model-cast-shadows": false,
+            },
+          });
+        } catch (err) {
+          console.warn("[CapacitorGlobe] model layer init failed", err);
         }
-        map.addSource("monument-models-3d", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: Object.entries(MODEL_3D).map(([id, meta]) => ({
-              type: "Feature",
-              properties: { "model-id": id, mk: meta.mk, scale: meta.scale },
-              geometry: { type: "Point", coordinates: [meta.lon, meta.lat] },
-            })),
-          },
-        });
-        map.addLayer({
-          id: "monument-models-3d-layer",
-          type: "model",
-          source: "monument-models-3d",
-          layout: {
-            "model-id": ["get", "model-id"],
-          },
-          paint: {
-            // model-scale is in world meters. At globe zoom (~1.2) a real
-            // 330m Eiffel Tower is sub-pixel; crank uniform scale so it
-            // reads at globe view. Tune per monument as we add more.
-            "model-scale": ["literal", [50000, 50000, 50000]],
-            "model-cast-shadows": false,
-          },
-        });
-      } catch (err) {
-        console.warn("[CapacitorGlobe] model layer init failed", err);
       }
 
       // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
@@ -211,17 +218,43 @@ export default function CapacitorGlobe() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100vw",
-        height: "100svh",
-        zIndex: 1,
-        touchAction: "none",
-      }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100svh",
+          zIndex: 1,
+          touchAction: "none",
+        }}
+      />
+      {/* Mapbox error overlay — WKWebView swallows console output so a
+          visible debug element is the only reliable signal when iOS users
+          hit a tile/style failure. Empty by default; populated by the
+          map.on("error") handler above. Top-left so it doesn't clash
+          with the Initialize button or auth chips. */}
+      <div
+        id="mapbox-err-overlay"
+        style={{
+          position: "fixed",
+          top: "calc(env(safe-area-inset-top) + 88px)",
+          left: 12,
+          right: 12,
+          maxWidth: 360,
+          zIndex: 60,
+          padding: "8px 12px",
+          background: "rgba(220,50,50,0.92)",
+          color: "#fff",
+          borderRadius: 8,
+          fontSize: 12,
+          fontFamily: "ui-monospace, monospace",
+          pointerEvents: "none",
+          opacity: 0.95,
+        }}
+      />
+    </>
   );
 }
