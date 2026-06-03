@@ -31,7 +31,9 @@ import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { MONUMENT_LATLON } from "../globe/skins";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MONUMENT_LATLON, MONUMENT_FILE_PREFIX } from "../globe/skins";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -138,47 +140,109 @@ export default function CapacitorGlobe() {
         }
       }
 
-      // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
-      // All 31 wired monuments now have sprites — re-run bin/snap-monuments.mjs
-      // after promoting a new monument's GLBs (it'll skip already-existing
-      // sprites unless --force). Sprites are 600x800 PNG with transparent
-      // background — displayed at 56x75 on the globe. Source: actual Meshy
-      // GLB rendered by the /dev/monument-snap/[mk] page on the dev server.
-      const SPRITED = new Set([
-        "bigBen", "christRedeem", "colosseum", "eiffelTower", "greatWall",
-        "sagradaFamilia", "statueLiberty", "sydneyOpera", "tajMahal",
-        // Second wave (2026-06-03) — wired all 22 long-tail monuments so iOS
-        // no longer falls back to the generic purple pin for anyone unlocked.
-        "machuPicchu", "angkorWat", "pyramidGiza", "goldenGate", "acropolis",
-        "neuschwanstein", "stonehenge", "iguazuFalls", "tokyoSkytree",
-        "victoriaFalls", "mountFuji", "petra", "niagaraFalls", "chichenItza",
-        "burjKhalifa", "hagiaSophia", "notreDameF", "forbiddenCity", "uluru",
-        "mtRushmore", "easterIsland", "fushimiInari",
-      ]);
+      // ──── Real 3D Meshy monuments via Mapbox custom layer ────
+      // Per rules.md non-negotiable #1, monuments must render with 3D quality.
+      // The Mapbox v3 `model` layer blanked tiles on WKWebView (see earlier
+      // 6a52121), so we use the CUSTOM LAYER pattern instead: a Three.js
+      // scene that shares Mapbox's WebGL context. One context, no R3F frame
+      // loop (which is what caused the original iOS blink loop) — just
+      // static GLBs positioned at lat/lon and re-rendered when the camera
+      // moves. Source GLBs pre-compressed by bin/compress-mapbox-glbs.mjs
+      // from 407MB → 8MB total (51× reduction, ~260KB avg per monument).
+      const customLayer: mapboxgl.CustomLayerInterface = {
+        id: "geknee-3d-monuments",
+        type: "custom",
+        renderingMode: "3d",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onAdd(_map: mapboxgl.Map, gl: WebGLRenderingContext) {
+          const self = this as unknown as {
+            scene: THREE.Scene;
+            camera: THREE.Camera;
+            renderer: THREE.WebGLRenderer;
+            models: Array<{ obj: THREE.Object3D; merc: mapboxgl.MercatorCoordinate }>;
+            loaded: number;
+          };
+          self.scene = new THREE.Scene();
+          self.camera = new THREE.Camera();
+          self.models = [];
+          self.loaded = 0;
+          // Soft sun + ambient — enough to read Meshy PBR detail without
+          // over-saturating at globe zoom where each monument is tiny.
+          const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+          sun.position.set(0.6, 1.0, 0.4);
+          self.scene.add(sun);
+          self.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+          // Reuse Mapbox's WebGL context — critical for sharing the GPU
+          // pipeline (no second context = no extra memory pressure).
+          self.renderer = new THREE.WebGLRenderer({
+            canvas: _map.getCanvas(),
+            context: gl as unknown as WebGL2RenderingContext,
+            antialias: true,
+          });
+          self.renderer.autoClear = false;
 
+          const loader = new GLTFLoader();
+          for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
+            const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
+            const merc = mapboxgl.MercatorCoordinate.fromLngLat(
+              [latlon.lon, latlon.lat],
+              0,
+            );
+            loader.load(
+              `/models/mapbox/${file}.glb`,
+              (gltf) => {
+                const obj = gltf.scene;
+                // Mercator world units: 1 unit = 1 globe. To place a model
+                // at meter scale, multiply by `meterInMercatorCoordinateUnits()`
+                // then by the desired tall-in-meters. 80km tall reads at
+                // globe zoom 1.2 without dominating the surface.
+                const mpu = merc.meterInMercatorCoordinateUnits();
+                const TALL_METERS = 80000;
+                obj.scale.set(mpu * TALL_METERS, mpu * TALL_METERS, mpu * TALL_METERS);
+                obj.position.set(merc.x, merc.y, merc.z ?? 0);
+                // Mapbox Mercator world is Y-down, Z-up; GLBs are Y-up.
+                // Rotate +X by 90° so the model stands "up" on the surface.
+                obj.rotation.x = Math.PI / 2;
+                // Tag for click-handling raycast.
+                obj.traverse((c) => { (c as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk; });
+                self.scene.add(obj);
+                self.models.push({ obj, merc });
+                self.loaded++;
+                _map.triggerRepaint();
+              },
+              undefined,
+              (err) => console.warn(`[CapacitorGlobe] GLB load fail ${mk}`, err),
+            );
+          }
+        },
+        render(_gl: WebGLRenderingContext, matrix: number[]) {
+          const self = this as unknown as {
+            scene: THREE.Scene;
+            camera: THREE.Camera;
+            renderer: THREE.WebGLRenderer;
+          };
+          // Mapbox's MVP matrix maps Mercator world (0..1) to clip space.
+          // Set it directly on the camera's projection matrix and render —
+          // each model's position/scale in the scene is already in Mercator.
+          self.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
+          self.renderer.resetState();
+          self.renderer.render(self.scene, self.camera);
+        },
+      };
+      try {
+        map.addLayer(customLayer);
+      } catch (err) {
+        console.warn("[CapacitorGlobe] custom layer add failed", err);
+      }
+
+      // Tap targets — invisible HTML markers over each monument for click
+      // handling. Raycasting onto a custom layer is doable but slow on
+      // WKWebView; a 64x64 transparent <div> overlay is dirt cheap and
+      // gives a comfortable tap zone for finger touch on small sprites.
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        el.style.cursor = "pointer";
-        if (SPRITED.has(mk)) {
-          // Pre-rendered Meshy 3D monument as a 2D sprite — reads as 3D,
-          // costs as 2D. The actual GLB still loads in the monument card
-          // on tap so the rarity-tier reveal is preserved.
-          el.style.cssText += `
-            width: 56px; height: 75px;
-            background: url('/monument-snaps/${mk}.png') center/contain no-repeat;
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.55));
-          `;
-        } else {
-          // No sprite yet — branded pin. Run bin/snap-monuments.mjs to
-          // upgrade this monument to a real 3D-render sprite.
-          el.style.cssText += `
-            width: 28px; height: 28px; border-radius: 50%;
-            background: radial-gradient(circle at 35% 35%, #c4b5fd, #7c3aed);
-            border: 2px solid #fff;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.45), 0 0 0 3px rgba(167,139,250,0.25);
-          `;
-        }
+        el.style.cssText = "width:64px;height:64px;background:transparent;cursor:pointer;";
         el.addEventListener("click", () => {
           window.dispatchEvent(
             new CustomEvent("geknee:monument-select", { detail: { mk } }),
@@ -186,13 +250,7 @@ export default function CapacitorGlobe() {
         });
         new mapboxgl.Marker({
           element: el,
-          anchor: SPRITED.has(mk) ? "bottom" : "center",
-          // Keep monument ICONS upright + facing the camera regardless of
-          // how the user spins/tilts the globe. The marker position still
-          // tracks lat/lon (so it pans across the screen as the globe
-          // rotates), but the icon itself doesn't lean or rotate. Previous
-          // 'map' alignment made the sprites lean with the globe surface,
-          // which read as "monuments toppling over" — user rejected.
+          anchor: "center",
           rotationAlignment: "viewport",
           pitchAlignment: "viewport",
         })
