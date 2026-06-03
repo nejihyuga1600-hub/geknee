@@ -187,11 +187,14 @@ export default function CapacitorGlobe() {
         new mapboxgl.Marker({
           element: el,
           anchor: SPRITED.has(mk) ? "bottom" : "center",
-          // Stay glued to the globe surface — tilt + rotate WITH the globe
-          // as the user spins, instead of staying screen-upright. Mapbox
-          // also auto-hides markers on the back side of the globe.
-          rotationAlignment: "map",
-          pitchAlignment: "map",
+          // Keep monument ICONS upright + facing the camera regardless of
+          // how the user spins/tilts the globe. The marker position still
+          // tracks lat/lon (so it pans across the screen as the globe
+          // rotates), but the icon itself doesn't lean or rotate. Previous
+          // 'map' alignment made the sprites lean with the globe surface,
+          // which read as "monuments toppling over" — user rejected.
+          rotationAlignment: "viewport",
+          pitchAlignment: "viewport",
         })
           .setLngLat([lon, lat])
           .addTo(map);
