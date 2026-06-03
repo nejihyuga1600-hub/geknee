@@ -139,11 +139,21 @@ export default function CapacitorGlobe() {
       }
 
       // Monuments with pre-rendered Meshy GLB sprites in public/monument-snaps/.
-      // Re-run bin/snap-monuments.mjs to add more. Sprites are 1200x1600 PNG
-      // with transparent background — displayed at 56x75 on the globe.
+      // All 31 wired monuments now have sprites — re-run bin/snap-monuments.mjs
+      // after promoting a new monument's GLBs (it'll skip already-existing
+      // sprites unless --force). Sprites are 600x800 PNG with transparent
+      // background — displayed at 56x75 on the globe. Source: actual Meshy
+      // GLB rendered by the /dev/monument-snap/[mk] page on the dev server.
       const SPRITED = new Set([
         "bigBen", "christRedeem", "colosseum", "eiffelTower", "greatWall",
         "sagradaFamilia", "statueLiberty", "sydneyOpera", "tajMahal",
+        // Second wave (2026-06-03) — wired all 22 long-tail monuments so iOS
+        // no longer falls back to the generic purple pin for anyone unlocked.
+        "machuPicchu", "angkorWat", "pyramidGiza", "goldenGate", "acropolis",
+        "neuschwanstein", "stonehenge", "iguazuFalls", "tokyoSkytree",
+        "victoriaFalls", "mountFuji", "petra", "niagaraFalls", "chichenItza",
+        "burjKhalifa", "hagiaSophia", "notreDameF", "forbiddenCity", "uluru",
+        "mtRushmore", "easterIsland", "fushimiInari",
       ]);
 
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {

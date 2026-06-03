@@ -29,6 +29,12 @@ const OUT_DIR = path.join(ROOT, 'public', 'monument-snaps');
 const MONUMENTS = [
   'eiffelTower', 'colosseum', 'tajMahal', 'greatWall', 'statueLiberty',
   'sagradaFamilia', 'christRedeem', 'bigBen', 'sydneyOpera',
+  // Second wave — all 22 remaining with available bronze (or better) GLBs.
+  'machuPicchu', 'angkorWat', 'pyramidGiza', 'goldenGate', 'acropolis',
+  'neuschwanstein', 'stonehenge', 'iguazuFalls', 'tokyoSkytree', 'victoriaFalls',
+  'mountFuji', 'petra', 'niagaraFalls', 'chichenItza', 'burjKhalifa',
+  'hagiaSophia', 'notreDameF', 'forbiddenCity', 'uluru', 'mtRushmore',
+  'easterIsland', 'fushimiInari',
 ];
 
 // Default skin per monument — picks the most "iconic" finish. Override via --skin.
@@ -37,6 +43,16 @@ const DEFAULT_SKIN = {
   eiffelTower: 'gold', colosseum: 'bronze', tajMahal: 'silver',
   greatWall: 'bronze', statueLiberty: 'aurora', sagradaFamilia: 'celestial',
   christRedeem: 'celestial', bigBen: 'diamond', sydneyOpera: 'silver',
+  // Second wave: cherry-pick the best tier where multiple exist, bronze
+  // otherwise (the only available tier for the 19 long-tail monuments).
+  machuPicchu: 'gold', pyramidGiza: 'gold',
+  angkorWat: 'bronze', goldenGate: 'bronze', acropolis: 'bronze',
+  neuschwanstein: 'bronze', stonehenge: 'bronze', iguazuFalls: 'bronze',
+  tokyoSkytree: 'bronze', victoriaFalls: 'bronze', mountFuji: 'bronze',
+  petra: 'bronze', niagaraFalls: 'bronze', chichenItza: 'bronze',
+  burjKhalifa: 'bronze', hagiaSophia: 'bronze', notreDameF: 'bronze',
+  forbiddenCity: 'bronze', uluru: 'bronze', mtRushmore: 'bronze',
+  easterIsland: 'bronze', fushimiInari: 'bronze',
 };
 
 function parseArgs(argv) {
