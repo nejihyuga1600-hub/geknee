@@ -33,6 +33,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { MONUMENT_LATLON, MONUMENT_FILE_PREFIX } from "../globe/skins";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -195,6 +196,11 @@ export default function CapacitorGlobe() {
           self.renderer.autoClear = false;
 
           const loader = new GLTFLoader();
+          // GLBs are meshopt-compressed (bin/compress-mapbox-glbs.mjs runs
+          // gltf-transform optimize → meshopt). Without registering the
+          // decoder, every load() rejects with "setMeshoptDecoder must be
+          // called before loading compressed assets".
+          loader.setMeshoptDecoder(MeshoptDecoder);
           for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
             const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
             const merc = mapboxgl.MercatorCoordinate.fromLngLat(
