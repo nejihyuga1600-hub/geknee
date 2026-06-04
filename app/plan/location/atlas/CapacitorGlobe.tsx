@@ -251,14 +251,42 @@ export default function CapacitorGlobe() {
       const entries: ModelEntry[] = [];
       const loader = new GLTFLoader();
       loader.setMeshoptDecoder(MeshoptDecoder);
-      for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
-        const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
-        const wrapper = new THREE.Object3D();
-        wrapper.visible = false;
-        overlayScene.add(wrapper);
-        const entry: ModelEntry = { mk, latlon, wrapper, loaded: false };
-        entries.push(entry);
-        loader.load(`/models/mapbox/${file}.glb`, (gltf) => {
+
+      // Fetch the user's collection + equipped skins. Mirrors what the
+      // web globe does in LocationClient — /api/monuments returns
+      // { collected: [...], activeSkins: { eiffelTower: 'gold', ... } }.
+      // If a monument has an active skin we load <prefix>_<skin>.glb;
+      // otherwise we fall back to the default tier <prefix>.glb that
+      // ships pre-compressed for everyone. Skin variants are compressed
+      // by bin/compress-mapbox-skin-variants.mjs; missing ones 404 and
+      // the .catch below silently retries with the default.
+      const loadAllMonuments = async () => {
+        let activeSkins: Record<string, string> = {};
+        try {
+          const res = await fetch("/api/monuments", { credentials: "include" });
+          if (res.ok) {
+            const data = await res.json() as { activeSkins?: Record<string, string> };
+            if (data.activeSkins) activeSkins = data.activeSkins;
+          }
+        } catch {
+          // Not authed or offline — fall through with empty map.
+        }
+
+        for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
+          const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
+          const skin = activeSkins[mk];
+          // Try the user's equipped skin first; on any failure (404 because
+          // the skin variant isn't compressed yet, or any network error)
+          // retry with the default base GLB so the monument still appears.
+          const skinUrl = skin && skin !== "default" ? `/models/mapbox/${file}_${skin}.glb` : null;
+          const defaultUrl = `/models/mapbox/${file}.glb`;
+          const wrapper = new THREE.Object3D();
+          wrapper.visible = false;
+          overlayScene.add(wrapper);
+          const entry: ModelEntry = { mk, latlon, wrapper, loaded: false };
+          entries.push(entry);
+          const tryLoad = (url: string, isFallback: boolean) => {
+            loader.load(url, (gltf) => {
           const obj = gltf.scene;
           // Normalize the GLB to a unit cube centered at origin, then scale
           // to display size in pixels. Y-up GLB stands upright in orthographic.
@@ -280,12 +308,22 @@ export default function CapacitorGlobe() {
           diag.loaded++;
           reportDiag();
           map.triggerRepaint();
-        }, undefined, (err) => {
-          diag.errors++;
-          diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
-          reportDiag();
-        });
-      }
+            }, undefined, (err) => {
+              // Skin variant didn't exist (404) → fall back to default tier.
+              // Other failures (parse/network) → log to diag overlay.
+              if (!isFallback && skinUrl) {
+                tryLoad(defaultUrl, true);
+                return;
+              }
+              diag.errors++;
+              diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
+              reportDiag();
+            });
+          };
+          tryLoad(skinUrl ?? defaultUrl, !skinUrl);
+        }
+      };
+      loadAllMonuments();
 
       // Each frame: project each lat/lon to screen pixels, hide back-of-globe
       // models, and orient each so it appears LAMINATED to the globe surface
