@@ -358,11 +358,13 @@ export default function CapacitorGlobe() {
           e.wrapper.visible = true;
           // Y-up camera → flip CSS y to Three y.
           e.wrapper.position.set(pt.x, h - pt.y, 0);
-          // Monuments stay screen-upright regardless of globe rotation
-          // (user feedback: "the monuments are spinning as I spin the
-          // globe"). Only the model's inner spin (set on `obj` below)
-          // animates over time so the 3D form is obvious without coupling
-          // to globe orientation.
+          // Eagle-view tilt: every visible monument leans 52° toward the
+          // camera so we see its TOP face (not the side). Base stays
+          // anchored at the lat/lon point (= "bottom of coin connected to
+          // centre of globe"); top tilts forward. Same tilt for every
+          // monument so spinning the globe doesn't visually rotate them
+          // (user feedback: "monuments are spinning as I spin the globe").
+          e.wrapper.rotation.set(0.9, 0, 0);
         }
         // Continuous Y-spin on each loaded model so the 3D form reads
         // unmistakably as 3D (user feedback: "they still look like 2d
