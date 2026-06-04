@@ -34,6 +34,11 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
   burjKhalifa: 'burj_khalifa',
   hagiaSophia: 'hagia_sophia',
   notreDameF: 'notre_dame',
+  // Alias — MONUMENT_LATLON uses `notreDame` (no F) while every other
+  // map here uses `notreDameF`. Adding both points to the same prefix so
+  // consumers that iterate MONUMENT_LATLON (e.g. CapacitorGlobe) resolve
+  // the right filename without forcing a risky rename of either key.
+  notreDame: 'notre_dame',
   forbiddenCity: 'forbidden_city',
   uluru: 'uluru',
   mtRushmore: 'mt_rushmore',
