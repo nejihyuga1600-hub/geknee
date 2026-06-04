@@ -89,6 +89,23 @@ export default function CapacitorGlobe() {
     };
     window.addEventListener("geknee:globe-initialize", onInitialize);
 
+    // Search → fly. Fires when the bottom-sheet "Try Kyoto, Iceland…"
+    // text input submits (or a suggestion is picked) — globeAnim.flyToGlobe
+    // dispatches this so both the web Three.js globe AND this Capacitor
+    // Mapbox globe react to the same user action. Zoom 3 keeps the globe
+    // shape visible while focusing the chosen lat/lon at screen centre.
+    const onFlyTo = (e: Event) => {
+      const detail = (e as CustomEvent<{ lat: number; lon: number }>).detail;
+      if (!detail || typeof detail.lat !== "number" || typeof detail.lon !== "number") return;
+      map.flyTo({
+        center: [detail.lon, detail.lat],
+        zoom: 3,
+        duration: 1800,
+        essential: true,
+      });
+    };
+    window.addEventListener("geknee:globe-fly-to", onFlyTo);
+
     map.on("style.load", () => {
       // Atmosphere settings — Mapbox's native rendering, free.
       map.setFog({
@@ -423,6 +440,7 @@ export default function CapacitorGlobe() {
 
     return () => {
       window.removeEventListener("geknee:globe-initialize", onInitialize);
+      window.removeEventListener("geknee:globe-fly-to", onFlyTo);
       const rafId = (map as unknown as { __geknee_rafId?: number }).__geknee_rafId;
       if (rafId) cancelAnimationFrame(rafId);
       map.remove();
