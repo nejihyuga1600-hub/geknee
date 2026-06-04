@@ -230,11 +230,15 @@ export default function CapacitorGlobe() {
         const w = mapContainer.clientWidth;
         const h = mapContainer.clientHeight;
         overlayRenderer.setSize(w, h, false);
-        // Match pixel-coord space: left=0 right=w bottom=h top=0 like CSS.
+        // Y-up camera (Three.js native). Top=h, bottom=0 — when we position
+        // models we'll translate screen-y to Three-y as (h - screenY) so
+        // CSS pixel coords still feel natural at the call-site. Without
+        // this, the projection inverts model geometry — Eiffel Tower would
+        // render upside-down because GLB +Y (up) maps to camera -Y.
         overlayCamera.left = 0;
         overlayCamera.right = w;
-        overlayCamera.top = 0;
-        overlayCamera.bottom = h;
+        overlayCamera.top = h;
+        overlayCamera.bottom = 0;
         overlayCamera.updateProjectionMatrix();
       };
       resize();
@@ -264,11 +268,13 @@ export default function CapacitorGlobe() {
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
           obj.position.sub(center);
           obj.position.y += size.y / 2; // anchor at base
-          const DISPLAY_PX = 110;
+          const DISPLAY_PX = 44;
           obj.scale.setScalar(DISPLAY_PX / maxDim);
-          // Tilt slightly so we see top + front faces of the model.
           wrapper.add(obj);
-          wrapper.rotation.x = -0.3;
+          // Mild bird's-eye tilt — matches the geknee.com web globe Lm pose
+          // where monuments lean ~10° toward camera so users see top+front
+          // simultaneously without losing silhouette read.
+          wrapper.rotation.x = 0.18;
           (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
           entry.loaded = true;
           diag.loaded++;
@@ -312,7 +318,9 @@ export default function CapacitorGlobe() {
             e.wrapper.visible = false; continue;
           }
           e.wrapper.visible = true;
-          e.wrapper.position.set(pt.x, pt.y, 0);
+          // Camera is Y-up (top=h, bottom=0). map.project returns CSS y
+          // (top=0, bottom=h). Flip so Three.js sees screen coords.
+          e.wrapper.position.set(pt.x, h - pt.y, 0);
         }
         overlayRenderer.render(overlayScene, overlayCamera);
         diag.renders++;
