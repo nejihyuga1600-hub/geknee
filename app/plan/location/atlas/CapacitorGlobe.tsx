@@ -271,10 +271,10 @@ export default function CapacitorGlobe() {
           const DISPLAY_PX = 44;
           obj.scale.setScalar(DISPLAY_PX / maxDim);
           wrapper.add(obj);
-          // Mild bird's-eye tilt — matches the geknee.com web globe Lm pose
-          // where monuments lean ~10° toward camera so users see top+front
-          // simultaneously without losing silhouette read.
-          wrapper.rotation.x = 0.18;
+          // Wrapper rotation is set every frame in updatePositions() to
+          // keep each monument laminated to the globe surface — radial Z
+          // alignment + dot-product-based X tilt. Don't set a static value
+          // here.
           (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
           entry.loaded = true;
           diag.loaded++;
@@ -288,23 +288,23 @@ export default function CapacitorGlobe() {
       }
 
       // Each frame: project each lat/lon to screen pixels, hide back-of-globe
-      // models. Driven by Mapbox's render event so we stay in sync.
+      // models, and orient each so it appears LAMINATED to the globe surface
+      // (its base anchored at the surface point, its "up" pointing radially
+      // outward, foreshortened toward the limb so we never see its underside).
       const updatePositions = () => {
         const w = mapContainer.clientWidth;
         const h = mapContainer.clientHeight;
-        // Camera direction (centre of globe projected to surface). On globe
-        // projection, anything whose surface normal points away from the
-        // camera is on the back side.
         const center = map.getCenter();
         const camLat = (center.lat * Math.PI) / 180;
         const camLon = (center.lng * Math.PI) / 180;
-        // Camera "look at" vector (centre of viewing direction in cartesian).
         const cx = Math.cos(camLat) * Math.cos(camLon);
         const cy = Math.cos(camLat) * Math.sin(camLon);
         const cz = Math.sin(camLat);
+        // Screen position of the globe centre — used to compute each
+        // monument's radial direction on screen.
+        const centerScreen = map.project([center.lng, center.lat]);
         for (const e of entries) {
           if (!e.loaded) continue;
-          // Hemisphere test
           const lat = (e.latlon.lat * Math.PI) / 180;
           const lon = (e.latlon.lon * Math.PI) / 180;
           const nx = Math.cos(lat) * Math.cos(lon);
@@ -312,15 +312,38 @@ export default function CapacitorGlobe() {
           const nz = Math.sin(lat);
           const dot = nx * cx + ny * cy + nz * cz;
           if (dot < 0.05) { e.wrapper.visible = false; continue; }
-          // Project to screen
+
           const pt = map.project([e.latlon.lon, e.latlon.lat]);
           if (pt.x < -100 || pt.x > w + 100 || pt.y < -100 || pt.y > h + 100) {
             e.wrapper.visible = false; continue;
           }
           e.wrapper.visible = true;
-          // Camera is Y-up (top=h, bottom=0). map.project returns CSS y
-          // (top=0, bottom=h). Flip so Three.js sees screen coords.
-          e.wrapper.position.set(pt.x, h - pt.y, 0);
+          // Y-up camera → flip CSS y to Three y.
+          const tx = pt.x;
+          const ty = h - pt.y;
+          const ccx = centerScreen.x;
+          const ccy = h - centerScreen.y;
+          e.wrapper.position.set(tx, ty, 0);
+
+          // ──── Laminated-on-globe orientation ────
+          // (1) Z-rotation: monument's +Y (up) aligns with the screen-radial
+          //     direction (outward from globe centre). At the top of the
+          //     visible hemisphere, +Y points straight up; at the right
+          //     edge it points right; at the bottom it points down.
+          const dx = tx - ccx;
+          const dy = ty - ccy;
+          const radialAngle = Math.atan2(-dx, dy);
+          // (2) X-rotation: as the monument moves toward the limb (dot → 0)
+          //     it leans away from the camera so we see less of its top and
+          //     more of its side, never its underside. dot=1 (face-on) →
+          //     small forward tilt for legibility. dot=0 (limb) → full
+          //     edge-on. Clamped so even limb monuments don't fully flatten.
+          const tiltX = (1 - dot) * 1.2;
+          e.wrapper.rotation.set(tiltX, 0, radialAngle);
+          // (3) Mild Y-scale squash so foreshortening at the limb reads
+          //     correctly (a monument seen edge-on shouldn't be tall).
+          const yScale = Math.max(0.5, dot);
+          e.wrapper.scale.set(1, yScale, 1);
         }
         overlayRenderer.render(overlayScene, overlayCamera);
         diag.renders++;
