@@ -357,37 +357,41 @@ export default function CapacitorGlobe() {
           }
           e.wrapper.visible = true;
           // Y-up camera → flip CSS y to Three y.
-          const tx = pt.x;
-          const ty = h - pt.y;
-          const ccx = centerScreen.x;
-          const ccy = h - centerScreen.y;
-          e.wrapper.position.set(tx, ty, 0);
-
-          // ──── Laminated-on-globe orientation ────
-          // (1) Z-rotation: monument's +Y (up) aligns with the screen-radial
-          //     direction (outward from globe centre). At the top of the
-          //     visible hemisphere, +Y points straight up; at the right
-          //     edge it points right; at the bottom it points down.
-          const dx = tx - ccx;
-          const dy = ty - ccy;
-          const radialAngle = Math.atan2(-dx, dy);
-          // (2) X-rotation: as the monument moves toward the limb (dot → 0)
-          //     it leans away from the camera so we see less of its top and
-          //     more of its side, never its underside. dot=1 (face-on) →
-          //     small forward tilt for legibility. dot=0 (limb) → full
-          //     edge-on. Clamped so even limb monuments don't fully flatten.
-          const tiltX = (1 - dot) * 1.2;
-          e.wrapper.rotation.set(tiltX, 0, radialAngle);
-          // (3) Mild Y-scale squash so foreshortening at the limb reads
-          //     correctly (a monument seen edge-on shouldn't be tall).
-          const yScale = Math.max(0.5, dot);
-          e.wrapper.scale.set(1, yScale, 1);
+          e.wrapper.position.set(pt.x, h - pt.y, 0);
+          // Monuments stay screen-upright regardless of globe rotation
+          // (user feedback: "the monuments are spinning as I spin the
+          // globe"). Only the model's inner spin (set on `obj` below)
+          // animates over time so the 3D form is obvious without coupling
+          // to globe orientation.
+        }
+        // Continuous Y-spin on each loaded model so the 3D form reads
+        // unmistakably as 3D (user feedback: "they still look like 2d
+        // image files"). 8°/sec is slow enough not to read as gimmicky
+        // but fast enough that the back-of-monument rotates into view
+        // within ~45 seconds of a steady stare.
+        const yawDelta = 0.14 * 0.016; // ≈ 8°/sec at 60fps render budget
+        for (const e of entries) {
+          if (!e.loaded) continue;
+          const inner = e.wrapper.children[0];
+          if (inner) inner.rotation.y += yawDelta;
         }
         overlayRenderer.render(overlayScene, overlayCamera);
         diag.renders++;
         if (diag.renders % 30 === 1) reportDiag();
       };
       map.on("render", updatePositions);
+      // RAF loop so the monument auto-spin keeps animating even when the
+      // user isn't interacting with the map. Mapbox only fires "render"
+      // on its own state changes, which would freeze the Y-spin between
+      // gestures.
+      let rafId = 0;
+      const tick = () => {
+        updatePositions();
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+      // Store on the map for cleanup in the useEffect return below.
+      (map as unknown as { __geknee_rafId?: number }).__geknee_rafId = rafId;
       diag.added = true;
       reportDiag();
 
@@ -417,6 +421,8 @@ export default function CapacitorGlobe() {
 
     return () => {
       window.removeEventListener("geknee:globe-initialize", onInitialize);
+      const rafId = (map as unknown as { __geknee_rafId?: number }).__geknee_rafId;
+      if (rafId) cancelAnimationFrame(rafId);
       map.remove();
       mapRef.current = null;
     };
