@@ -101,7 +101,13 @@ export default function CapacitorGlobe() {
 
       // Guests don't see monuments — only authed users get the pins. Mirrors
       // the Three.js globe behavior where Lm self-gates on viewerAuthed.
-      if (!isAuthed) return;
+      // DEV BYPASS: ?mapbox-globe-dev=1 (dev builds only) lets Playwright
+      // verify the 3D layer without going through the login flow. Strictly
+      // NODE_ENV-gated so it never reaches production users.
+      const devBypass = process.env.NODE_ENV !== "production" &&
+        typeof location !== "undefined" &&
+        new URLSearchParams(location.search).has("mapbox-globe-dev");
+      if (!isAuthed && !devBypass) return;
 
       // ──── 3D monument layer DISABLED ────
       // The Mapbox v3 model layer (experimental) was blanking the satellite
@@ -163,113 +169,158 @@ export default function CapacitorGlobe() {
       };
       reportDiag();
 
-      const customLayer: mapboxgl.CustomLayerInterface = {
-        id: "geknee-3d-monuments",
-        type: "custom",
-        renderingMode: "3d",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onAdd(_map: mapboxgl.Map, gl: WebGLRenderingContext) {
-          const self = this as unknown as {
-            scene: THREE.Scene;
-            camera: THREE.Camera;
-            renderer: THREE.WebGLRenderer;
-            models: Array<{ obj: THREE.Object3D; merc: mapboxgl.MercatorCoordinate }>;
-            loaded: number;
-          };
-          self.scene = new THREE.Scene();
-          self.camera = new THREE.Camera();
-          self.models = [];
-          self.loaded = 0;
-          // Soft sun + ambient — enough to read Meshy PBR detail without
-          // over-saturating at globe zoom where each monument is tiny.
-          const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-          sun.position.set(0.6, 1.0, 0.4);
-          self.scene.add(sun);
-          self.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-          // Reuse Mapbox's WebGL context — critical for sharing the GPU
-          // pipeline (no second context = no extra memory pressure).
-          self.renderer = new THREE.WebGLRenderer({
-            canvas: _map.getCanvas(),
-            context: gl as unknown as WebGL2RenderingContext,
-            antialias: true,
-          });
-          self.renderer.autoClear = false;
+      // ──── Overlay Canvas approach (replaces failed custom-layer attempt) ────
+      // The Mapbox v3 custom layer pattern proved unreliable on globe
+      // projection — even a bright red probe box at Paris lat/lon never
+      // appeared, despite render() firing and GLBs loading. Three.js
+      // sharing Mapbox's WebGL context just doesn't work cleanly in globe
+      // mode in v3.24. Instead:
+      //
+      //   1. A transparent <canvas> overlays the Mapbox canvas
+      //   2. A standalone Three.js scene renders all 31 GLBs once
+      //   3. Each frame, every model's screen position is computed via
+      //      map.project(latlon) and applied as an x,y translation in
+      //      orthographic camera space
+      //   4. Models facing the camera-facing hemisphere render; back-side
+      //      ones are hidden via the dot product of the surface normal
+      //      vs the view direction
+      //
+      // Trade-offs vs custom layer:
+      //   + Reliable rendering (two-context overhead is small for 31 models)
+      //   + Independent depth — no z-fighting against satellite tiles
+      //   + Easy to update positions every frame
+      //   – Two WebGL contexts (more memory, but bounded)
+      //   – Orthographic projection — monuments don't shrink with distance
+      //     (acceptable at globe zoom; they're already tiny)
+      const overlayCanvas = document.createElement("canvas");
+      overlayCanvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2;";
+      const mapContainer = map.getContainer();
+      mapContainer.appendChild(overlayCanvas);
 
-          const loader = new GLTFLoader();
-          // GLBs are meshopt-compressed (bin/compress-mapbox-glbs.mjs runs
-          // gltf-transform optimize → meshopt). Without registering the
-          // decoder, every load() rejects with "setMeshoptDecoder must be
-          // called before loading compressed assets".
-          loader.setMeshoptDecoder(MeshoptDecoder);
-          for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
-            const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
-            const merc = mapboxgl.MercatorCoordinate.fromLngLat(
-              [latlon.lon, latlon.lat],
-              0,
-            );
-            loader.load(
-              `/models/mapbox/${file}.glb`,
-              (gltf) => {
-                const obj = gltf.scene;
-                // Mercator world units: 1 unit = 1 globe. To place a model
-                // at meter scale, multiply by `meterInMercatorCoordinateUnits()`
-                // then by the desired tall-in-meters. 80km tall reads at
-                // globe zoom 1.2 without dominating the surface.
-                const mpu = merc.meterInMercatorCoordinateUnits();
-                const TALL_METERS = 80000;
-                obj.scale.set(mpu * TALL_METERS, mpu * TALL_METERS, mpu * TALL_METERS);
-                obj.position.set(merc.x, merc.y, merc.z ?? 0);
-                // Mapbox Mercator world is Y-down, Z-up; GLBs are Y-up.
-                // Rotate +X by 90° so the model stands "up" on the surface.
-                obj.rotation.x = Math.PI / 2;
-                // Tag for click-handling raycast.
-                obj.traverse((c) => { (c as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk; });
-                self.scene.add(obj);
-                self.models.push({ obj, merc });
-                self.loaded++;
-                diag.loaded = self.loaded;
-                reportDiag();
-                _map.triggerRepaint();
-              },
-              undefined,
-              (err) => {
-                diag.errors++;
-                diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
-                reportDiag();
-                console.warn(`[CapacitorGlobe] GLB load fail ${mk}`, err);
-              },
-            );
-          }
-        },
-        render(_gl: WebGLRenderingContext, matrix: number[]) {
-          const self = this as unknown as {
-            scene: THREE.Scene;
-            camera: THREE.Camera;
-            renderer: THREE.WebGLRenderer;
-          };
-          try {
-            self.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
-            self.renderer.resetState();
-            self.renderer.render(self.scene, self.camera);
-            diag.renders++;
-            if (diag.renders % 30 === 1) reportDiag();
-          } catch (err) {
-            diag.errors++;
-            diag.lastErr = `render: ${(err as Error)?.message || err}`.slice(0, 80);
-            reportDiag();
-          }
-        },
+      const overlayRenderer = new THREE.WebGLRenderer({
+        canvas: overlayCanvas,
+        alpha: true,
+        antialias: true,
+      });
+      overlayRenderer.setPixelRatio(window.devicePixelRatio);
+      overlayRenderer.setClearColor(0x000000, 0);
+      // sRGB output + ACES tone mapping so Meshy PBR materials don't
+      // render as dark silhouettes. Without sRGB conversion, embedded
+      // diffuse maps look ~2x darker than authored.
+      overlayRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      overlayRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      overlayRenderer.toneMappingExposure = 1.2;
+
+      const overlayScene = new THREE.Scene();
+      // Bright ambient so even back-lit faces stay readable at icon size.
+      overlayScene.add(new THREE.AmbientLight(0xffffff, 1.5));
+      // Key light positioned toward the viewer + slightly up so monuments
+      // catch a sunlit-from-top-front read at glance distance.
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(0.3, 0.6, 1.0);
+      overlayScene.add(keyLight);
+      // Cool fill from below-side to give silhouette read on the dark globe.
+      const fillLight = new THREE.DirectionalLight(0xa5b8d8, 0.6);
+      fillLight.position.set(-0.4, -0.2, 0.6);
+      overlayScene.add(fillLight);
+      const overlayCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+      overlayCamera.position.z = 100;
+
+      const resize = () => {
+        const w = mapContainer.clientWidth;
+        const h = mapContainer.clientHeight;
+        overlayRenderer.setSize(w, h, false);
+        // Match pixel-coord space: left=0 right=w bottom=h top=0 like CSS.
+        overlayCamera.left = 0;
+        overlayCamera.right = w;
+        overlayCamera.top = 0;
+        overlayCamera.bottom = h;
+        overlayCamera.updateProjectionMatrix();
       };
-      try {
-        map.addLayer(customLayer);
-        diag.added = true;
-        reportDiag();
-      } catch (err) {
-        diag.errors++;
-        diag.lastErr = `addLayer: ${(err as Error)?.message || err}`.slice(0, 80);
-        reportDiag();
-        console.warn("[CapacitorGlobe] custom layer add failed", err);
+      resize();
+      const ro = new ResizeObserver(resize);
+      ro.observe(mapContainer);
+
+      // Models: load all GLBs, attach each to a wrapper Object3D positioned
+      // at projected screen coords each frame.
+      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean };
+      const entries: ModelEntry[] = [];
+      const loader = new GLTFLoader();
+      loader.setMeshoptDecoder(MeshoptDecoder);
+      for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
+        const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
+        const wrapper = new THREE.Object3D();
+        wrapper.visible = false;
+        overlayScene.add(wrapper);
+        const entry: ModelEntry = { mk, latlon, wrapper, loaded: false };
+        entries.push(entry);
+        loader.load(`/models/mapbox/${file}.glb`, (gltf) => {
+          const obj = gltf.scene;
+          // Normalize the GLB to a unit cube centered at origin, then scale
+          // to display size in pixels. Y-up GLB stands upright in orthographic.
+          const bbox = new THREE.Box3().setFromObject(obj);
+          const size = new THREE.Vector3(); bbox.getSize(size);
+          const center = new THREE.Vector3(); bbox.getCenter(center);
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          obj.position.sub(center);
+          obj.position.y += size.y / 2; // anchor at base
+          const DISPLAY_PX = 110;
+          obj.scale.setScalar(DISPLAY_PX / maxDim);
+          // Tilt slightly so we see top + front faces of the model.
+          wrapper.add(obj);
+          wrapper.rotation.x = -0.3;
+          (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
+          entry.loaded = true;
+          diag.loaded++;
+          reportDiag();
+          map.triggerRepaint();
+        }, undefined, (err) => {
+          diag.errors++;
+          diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
+          reportDiag();
+        });
       }
+
+      // Each frame: project each lat/lon to screen pixels, hide back-of-globe
+      // models. Driven by Mapbox's render event so we stay in sync.
+      const updatePositions = () => {
+        const w = mapContainer.clientWidth;
+        const h = mapContainer.clientHeight;
+        // Camera direction (centre of globe projected to surface). On globe
+        // projection, anything whose surface normal points away from the
+        // camera is on the back side.
+        const center = map.getCenter();
+        const camLat = (center.lat * Math.PI) / 180;
+        const camLon = (center.lng * Math.PI) / 180;
+        // Camera "look at" vector (centre of viewing direction in cartesian).
+        const cx = Math.cos(camLat) * Math.cos(camLon);
+        const cy = Math.cos(camLat) * Math.sin(camLon);
+        const cz = Math.sin(camLat);
+        for (const e of entries) {
+          if (!e.loaded) continue;
+          // Hemisphere test
+          const lat = (e.latlon.lat * Math.PI) / 180;
+          const lon = (e.latlon.lon * Math.PI) / 180;
+          const nx = Math.cos(lat) * Math.cos(lon);
+          const ny = Math.cos(lat) * Math.sin(lon);
+          const nz = Math.sin(lat);
+          const dot = nx * cx + ny * cy + nz * cz;
+          if (dot < 0.05) { e.wrapper.visible = false; continue; }
+          // Project to screen
+          const pt = map.project([e.latlon.lon, e.latlon.lat]);
+          if (pt.x < -100 || pt.x > w + 100 || pt.y < -100 || pt.y > h + 100) {
+            e.wrapper.visible = false; continue;
+          }
+          e.wrapper.visible = true;
+          e.wrapper.position.set(pt.x, pt.y, 0);
+        }
+        overlayRenderer.render(overlayScene, overlayCamera);
+        diag.renders++;
+        if (diag.renders % 30 === 1) reportDiag();
+      };
+      map.on("render", updatePositions);
+      diag.added = true;
+      reportDiag();
 
       // Tap targets — invisible HTML markers over each monument for click
       // handling. Raycasting onto a custom layer is doable but slow on
