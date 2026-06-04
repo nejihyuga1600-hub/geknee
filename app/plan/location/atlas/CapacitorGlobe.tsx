@@ -149,6 +149,19 @@ export default function CapacitorGlobe() {
       // static GLBs positioned at lat/lon and re-rendered when the camera
       // moves. Source GLBs pre-compressed by bin/compress-mapbox-glbs.mjs
       // from 407MB → 8MB total (51× reduction, ~260KB avg per monument).
+      // Diagnostic — surfaces custom layer state in the error overlay so
+      // we can see what's actually happening on iOS without a console.
+      const diag = { added: false, loaded: 0, errors: 0, lastErr: "", renders: 0 };
+      const reportDiag = () => {
+        try {
+          const el = document.getElementById("mapbox-err-overlay");
+          if (!el) return;
+          el.textContent = `3d-layer: added=${diag.added} loaded=${diag.loaded}/31 errs=${diag.errors} renders=${diag.renders}${diag.lastErr ? " | " + diag.lastErr : ""}`;
+          el.style.background = diag.errors > 0 ? "rgba(220,50,50,0.92)" : "rgba(40,140,60,0.85)";
+        } catch {}
+      };
+      reportDiag();
+
       const customLayer: mapboxgl.CustomLayerInterface = {
         id: "geknee-3d-monuments",
         type: "custom",
@@ -208,10 +221,17 @@ export default function CapacitorGlobe() {
                 self.scene.add(obj);
                 self.models.push({ obj, merc });
                 self.loaded++;
+                diag.loaded = self.loaded;
+                reportDiag();
                 _map.triggerRepaint();
               },
               undefined,
-              (err) => console.warn(`[CapacitorGlobe] GLB load fail ${mk}`, err),
+              (err) => {
+                diag.errors++;
+                diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
+                reportDiag();
+                console.warn(`[CapacitorGlobe] GLB load fail ${mk}`, err);
+              },
             );
           }
         },
@@ -221,17 +241,27 @@ export default function CapacitorGlobe() {
             camera: THREE.Camera;
             renderer: THREE.WebGLRenderer;
           };
-          // Mapbox's MVP matrix maps Mercator world (0..1) to clip space.
-          // Set it directly on the camera's projection matrix and render —
-          // each model's position/scale in the scene is already in Mercator.
-          self.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
-          self.renderer.resetState();
-          self.renderer.render(self.scene, self.camera);
+          try {
+            self.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
+            self.renderer.resetState();
+            self.renderer.render(self.scene, self.camera);
+            diag.renders++;
+            if (diag.renders % 30 === 1) reportDiag();
+          } catch (err) {
+            diag.errors++;
+            diag.lastErr = `render: ${(err as Error)?.message || err}`.slice(0, 80);
+            reportDiag();
+          }
         },
       };
       try {
         map.addLayer(customLayer);
+        diag.added = true;
+        reportDiag();
       } catch (err) {
+        diag.errors++;
+        diag.lastErr = `addLayer: ${(err as Error)?.message || err}`.slice(0, 80);
+        reportDiag();
         console.warn("[CapacitorGlobe] custom layer add failed", err);
       }
 
