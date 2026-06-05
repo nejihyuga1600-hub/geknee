@@ -213,9 +213,15 @@ interface Props {
   showQuickActions?: boolean;
   onOpenShop?: () => void;
   onOpenUpgrade?: () => void;
+  // Account: replaces the standalone avatar pill in the top nav so the
+  // bar stays minimal on mobile. Parent passes the session info + a
+  // navigate-to-account handler so this component stays decoupled from
+  // next-auth.
+  sessionUser?: { name?: string | null; email?: string | null; image?: string | null } | null;
+  onOpenAccount?: () => void;
 }
 
-export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode, showQuickActions, onOpenShop, onOpenUpgrade }: Props) {
+export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode, showQuickActions, onOpenShop, onOpenUpgrade, sessionUser, onOpenAccount }: Props) {
   const [s, setS] = useState<AppSettings>(DEFAULTS);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
@@ -337,6 +343,23 @@ export default function SettingsPanel({ open, onClose, currentTripId, isCurrentU
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "20px 20px 40px", scrollbarWidth: "thin", scrollbarColor: "rgba(167, 139, 250,0.3) transparent" }}>
+
+          {/* ── Account (moved from the top-right avatar pill) ── */}
+          {sessionUser && (
+            <Section title="Account">
+              <RowLast
+                label={sessionUser.name ?? sessionUser.email ?? "Signed in"}
+                sub={sessionUser.name && sessionUser.email ? sessionUser.email : "Profile, billing, history"}
+              >
+                <button
+                  onClick={() => { onClose(); onOpenAccount?.(); }}
+                  style={{ background: "rgba(167,139,250,0.15)", border: `1px solid ${BORD2}`, borderRadius: 8, color: TEXT, fontSize: 13, fontWeight: 600, padding: "8px 14px", minHeight: 40, cursor: "pointer" }}
+                >
+                  Open
+                </button>
+              </RowLast>
+            </Section>
+          )}
 
           {/* ── Quick Actions (mobile: moved out of the crowded top bar) ── */}
           {showQuickActions && (onOpenShop || onOpenUpgrade) && (

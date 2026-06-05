@@ -423,94 +423,74 @@ export default function AtlasShell() {
           paddingLeft: isMobile ? 10 : 16,
         }}
       >
-        <Link
-          href="/"
-          title="Back to landing page"
-          aria-label="Home"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "var(--brand-surface)",
-            WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
-            border: "1px solid var(--brand-border)",
-            cursor: "pointer",
-            textDecoration: "none",
-            overflow: "hidden",
-            flexShrink: 0,
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/brand/geknee-app-icon-v1.png"
-            alt=""
-            aria-hidden
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          />
-        </Link>
-        {!isMobile && (
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--brand-ink-mute)",
-              letterSpacing: "0.12em",
-              marginLeft: 12,
-              flex: 1,
-            }}
-          >
-            · AUTO-SAVED
-          </span>
+        {/* LEFT cluster — on mobile this carries the high-touch primary
+            actions (Go Pro + Collection) so the user reaches them without
+            opening the hamburger. On desktop, keep the existing 'home G'
+            icon + AUTO-SAVED chip — there's room there for the brand mark.
+            The G link was removed on mobile per user feedback (2026-06-04):
+            it duplicated the geknee.com homepage entry that the user
+            doesn't need from inside the planner. */}
+        {isMobile ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <NavPill onClick={() => setUpgradeOpen(true)} accent iconOnly title="Go Pro">
+              <SparkleIcon />
+            </NavPill>
+            <NavPill onClick={() => setShopOpen(true)} title="Collection" iconOnly>
+              <ColIcon />
+            </NavPill>
+          </div>
+        ) : (
+          <>
+            <Link
+              href="/"
+              title="Back to landing page"
+              aria-label="Home"
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 36, height: 36, borderRadius: "50%",
+                background: "var(--brand-surface)",
+                WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
+                border: "1px solid var(--brand-border)",
+                cursor: "pointer", textDecoration: "none", overflow: "hidden", flexShrink: 0,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/geknee-app-icon-v1.png" alt="" aria-hidden
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </Link>
+            <span style={{
+              fontSize: 10, color: "var(--brand-ink-mute)",
+              letterSpacing: "0.12em", marginLeft: 12, flex: 1,
+            }}>
+              · AUTO-SAVED
+            </span>
+          </>
         )}
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* On mobile, render the same NavPills as icon-only so the user
-             can still reach MonumentShop / Pricing / Trips from the iOS
-             app. Hiding them entirely (the previous behavior) made the
-             Capacitor build effectively unusable for collecting. */}
+          {/* Desktop keeps Collection + Go Pro on the right. Mobile has
+              them in the left cluster above (closer to thumb). */}
           {!isMobile && (
-          <NavPill onClick={() => setShopOpen(true)} title="Monument Collection" iconOnly={isMobile}>
-            <ColIcon /> {!isMobile && <span>Collection</span>}
+          <NavPill onClick={() => setShopOpen(true)} title="Monument Collection">
+            <ColIcon /> <span>Collection</span>
           </NavPill>
           )}
           {!isMobile && (
-          <NavPill onClick={() => setUpgradeOpen(true)} accent iconOnly={isMobile}>
-            <SparkleIcon /> {!isMobile && <span>Go Pro</span>}
+          <NavPill onClick={() => setUpgradeOpen(true)} accent>
+            <SparkleIcon /> <span>Go Pro</span>
           </NavPill>
           )}
-          <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends" iconOnly={isMobile}>
-            <TripsIcon /> {!isMobile && <span>Trips</span>}
+          {/* Elongated Trips button on mobile — user feedback wanted this
+              given more space/view. Shows icon + text instead of icon-only. */}
+          <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends">
+            <TripsIcon /> <span>Trips</span>
           </NavPill>
-          {/* Wrap entry moved into the MonumentShop header (next to
-              Leaderboard) — they're sibling year-in-review surfaces and the
-              top nav was getting crowded. */}
-          {session?.user ? (
-            <button
-              onClick={() => router.push("/account")}
-              title={session.user.name ? `${session.user.name} — account` : "Account"}
-              aria-label="Account"
-              style={{
-                width: isMobile ? 36 : 28, height: isMobile ? 36 : 28, borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2, #7dd3fc))",
-                color: "#0a0a1f",
-                display: "grid", placeItems: "center",
-                fontFamily: "var(--font-display, Georgia, serif)",
-                fontWeight: 700, fontSize: 14,
-                border: "1px solid var(--brand-border)",
-                cursor: "pointer", padding: 0,
-                overflow: "hidden",
-              }}
-            >
-              {session.user.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={session.user.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                (session.user.name ?? session.user.email ?? "?")[0]?.toUpperCase()
-              )}
-            </button>
-          ) : (
+          {/* Account avatar removed from the bar — folded into the
+              hamburger menu (SettingsPanel) so the top nav stays clean
+              on mobile. SettingsPanel renders the user's name + sign-out
+              entry at the top of its sheet. Unauthed users still see the
+              Sign in pill so the entry point isn't buried. */}
+          {!session?.user && (
             <NavPill onClick={() => setAuthOpen(true)} title="Sign in">
               <span>Sign in</span>
             </NavPill>
@@ -786,7 +766,7 @@ export default function AtlasShell() {
       {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => { setShopOpen(false); setShopInitialMk(null); }} initialMk={shopInitialMk} />}
       {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
       <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />
-      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => setShopOpen(true)} onOpenUpgrade={() => setUpgradeOpen(true)} />}
+      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => setShopOpen(true)} onOpenUpgrade={() => setUpgradeOpen(true)} sessionUser={session?.user ?? null} onOpenAccount={() => router.push("/account")} />}
       {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
     </main>
   );
