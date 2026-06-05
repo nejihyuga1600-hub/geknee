@@ -34,6 +34,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MONUMENT_LATLON, MONUMENT_FILE_PREFIX } from "../globe/skins";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -229,17 +230,26 @@ export default function CapacitorGlobe() {
       overlayRenderer.toneMappingExposure = 1.2;
 
       const overlayScene = new THREE.Scene();
-      // Bright ambient so even back-lit faces stay readable at icon size.
-      overlayScene.add(new THREE.AmbientLight(0xffffff, 1.5));
-      // Key light positioned toward the viewer + slightly up so monuments
-      // catch a sunlit-from-top-front read at glance distance.
-      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-      keyLight.position.set(0.3, 0.6, 1.0);
+      // Environment map (RoomEnvironment via PMREMGenerator) gives every
+      // PBR Meshy material proper IBL reflections — without this, gold/
+      // silver/diamond skins read as flat colours instead of metallic
+      // surfaces with highlights. Setup is one-time and cached on the
+      // GPU, so adding monuments later doesn't pay the cost again.
+      const pmrem = new THREE.PMREMGenerator(overlayRenderer);
+      overlayScene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      // Sky/ground hemisphere — soft top-down gradient over the IBL so the
+      // monument's TOP face reads brighter than its base (eagle-view cue).
+      overlayScene.add(new THREE.HemisphereLight(0xfff4e0, 0x1a2240, 1.0));
+      // Key light from above-front so each monument gets a clear specular
+      // highlight on its top face — user feedback was "looks 2D"; specular
+      // hot spots are what sells 3D at icon scale.
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+      keyLight.position.set(0.3, 1.4, 0.8);
       overlayScene.add(keyLight);
-      // Cool fill from below-side to give silhouette read on the dark globe.
-      const fillLight = new THREE.DirectionalLight(0xa5b8d8, 0.6);
-      fillLight.position.set(-0.4, -0.2, 0.6);
-      overlayScene.add(fillLight);
+      // Subtle cool rim from behind/below for silhouette read on dark globe.
+      const rimLight = new THREE.DirectionalLight(0x88a8d8, 0.5);
+      rimLight.position.set(-0.6, -0.2, -0.4);
+      overlayScene.add(rimLight);
       const overlayCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
       overlayCamera.position.z = 100;
 
@@ -346,6 +356,7 @@ export default function CapacitorGlobe() {
       // models, and orient each so it appears LAMINATED to the globe surface
       // (its base anchored at the surface point, its "up" pointing radially
       // outward, foreshortened toward the limb so we never see its underside).
+      let lastSpinTs = 0;
       const updatePositions = () => {
         const w = mapContainer.clientWidth;
         const h = mapContainer.clientHeight;
@@ -384,11 +395,16 @@ export default function CapacitorGlobe() {
           e.wrapper.rotation.set(0.9, 0, 0);
         }
         // Continuous Y-spin on each loaded model so the 3D form reads
-        // unmistakably as 3D (user feedback: "they still look like 2d
-        // image files"). 8°/sec is slow enough not to read as gimmicky
-        // but fast enough that the back-of-monument rotates into view
-        // within ~45 seconds of a steady stare.
-        const yawDelta = 0.14 * 0.016; // ≈ 8°/sec at 60fps render budget
+        // unmistakably as 3D. Time-delta based so the spin rate is
+        // INDEPENDENT of how often render() fires — previously the
+        // per-frame increment made the spin appear to accelerate when
+        // the globe was being dragged (more render events), which read
+        // as "monuments spin with the globe". Real wall-clock rate:
+        // ~8°/sec (0.14 rad/sec) regardless of fps or interaction.
+        const tNow = performance.now();
+        const dt = lastSpinTs ? Math.min(0.1, (tNow - lastSpinTs) / 1000) : 0;
+        lastSpinTs = tNow;
+        const yawDelta = 0.14 * dt;
         for (const e of entries) {
           if (!e.loaded) continue;
           const inner = e.wrapper.children[0];
