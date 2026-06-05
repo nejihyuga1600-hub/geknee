@@ -230,6 +230,30 @@ export default function AtlasShell() {
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+  // Force dark surfaces for the planner page regardless of the user's
+  // OS color scheme. The globe experience is space-themed, so when the
+  // phone is in light mode (iPhone 15 Pro 2026-06-04 screenshots) the
+  // cream body background bled into the iOS safe-area regions as
+  // "white banners" above/below the modal sheets. Forcing the html/body
+  // background to dark + color-scheme:dark fixes the banners AND tells
+  // iOS to render system chrome (scrollbars) in dark.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prev = {
+      htmlColor: html.style.colorScheme,
+      htmlBg: html.style.background,
+      bodyBg: body.style.background,
+    };
+    html.style.colorScheme = "dark";
+    html.style.background = "#05050f";
+    body.style.background = "#05050f";
+    return () => {
+      html.style.colorScheme = prev.htmlColor;
+      html.style.background = prev.htmlBg;
+      body.style.background = prev.bodyBg;
+    };
+  }, []);
   // Seed today's date on the client so the trip-length slider and
   // flexible-month picker have a pivot before the user touches Depart.
   useEffect(() => {

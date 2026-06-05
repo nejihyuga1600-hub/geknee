@@ -559,22 +559,27 @@ export default function TripSocialPanel({
           drawer width on tablets/desktop. */}
       <div style={{
         position: 'fixed',
-        top: 0, right: 0,
-        height: '100svh',
+        // Anchor to all four edges so the dark background fills the
+        // ENTIRE screen, including the safe-area regions around the
+        // notch / home indicator. height:100svh was wrong — svh excludes
+        // those regions, so the cream body background showed through as
+        // "white banners" at the top and bottom on iPhone 15 Pro in
+        // light mode (user feedback 2026-06-04).
+        top: 0, right: 0, bottom: 0,
+        // 100vw on mobile (full screen), drawer width on tablets/desktop.
         width: 'min(100vw, 420px)',
-        background: 'rgba(6,8,22,0.97)',
+        background: 'rgba(6,8,22,0.98)',
         WebkitBackdropFilter: 'blur(24px)', backdropFilter: 'blur(24px)',
         borderLeft: '1px solid rgba(167, 139, 250,0.2)',
         zIndex: 50,
         display: 'flex', flexDirection: 'column',
         boxShadow: '-8px 0 40px rgba(0,0,0,0.6)',
         animation: 'panelSlideIn 0.3s ease-out',
-        // Stop iOS rubber-band overscroll from leaking to the body and
-        // showing the white background underneath.
         overscrollBehavior: 'contain',
         // Reserve iOS Dynamic Island / notch + home indicator inside the
-        // panel so child content can use full top/bottom edges without
-        // colliding with system chrome.
+        // panel so child content stays clear of system chrome. The
+        // background already covers those areas via the four-edge anchor
+        // above, so this padding is purely about content layout.
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}>
