@@ -51,16 +51,21 @@ const config: CapacitorConfig = {
   },
 
   ios: {
-    // Use the same brand color as the manifest theme_color for the splash
-    // background so launch feels seamless into the cream-paper landing.
-    backgroundColor: '#f5f1e8',
-    // contentInset 'always' makes the WebView respect iOS safe areas the
-    // same way native apps do — same env(safe-area-inset-*) we use on web.
-    contentInset: 'always',
+    // Dark space-themed surface — matches the planner globe and the
+    // SplashScreen plugin's '#0a0a1f'. Cream '#f5f1e8' previously bled
+    // into the iOS safe-area regions as "white banners" above and below
+    // the planner UI (user feedback 2026-06-04 iPhone 15 Pro in light mode).
+    backgroundColor: '#0a0a1f',
+    // 'never' lets the WebView extend BEHIND the status bar / home
+    // indicator so its dark background fills those regions. The web
+    // content uses env(safe-area-inset-*) padding to keep interactive
+    // content out of the system chrome zones. Previously 'always' inset
+    // the WebView and exposed ios.backgroundColor in the safe areas.
+    contentInset: 'never',
   },
 
   android: {
-    backgroundColor: '#f5f1e8',
+    backgroundColor: '#0a0a1f',
     // Pulls the WebView the same way Android Chrome does — needed so the
     // 3D globe and pinch-zoom don't fight Android's default touch handling.
     allowMixedContent: false,
