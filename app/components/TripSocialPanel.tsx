@@ -509,6 +509,29 @@ export default function TripSocialPanel({
     loadMembers();
   }, [activeGroup, loadMembers]);
 
+  // Lock body scroll while the panel is open — otherwise iOS lets the user
+  // drag the entire page underneath the panel, which pulls the OS status bar
+  // into the modal title area and exposes Safari's white default background
+  // at the bottom (the "white bar" the user reported 2026-06-04).
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevTop = document.body.style.top;
+    const scrollY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.width = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [open]);
+
   if (!open) return null;
 
   // ── Style constants ────────────────────────────────────────────────────────
@@ -529,8 +552,32 @@ export default function TripSocialPanel({
         else onClose();
       }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 49, animation: 'modalFadeIn 0.25s ease-out' }} />
 
-      {/* Panel */}
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 380, background: 'rgba(6,8,22,0.97)', WebkitBackdropFilter: 'blur(24px)', backdropFilter: 'blur(24px)', borderLeft: '1px solid rgba(167, 139, 250,0.2)', zIndex: 50, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 40px rgba(0,0,0,0.6)', animation: 'panelSlideIn 0.3s ease-out' }}>
+      {/* Panel — fixed full-height, safe-area-aware, overscroll-locked so
+          the user can't drag-bounce the modal past the screen edges (which
+          previously exposed Safari's white default background and crashed
+          the title into the iOS status bar). Width is 100% on mobile, fixed
+          drawer width on tablets/desktop. */}
+      <div style={{
+        position: 'fixed',
+        top: 0, right: 0,
+        height: '100svh',
+        width: 'min(100vw, 420px)',
+        background: 'rgba(6,8,22,0.97)',
+        WebkitBackdropFilter: 'blur(24px)', backdropFilter: 'blur(24px)',
+        borderLeft: '1px solid rgba(167, 139, 250,0.2)',
+        zIndex: 50,
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.6)',
+        animation: 'panelSlideIn 0.3s ease-out',
+        // Stop iOS rubber-band overscroll from leaking to the body and
+        // showing the white background underneath.
+        overscrollBehavior: 'contain',
+        // Reserve iOS Dynamic Island / notch + home indicator inside the
+        // panel so child content can use full top/bottom edges without
+        // colliding with system chrome.
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}>
 
         {/* ── Header ── */}
         {!activeGroup ? (
