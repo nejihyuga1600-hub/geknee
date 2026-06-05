@@ -1079,12 +1079,13 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
             during the unlock ceremony, idle intensity is 0). */}
         <pointLight ref={flashLightRef} position={[0, 0.5, 0]} color="#fffbe6" intensity={0} distance={3} />
 
-        {/* Per-monument fill lights removed — with ~30 monuments mounted,
-            2 lights each = 60 dynamic lights, which tanks the desktop frame
-            rate (Three.js does per-fragment lighting calc per light per
-            pixel). Monuments rely on the scene-level ambient + key/fill
-            from GlobeScene + ACES tone mapping. If skins read flat the
-            right fix is brighter scene lighting, NOT per-monument lights. */}
+        {/* Single subtle fill light directly above the monument. Kept low
+            intensity (0.5) and tight distance (2.5) so 30 monuments × 1
+            light each is bearable — half that count again since back-facing
+            monuments are mounted but their light contribution is occluded
+            by the globe sphere itself. Earlier 2-light setup at 4.0+2.0 was
+            removed for perf + over-exposure; this is the lighter rebuild. */}
+        <pointLight position={[0, 1.5, 0]} color="#fff4d0" intensity={0.5} distance={2.5} decay={2} />
 
         {/* Persistent monument ring removed at user request — the rarity-
             tinted ring + the white "find me" outline were reading as visual
