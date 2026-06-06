@@ -168,10 +168,12 @@ export default function PlanMapPage() {
     }}>
       {/* Map column */}
       <div style={{ position: 'relative', minHeight: '100svh' }}>
-        {/* Top app bar */}
+        {/* Top app bar — safe-area aware: bar pushes below the iOS
+            Dynamic Island, blurred-dark background fills the safe area. */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-          height: 64, padding: '0 24px',
+          minHeight: 'calc(env(safe-area-inset-top) + 64px)',
+          paddingTop: 'env(safe-area-inset-top)', paddingLeft: 24, paddingRight: 24,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
           borderBottom: '1px solid var(--brand-border)',
@@ -211,7 +213,7 @@ export default function PlanMapPage() {
 
         {/* Search input — wired to Google Places Autocomplete via PlanMap */}
         <div style={{
-          position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)',
+          position: 'absolute', top: 'calc(env(safe-area-inset-top) + 80px)', left: '50%', transform: 'translateX(-50%)',
           zIndex: 18, width: 'min(440px, calc(100% - 32px))',
         }}>
           <div style={{
@@ -245,7 +247,7 @@ export default function PlanMapPage() {
 
         {/* Category filter */}
         <div style={{
-          position: 'absolute', top: 80, right: 24, zIndex: 18,
+          position: 'absolute', top: 'calc(env(safe-area-inset-top) + 80px)', right: 24, zIndex: 18,
           display: 'flex', flexDirection: 'column', gap: 6,
         }}>
           {CATEGORIES.map(c => {
@@ -364,7 +366,8 @@ export default function PlanMapPage() {
         {pins.length > 0 && (
           <div style={{
             position: 'sticky', bottom: 0,
-            marginTop: 24, marginInline: -20, padding: '16px 20px',
+            marginTop: 24, marginInline: -20,
+            padding: '16px 20px calc(env(safe-area-inset-bottom) + 16px)',
             background: 'linear-gradient(180deg, rgba(13,13,36,0), rgba(13,13,36,0.95) 30%)',
             WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
             borderTop: '1px solid var(--brand-border)',

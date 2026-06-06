@@ -54,7 +54,7 @@ export default function StepPillNav({ steps }: StepPillNavProps) {
   return (
     <div style={{
       position: 'sticky',
-      top: 16,
+      top: 'calc(env(safe-area-inset-top) + 16px)',
       zIndex: 50,
       display: 'flex',
       justifyContent: 'center',

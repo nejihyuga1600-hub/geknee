@@ -321,7 +321,9 @@ export default function LiveTripPage() {
       {!online && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 40,
-          padding: '8px 22px',
+          // Push below the iOS Dynamic Island / status bar; background
+          // extends INTO the safe area so the body underneath stays hidden.
+          padding: 'calc(env(safe-area-inset-top) + 8px) 22px 8px',
           background: 'rgba(251, 146, 60, 0.18)',
           borderBottom: '1px solid rgba(251, 146, 60, 0.45)',
           color: 'var(--brand-warn)',
@@ -339,7 +341,9 @@ export default function LiveTripPage() {
       <div style={{
         position: 'sticky', top: 0, zIndex: 30,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 22px',
+        // Only reserve safe-area top when the offline banner isn't doing it.
+        paddingTop: online ? 'calc(env(safe-area-inset-top) + 14px)' : '14px',
+        paddingBottom: 14, paddingLeft: 22, paddingRight: 22,
         background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--brand-border)',
       }}>

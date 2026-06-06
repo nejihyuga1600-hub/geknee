@@ -167,7 +167,8 @@ export default function VaultPage() {
     }}>
       {/* App bar */}
       <div style={{
-        height: 64, padding: '0 24px',
+        minHeight: 'calc(env(safe-area-inset-top) + 64px)',
+        paddingTop: 'env(safe-area-inset-top)', paddingLeft: 24, paddingRight: 24,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderBottom: '1px solid var(--brand-border)',
         background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',

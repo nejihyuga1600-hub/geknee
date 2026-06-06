@@ -37,10 +37,16 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
           zIndex: 50,
           display: 'flex',
           gap: 18,
-          padding: '0 18px 0 16px',
-          height: 56,
+          // Push the nav row BELOW the iOS Dynamic Island / status bar.
+          // The background extends INTO the safe area (paddingTop fills
+          // it with the same blurred-dark surface) so we don't see the
+          // body underneath. User feedback 2026-06-05: title + buttons
+          // were colliding with the iPhone 15 Pro front camera island.
+          padding: 'calc(env(safe-area-inset-top) + 0px) 18px 0 16px',
+          minHeight: 'calc(env(safe-area-inset-top) + 56px)',
+          height: 'auto',
           alignItems: 'center',
-          background: 'rgba(10, 15, 30, 0.78)',
+          background: 'rgba(10, 15, 30, 0.92)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
