@@ -76,10 +76,11 @@ export default async function Home() {
         pointerEvents: 'none',
       }} />
 
-      {/* ── Top nav ──────────────────────────────────────────────────────── */}
+      {/* ── Top nav (safe-area aware: iOS Dynamic Island clearance) ── */}
       <nav style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 32px', maxWidth: 1280, margin: '0 auto', position: 'relative', zIndex: 5,
+        padding: 'calc(env(safe-area-inset-top) + 20px) 32px 20px',
+        maxWidth: 1280, margin: '0 auto', position: 'relative', zIndex: 5,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{

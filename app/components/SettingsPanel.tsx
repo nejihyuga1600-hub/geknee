@@ -313,16 +313,21 @@ export default function SettingsPanel({ open, onClose, currentTripId, isCurrentU
         }}
       />
 
-      {/* Drawer */}
+      {/* Drawer — safe-area aware: top/bottom padding reserves iOS Dynamic
+          Island + home indicator zones so header content + interactive
+          controls never crash into system chrome. */}
       <div
         ref={drawerRef}
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50, animation: "panelSlideIn 0.3s ease-out",
-          width: 380, background: BG,
+          width: "min(100vw, 420px)", background: BG,
           borderLeft: `1px solid ${BORD}`,
           boxShadow: "-8px 0 40px rgba(0,0,0,0.6)",
           display: "flex", flexDirection: "column",
           fontFamily: "system-ui, sans-serif",
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          overscrollBehavior: "contain",
         }}
       >
         {/* Header */}
