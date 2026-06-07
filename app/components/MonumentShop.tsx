@@ -746,7 +746,13 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       // search box's "fly to destination" flow.
       const ll = MONUMENT_LATLON[item.id];
       if (ll) {
-        window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', { detail: { lat: ll.lat, lon: ll.lon } }));
+        // City-level zoom so the user sees the monument standing in
+        // its actual neighborhood, not a continental dot. Both globes
+        // accept an optional zoom in the event detail (default 3 for
+        // the search-box fly which wants a continent-scale framing).
+        window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
+          detail: { lat: ll.lat, lon: ll.lon, zoom: 12 },
+        }));
       }
       // Auto-close the modal sooner now (T+0.8s) so the user lands on
       // the globe just as the camera arrives at the monument and the
@@ -868,6 +874,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       background: 'rgba(0,0,0,0.78)', WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
+        position: 'relative',
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
         border: '1px solid rgba(167, 139, 250,0.3)',
         borderRadius: 24, width: '92%', maxWidth: 560, animation: 'modalSlideUp 0.3s ease-out',
@@ -875,6 +882,32 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
         boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(167, 139, 250,0.1)',
         overflow: 'hidden',
       }}>
+        {/* Absolute-positioned Close pill — anchored top-right of the modal
+            so it stays visible regardless of how wide the header content
+            grows (was getting clipped on iPhone 15 Pro previously). */}
+        <button
+          onClick={onClose}
+          aria-label="Close collection"
+          style={{
+            position: 'absolute', top: 12, right: 12, zIndex: 10,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', borderRadius: 999,
+            background: 'rgba(15,23,42,0.85)',
+            border: '1px solid rgba(167,139,250,0.5)',
+            color: '#e9d5ff', fontSize: 12, fontWeight: 700,
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            cursor: 'pointer', fontFamily: 'inherit',
+            WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+          Close
+        </button>
+
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -938,29 +971,10 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                 </svg>
                 <span>Leaderboard</span>
               </Link>
-              {/* Visible close pill — was a low-contrast 22px × glyph,
-                  hard to tap on mobile and easy to miss. User feedback
-                  2026-06-06: "add a button to get out of the collection". */}
-              <button
-                onClick={onClose}
-                aria-label="Close collection"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '8px 14px', borderRadius: 999,
-                  background: 'rgba(167,139,250,0.14)',
-                  border: '1px solid rgba(167,139,250,0.4)',
-                  color: '#c4b5fd', fontSize: 12, fontWeight: 700,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  minHeight: 38,
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-                Close
-              </button>
+              {/* Close button moved to absolute top-right of the modal
+                  (see CLOSE_PILL below the modal-root return) — the inline
+                  spot ran out of horizontal room next to Wrap +
+                  Leaderboard and got clipped on iPhone 15 Pro width. */}
             </div>
           </div>
 
