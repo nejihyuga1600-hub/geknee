@@ -35,7 +35,10 @@ const CITIES_LIST: { n: string; lat: number; lon: number }[] = CITIES_JSON;
 // is empty while AtlasShell's chrome (top nav, sheet) is already visible
 // — creates a blank "missing globe" flash. The gradient matches
 // StaticGlobeBackdrop below so the transition is seamless.
-const PlannerGlobe = dynamic(() => import("../LocationClient"), {
+// Three.js web-globe (PlannerGlobe = LocationClient) was retired here
+// when web unified onto CapacitorGlobe — kept in repo as the iOS-fallback
+// codepath but no longer routed through AtlasShell.
+const _RetiredPlannerGlobe_LEAVE_IMPORT_AS_REFERENCE = dynamic(() => import("../LocationClient"), {
   ssr: false,
   loading: () => <StaticGlobeBackdrop />,
 });
@@ -422,10 +425,14 @@ export default function AtlasShell() {
               Tap to open the globe
             </button>
           </>
-        ) : _isCapacitorShell ? (
-          <CapacitorGlobe />
         ) : (
-          <PlannerGlobe chromeless />
+          // Unified: web AND iOS Capacitor both render CapacitorGlobe so the
+          // two platforms stay 1:1 in sync. iOS-specific behaviour stays
+          // inside CapacitorGlobe (it reads window.Capacitor at runtime);
+          // web pays a one-time +230KB mapbox-gl bundle for parity.
+          // See git history for the previous Three.js web globe path
+          // (PlannerGlobe = LocationClient).
+          <CapacitorGlobe />
         )}
       </div>
 
