@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { track } from '@/lib/analytics';
 import { _setPendingUnlock } from '@/app/plan/location/globe/landmark';
 import { INFO } from '@/app/plan/location/globe/info';
+import { MONUMENT_LATLON } from '@/app/plan/location/globe/skins';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
 import { ShimmerButton } from './animations/ShimmerButton';
 import { MagicCard } from './animations/MagicCard';
@@ -451,14 +452,14 @@ const RARITY_COLOR: Record<Rarity, string> = {
   common: '#34d399', rare: '#818cf8', epic: '#f472b6', legendary: '#f59e0b',
 };
 
-type CollectedItem = { monumentId: string; skin: string };
+type CollectedItem = { monumentId: string; skin: string; active?: boolean };
 type MissionItem   = { missionId: string };
 
 // ─── Sub-component: Detail view for a single collectible ──────────────────────
 
 function DetailView({
   item, collected, missions, tripLocs, loading, isDev,
-  onUnlock, onMission, onBack,
+  onUnlock, onMission, onBack, onEquipSkin,
 }: {
   item: CollectibleBase;
   collected: CollectedItem[];
@@ -469,6 +470,7 @@ function DetailView({
   onUnlock: (item: CollectibleBase, e: React.MouseEvent<HTMLElement>) => void;
   onMission: (item: CollectibleBase, mission: Mission) => void;
   onBack: () => void;
+  onEquipSkin: (item: CollectibleBase, skinId: string) => void;
 }) {
   // Any row counts as unlocked — matches the globe's `_collectedMonuments`
   // gate (LocationClient.tsx) which also accepts ANY skin row. Older
@@ -613,7 +615,30 @@ function DetailView({
                     <Sparkle size={10} /> {ms.skin.name} Skin
                   </div>
                 </div>
-                {done ? (
+                {skinEarned ? (
+                  // Skin owned → either "Equipped" badge or "Equip" CTA so
+                  // the user can switch which skin is currently active on
+                  // the globe (calls /api/monuments action:set_skin).
+                  (() => {
+                    const isActive = collected.some(c => c.monumentId === item.id && c.skin === ms.skin.id && c.active);
+                    return isActive ? (
+                      <div style={{
+                        padding: '6px 12px', borderRadius: 8, flexShrink: 0,
+                        background: 'rgba(52,211,153,0.18)',
+                        border: '1px solid rgba(52,211,153,0.45)',
+                        color: '#34d399', fontSize: 10, fontWeight: 800,
+                        letterSpacing: '0.08em', textTransform: 'uppercase',
+                      }}>Equipped</div>
+                    ) : (
+                      <button onClick={() => onEquipSkin(item, ms.skin.id)} disabled={loading} style={{
+                        padding: '6px 12px', borderRadius: 8, border: `1px solid ${ms.skin.color}66`, flexShrink: 0,
+                        background: `${ms.skin.color}22`,
+                        color: ms.skin.color, fontSize: 11, fontWeight: 700,
+                        cursor: loading ? 'wait' : 'pointer',
+                      }}>Equip</button>
+                    );
+                  })()
+                ) : done ? (
                   <div style={{ color: '#34d399', fontSize: 20, flexShrink: 0 }}>{String.fromCodePoint(0x2713)}</div>
                 ) : (
                   <button onClick={() => onMission(item, ms)} disabled={loading} style={{
@@ -715,12 +740,18 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       if (collected.length === 0) track('first_unlock', { mk: item.id, via: 'unlock' });
       await load();
       window.dispatchEvent(new Event('geknee:monuments-updated'));
-      // Auto-close the modal mid-ceremony so the user lands back on the
-      // globe by the time UnlockCeremony's orb arrives (~2.5s after tap).
-      // Modal closes around T+1.5s — Stage 2 reveal is done, Stage 3 orb
-      // travels across the now-empty screen, the amplified ring shockwave
-      // in landmark.tsx peaks just as the camera reveals the new monument.
-      setTimeout(onClose, 1500);
+      // Spin the globe to the newly-unlocked monument so the user sees
+      // the unlock land in its real location. Both globes (web Three.js
+      // + Capacitor Mapbox) listen for this event — same channel as the
+      // search box's "fly to destination" flow.
+      const ll = MONUMENT_LATLON[item.id];
+      if (ll) {
+        window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', { detail: { lat: ll.lat, lon: ll.lon } }));
+      }
+      // Auto-close the modal sooner now (T+0.8s) so the user lands on
+      // the globe just as the camera arrives at the monument and the
+      // UnlockCeremony orb explodes.
+      setTimeout(onClose, 800);
     }
     else { setMsg(data.error ?? 'Error'); setLastUnlock(null); await load(); } // refresh state on error too (e.g. "Already collected" from another session)
     setLoading(false);
@@ -907,8 +938,28 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                 </svg>
                 <span>Leaderboard</span>
               </Link>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 22, cursor: 'pointer', padding: 4 }}>
-                {String.fromCodePoint(0x00D7)}
+              {/* Visible close pill — was a low-contrast 22px × glyph,
+                  hard to tap on mobile and easy to miss. User feedback
+                  2026-06-06: "add a button to get out of the collection". */}
+              <button
+                onClick={onClose}
+                aria-label="Close collection"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 999,
+                  background: 'rgba(167,139,250,0.14)',
+                  border: '1px solid rgba(167,139,250,0.4)',
+                  color: '#c4b5fd', fontSize: 12, fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  minHeight: 38,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                Close
               </button>
             </div>
           </div>
@@ -1097,6 +1148,25 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
               }}
               onMission={async (it, ms) => { await completeMission(it, ms); }}
               onBack={() => { setSelected(null); setMsg(''); }}
+              onEquipSkin={async (it, skinId) => {
+                // Set the chosen skin active server-side; reload state so
+                // the "Equipped" badge moves to the new skin row.
+                setLoading(true);
+                try {
+                  const res = await fetch('/api/monuments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'set_skin', monumentId: it.id, skin: skinId }),
+                  });
+                  if (res.ok) {
+                    await load();
+                    // Tell both globes to refresh their monument render
+                    // (web Three.js Lm cache + Capacitor Mapbox layer)
+                    // so the new skin appears without a page refresh.
+                    window.dispatchEvent(new Event('geknee:monuments-updated'));
+                  }
+                } finally { setLoading(false); }
+              }}
             />
           ) : (
             <>
