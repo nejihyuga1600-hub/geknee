@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import BackButton from '@/app/components/BackButton';
 
 // ─── E4 · File vault ───────────────────────────────────────────────────────
 // Passport-sticker grid. Loads files from every trip the signed-in user
@@ -175,9 +176,7 @@ export default function VaultPage() {
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Link href="/plan" style={{ color: 'var(--brand-accent)', fontSize: 13, textDecoration: 'none' }}>
-            {String.fromCodePoint(0x2190)} Itinerary
-          </Link>
+          <BackButton href="/plan" label="Itinerary" />
           <div style={{ fontFamily: DISPLAY, fontSize: 19, color: 'var(--brand-ink)' }}>
             File vault
           </div>

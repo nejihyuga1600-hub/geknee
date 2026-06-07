@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import Link from 'next/link';
+import BackButton from '@/app/components/BackButton';
 import { useParams, useRouter } from 'next/navigation';
 import { lookupKnownCoords } from '@/app/plan/lib/monument-coords';
 
@@ -179,17 +180,7 @@ export default function PlanMapPage() {
           borderBottom: '1px solid var(--brand-border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Link href="/plan" style={{
-              display: 'inline-flex', alignItems: 'center',
-              padding: '6px 12px', borderRadius: 999,
-              border: '1px solid rgba(167,139,250,0.35)',
-              background: 'rgba(167,139,250,0.08)',
-              color: 'var(--brand-accent)',
-              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em', fontWeight: 700,
-              textDecoration: 'none',
-            }}>
-              {String.fromCodePoint(0x2190)} BACK TO GLOBE
-            </Link>
+            <BackButton href="/plan/location" label="Back to globe" />
             <div style={{ fontFamily: DISPLAY, fontSize: 17, color: 'var(--brand-ink)' }}>
               {trip?.location ?? '—'} · <span style={{ color: 'var(--brand-accent)', fontStyle: 'italic' }}>plan your stops</span>
             </div>

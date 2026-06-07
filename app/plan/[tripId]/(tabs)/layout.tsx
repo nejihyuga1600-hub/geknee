@@ -5,6 +5,7 @@ import { usePathname, useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { NextStepHint } from './NextStepHint';
+import BackButton from '@/app/components/BackButton';
 
 const InviteFriendsPill = dynamic(() => import('./InviteFriendsPill'), { ssr: false });
 
@@ -52,24 +53,9 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}
       >
-        {/* Persistent "← Back to globe" pill on the LEFT — present on
-            every tab so users can always return to the globe home. */}
-        <Link
-          href="/plan/location"
-          prefetch
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px', borderRadius: 999,
-            background: 'rgba(167,139,250,0.12)',
-            border: '1px solid rgba(167,139,250,0.32)',
-            color: 'var(--brand-accent, #a78bfa)',
-            fontFamily: MONO, fontSize: 10, fontWeight: 700,
-            letterSpacing: '0.12em', textTransform: 'uppercase',
-            textDecoration: 'none', whiteSpace: 'nowrap',
-          }}
-        >
-          ← Back to globe
-        </Link>
+        {/* Shared BackButton — same visual + touch target as every other
+            back affordance in the app. Routes back to the globe home. */}
+        <BackButton href="/plan/location" label="Back to globe" />
         {/* Invite-friends pill — persistent across planning / booking /
             itinerary / vault so the owner can pull collaborators in
             without detouring through the chat panel. Pops an inline
