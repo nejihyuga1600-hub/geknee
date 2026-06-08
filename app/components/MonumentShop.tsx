@@ -925,14 +925,15 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
           onClick={onClose}
           aria-label="Close collection"
           style={{
-            position: 'absolute', top: 12, right: 12, zIndex: 10,
+            position: 'absolute', top: 16, right: 16, zIndex: 10,
             display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 999,
+            padding: '7px 14px 7px 12px', borderRadius: 999,
             background: 'rgba(15,23,42,0.55)',
             border: '1px solid rgba(167,139,250,0.45)',
-            color: '#e9d5ff', fontSize: 12, fontWeight: 700,
+            color: '#e9d5ff', fontSize: 11, fontWeight: 700,
             letterSpacing: '0.08em', textTransform: 'uppercase',
             cursor: 'pointer', fontFamily: 'inherit',
+            lineHeight: 1,
             WebkitBackdropFilter: 'blur(14px) saturate(140%)',
             backdropFilter: 'blur(14px) saturate(140%)',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 4px 14px rgba(167,139,250,0.22)',
@@ -946,6 +947,12 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
         </button>
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
+        {/* Collection-home chrome — title, counter, Wrap + Leaderboard pills,
+            progress bar, Monuments/Animals tabs. Hidden once the user drills
+            into a specific monument (selected != null) — at that point this
+            is just noise above the quest list and crowds the Close pill.
+            Reappears when Back returns to the grid. */}
+        {!selected && (
         <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
@@ -1055,9 +1062,13 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             ))}
           </div>
         </div>
+        )}
 
         {/* ── Body ────────────────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
+        {/* Top padding bumps up when the home-chrome is hidden so the Back
+            button doesn't sit directly under the absolute-positioned Close
+            pill (top: 12). 56px clears the pill + 8px breathing room. */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: selected ? '56px 24px 24px' : '16px 24px 24px' }}>
 
           {pendingMission && (
             <div style={{
@@ -1122,7 +1133,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             </div>
           )}
 
-          {session?.user && (() => {
+          {!selected && session?.user && (() => {
             const uid = (session.user as { id?: string }).id;
             if (!uid) return null;
             return (
