@@ -630,16 +630,17 @@ export default function AtlasShell() {
           }}
           title="Reset globe orientation"
           style={{
-            background: "rgba(6,8,22,0.80)",
-            border: "1px solid rgba(167, 139, 250, 0.35)",
-            WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)",
-            borderRadius: 10,
-            color: "#c7d2fe",
+            background: "rgba(10, 12, 28, 0.42)",
+            border: "1px solid rgba(167, 139, 250, 0.40)",
+            WebkitBackdropFilter: "blur(20px) saturate(160%)",
+            backdropFilter: "blur(20px) saturate(160%)",
+            borderRadius: 999,
+            color: "#e9d5ff",
             fontSize: 10, fontWeight: 700,
-            padding: "5px 12px",
+            padding: "6px 14px",
             cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6,
-            boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 6px 20px rgba(167,139,250,0.22)",
             letterSpacing: "0.05em", textTransform: "uppercase",
             fontFamily: "inherit",
           }}
@@ -764,9 +765,12 @@ export default function AtlasShell() {
               style={{
                 flex: 1,
                 padding: "12px 16px",
-                borderRadius: 12,
-                border: "1px solid var(--brand-border)",
-                background: "rgba(255,255,255,0.04)",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(10, 12, 28, 0.42)",
+                WebkitBackdropFilter: "blur(20px) saturate(160%)",
+                backdropFilter: "blur(20px) saturate(160%)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 6px 18px rgba(0,0,0,0.30)",
                 color: "var(--brand-ink)",
                 fontSize: 15,
                 fontFamily: "var(--font-ui), system-ui, sans-serif",
@@ -1256,6 +1260,12 @@ function NavPill({
   iconOnly?: boolean;
   title?: string;
 }) {
+  // Unified glass treatment for every top-nav pill. Stronger backdrop blur
+  // + saturation than the previous Go Pro pill (which was already the most
+  // glassy in the chrome), inset 0 1px 0 top highlight that reads as light
+  // catching the rim, and a soft accent-tinted outer glow for the accent
+  // variant. Background is a translucent near-black so the live globe shows
+  // through faintly — that's what reads as "glass" instead of "card."
   const style = {
     display: "inline-flex",
     alignItems: "center",
@@ -1266,11 +1276,15 @@ function NavPill({
     justifyContent: "center" as const,
     borderRadius: 999,
     background: accent
-      ? "rgba(167, 139, 250, 0.16)"
-      : "var(--brand-surface)",
-    WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)",
-    border: `1px solid ${accent ? "var(--brand-border-hi)" : "var(--brand-border)"}`,
-    color: accent ? "var(--brand-accent)" : "var(--brand-ink)",
+      ? "rgba(167, 139, 250, 0.20)"
+      : "rgba(10, 12, 28, 0.42)",
+    WebkitBackdropFilter: "blur(20px) saturate(160%)",
+    backdropFilter: "blur(20px) saturate(160%)",
+    border: `1px solid ${accent ? "rgba(167, 139, 250, 0.50)" : "rgba(255, 255, 255, 0.14)"}`,
+    boxShadow: accent
+      ? "inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 20px rgba(167,139,250,0.28)"
+      : "inset 0 1px 0 rgba(255,255,255,0.10), 0 6px 18px rgba(0,0,0,0.30)",
+    color: accent ? "#e9d5ff" : "var(--brand-ink)",
     fontSize: 11,
     fontWeight: accent ? 700 : 500,
     letterSpacing: "0.02em",
