@@ -1036,9 +1036,10 @@ export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number;
       window.dispatchEvent(new CustomEvent('geknee:mobilecity', { detail: { key } }));
     }
     setMobileActive(prev => !prev);
-    // If the user owns this monument, also surface the collection panel so
-    // they can review the achievement and swap skins without leaving the globe.
-    if (isCollected && mk) {
+    // Surface the collection panel scoped to this mk — works for both owned
+    // monuments (review achievement, swap skins, see uploaded quest photos)
+    // and unowned ones (preview rarity + quests required to unlock).
+    if (mk) {
       window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: { mk } }));
     }
   };

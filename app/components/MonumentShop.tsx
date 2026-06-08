@@ -453,7 +453,7 @@ const RARITY_COLOR: Record<Rarity, string> = {
 };
 
 type CollectedItem = { monumentId: string; skin: string; active?: boolean };
-type MissionItem   = { missionId: string };
+type MissionItem   = { missionId: string; photoUrl?: string | null };
 
 // ─── Sub-component: Detail view for a single collectible ──────────────────────
 
@@ -481,6 +481,7 @@ function DetailView({
   const unlocked   = collected.some(c => c.monumentId === item.id);
   const hasSkin    = (sk: string) => collected.some(c => c.monumentId === item.id && c.skin === sk);
   const missionDone = (mid: string) => missions.some(m => m.missionId === mid);
+  const missionPhoto = (mid: string) => missions.find(m => m.missionId === mid)?.photoUrl ?? null;
   const canUnlock  = !unlocked && (isDev || item.cityKeys.some(k => tripLocs.some(t => t.includes(k))));
 
   return (
@@ -588,13 +589,15 @@ function DetailView({
         {item.missions.map(ms => {
             const done = missionDone(ms.id);
             const skinEarned = hasSkin(ms.skin.id);
+            const proofPhoto = ms.verify === 'photo' && done ? missionPhoto(ms.id) : null;
             return (
               <div key={ms.id} style={{
                 background: done ? 'rgba(52,211,153,0.06)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${done ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.07)'}`,
                 borderRadius: 12, padding: '12px 14px',
-                display: 'flex', alignItems: 'center', gap: 12,
+                display: 'flex', flexDirection: 'column', gap: 10,
               }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
                   background: skinEarned ? ms.skin.color : 'rgba(255,255,255,0.08)',
@@ -654,6 +657,37 @@ function DetailView({
                     ) : 'Claim'}
                   </button>
                 )}
+              </div>
+              {proofPhoto && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  marginLeft: 34,
+                }}>
+                  <div style={{
+                    fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                    color: 'rgba(255,255,255,0.4)', fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                  }}>
+                    <Camera size={10} /> Your proof photo
+                  </div>
+                  <a
+                    href={proofPhoto}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'block', borderRadius: 10, overflow: 'hidden',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      maxWidth: 220, lineHeight: 0,
+                    }}
+                  >
+                    <img
+                      src={proofPhoto}
+                      alt={`Proof for ${ms.label}`}
+                      style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 180, objectFit: 'cover' }}
+                    />
+                  </a>
+                </div>
+              )}
               </div>
             );
           })}
@@ -892,13 +926,14 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             position: 'absolute', top: 12, right: 12, zIndex: 10,
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '8px 14px', borderRadius: 999,
-            background: 'rgba(15,23,42,0.85)',
-            border: '1px solid rgba(167,139,250,0.5)',
+            background: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(167,139,250,0.45)',
             color: '#e9d5ff', fontSize: 12, fontWeight: 700,
             letterSpacing: '0.08em', textTransform: 'uppercase',
             cursor: 'pointer', fontFamily: 'inherit',
-            WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+            backdropFilter: 'blur(14px) saturate(140%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 4px 14px rgba(167,139,250,0.22)',
           }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -937,6 +972,9 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                   padding: '6px 12px', borderRadius: 999,
                   background: 'rgba(125,211,252,0.14)',
                   border: '1px solid rgba(125,211,252,0.35)',
+                  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                  backdropFilter: 'blur(14px) saturate(140%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 4px 14px rgba(125,211,252,0.18)',
                   color: '#bae6fd',
                   fontSize: 11, fontWeight: 600,
                   letterSpacing: '0.04em',
@@ -957,6 +995,9 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                   padding: '6px 12px', borderRadius: 999,
                   background: 'rgba(167,139,250,0.14)',
                   border: '1px solid rgba(167,139,250,0.35)',
+                  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                  backdropFilter: 'blur(14px) saturate(140%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 4px 14px rgba(167,139,250,0.20)',
                   color: '#c7d2fe',
                   fontSize: 11, fontWeight: 600,
                   letterSpacing: '0.04em',
@@ -996,9 +1037,14 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             ] as const).map(({ key, label }) => (
               <button key={key} onClick={() => switchTab(key)} style={{
                 padding: '7px 16px', borderRadius: 999,
-                background: tab === key ? 'rgba(167,139,250,0.16)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${tab === key ? 'rgba(167,139,250,0.55)' : 'rgba(148,163,208,0.18)'}`,
-                color: tab === key ? '#a78bfa' : '#a8a8c0',
+                background: tab === key ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${tab === key ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.10)'}`,
+                WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                backdropFilter: 'blur(14px) saturate(140%)',
+                boxShadow: tab === key
+                  ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 14px rgba(167,139,250,0.22)'
+                  : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.25)',
+                color: tab === key ? '#c4b5fd' : '#a8a8c0',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                 fontFamily: 'inherit',
               }}>
@@ -1085,8 +1131,11 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                 style={{
                   display: 'block', marginBottom: 12,
                   padding: '8px 12px', borderRadius: 10,
-                  background: 'rgba(167, 139, 250,0.12)',
-                  border: '1px solid rgba(167, 139, 250,0.3)',
+                  background: 'rgba(167, 139, 250,0.14)',
+                  border: '1px solid rgba(167, 139, 250,0.32)',
+                  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                  backdropFilter: 'blur(14px) saturate(140%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 4px 14px rgba(167,139,250,0.20)',
                   color: '#c4b5fd', fontSize: 12, fontWeight: 700,
                   textDecoration: 'none', textAlign: 'center',
                 }}
@@ -1184,14 +1233,19 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             />
           ) : (
             <>
-              {/* Filter pills */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {/* Status pills */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 {(['all', 'unlocked', 'locked'] as const).map(f => (
                   <button key={f} onClick={() => setFilter(f)} style={{
                     padding: '5px 14px', borderRadius: 999, border: '1px solid',
-                    borderColor: filter === f ? 'rgba(167,139,250,0.55)' : 'rgba(148,163,208,0.18)',
-                    background: filter === f ? 'rgba(167,139,250,0.16)' : 'rgba(255,255,255,0.03)',
-                    color: filter === f ? '#a78bfa' : '#a8a8c0',
+                    borderColor: filter === f ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.10)',
+                    background: filter === f ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.04)',
+                    WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                    backdropFilter: 'blur(14px) saturate(140%)',
+                    boxShadow: filter === f
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 3px 12px rgba(167,139,250,0.22)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.25)',
+                    color: filter === f ? '#c4b5fd' : '#a8a8c0',
                     fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
                     fontFamily: 'inherit',
                   }}>
@@ -1200,32 +1254,32 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                 ))}
               </div>
 
-              {/* Rarity filter pills — color-coded to match the card rarity tags */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-                <button onClick={() => setRarityFilter('all')} style={{
-                  padding: '4px 12px', borderRadius: 999, border: '1px solid',
-                  borderColor: rarityFilter === 'all' ? 'rgba(148,163,208,0.5)' : 'rgba(148,163,208,0.15)',
-                  background: rarityFilter === 'all' ? 'rgba(148,163,208,0.14)' : 'rgba(255,255,255,0.02)',
-                  color: rarityFilter === 'all' ? '#cbd5e1' : '#6b6b85',
-                  fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
-                  letterSpacing: '0.08em', fontFamily: 'inherit',
-                }}>
-                  All
-                </button>
+              {/* Rarity pills — colored dots only; tap an active one again to clear. */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
                 {sortedRarities.map(r => {
                   const rColor = RARITY_COLOR[r];
                   const active = rarityFilter === r;
+                  const anyActive = rarityFilter !== 'all';
                   return (
-                    <button key={r} onClick={() => setRarityFilter(r)} style={{
-                      padding: '4px 12px', borderRadius: 999, border: '1px solid',
-                      borderColor: active ? `${rColor}99` : `${rColor}33`,
-                      background: active ? `${rColor}24` : 'rgba(255,255,255,0.02)',
-                      color: active ? rColor : `${rColor}aa`,
-                      fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
-                      letterSpacing: '0.08em', fontFamily: 'inherit',
-                    }}>
-                      {r}
-                    </button>
+                    <button
+                      key={r}
+                      onClick={() => setRarityFilter(active ? 'all' : r)}
+                      aria-label={`Filter by ${r}`}
+                      aria-pressed={active}
+                      title={r.charAt(0).toUpperCase() + r.slice(1)}
+                      style={{
+                        width: 18, height: 18, borderRadius: 999, padding: 0,
+                        border: `1px solid ${active ? rColor : `${rColor}55`}`,
+                        background: active ? rColor : `${rColor}33`,
+                        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+                        backdropFilter: 'blur(14px) saturate(140%)',
+                        boxShadow: active
+                          ? `inset 0 1px 0 rgba(255,255,255,0.25), 0 0 0 2px ${rColor}33, 0 2px 8px ${rColor}44`
+                          : 'inset 0 1px 0 rgba(255,255,255,0.10)',
+                        opacity: !anyActive || active ? 1 : 0.45,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                    />
                   );
                 })}
               </div>
