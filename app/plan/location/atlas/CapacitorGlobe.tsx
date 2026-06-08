@@ -327,11 +327,11 @@ export default function CapacitorGlobe() {
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
           obj.position.sub(center);
           obj.position.y += size.y / 2; // anchor at base
-          // 100px = two 50% bumps from the original 44 (44 → 66 → 100). The
-          // user wanted monuments to read clearly at globe zoom; tap-target
-          // div below scales in step (64 → 96 → 144) so touch padding stays
-          // comfortable around the larger sprite.
-          const DISPLAY_PX = 100;
+          // 50px — user dialed monuments back down 50% from the previous
+          // 100 (which felt too dominant at globe zoom). Tap-target div
+          // below scales in step (144 → 72) so touch padding stays
+          // comfortable around the smaller sprite.
+          const DISPLAY_PX = 50;
           obj.scale.setScalar(DISPLAY_PX / maxDim);
           wrapper.add(obj);
           // Wrapper rotation is set every frame in updatePositions() to
@@ -477,7 +477,7 @@ export default function CapacitorGlobe() {
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        el.style.cssText = "width:144px;height:144px;background:transparent;cursor:pointer;";
+        el.style.cssText = "width:72px;height:72px;background:transparent;cursor:pointer;";
         el.addEventListener("click", () => {
           // Existing select event — preserved for any legacy listeners.
           window.dispatchEvent(

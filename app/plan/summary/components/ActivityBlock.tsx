@@ -8,6 +8,7 @@ import type { EditTarget } from '../lib/types';
 import { extractPlace, fetchPlaceImage, imgCache } from '../lib/places';
 import { Walk, Bike, Subway, Bus, Taxi, Train, Ferry, Plane } from '@/lib/icons';
 import StreetViewThumb from '@/app/components/StreetViewThumb';
+import StepThumb from '@/app/components/StepThumb';
 import { useGeocode } from '@/app/hooks/useGeocode';
 
 // Single activity row inside a day-card section. Numbered pin (lavender or
@@ -355,10 +356,15 @@ export function ActivityBlock({
       <div
         onClick={place ? openOnMap : undefined}
         style={{
-          display: 'flex', alignItems: 'flex-start', gap: 12,
+          // Step header (number + thumb) sits in its own row on top; the
+          // text content drops below at full width so prose isn't squeezed
+          // into a narrow column next to the image. Per user feedback —
+          // the previous side-by-side layout was forcing 4-5 word lines.
+          display: 'flex', flexDirection: 'column', gap: 8,
           cursor: place ? 'pointer' : 'default',
         }}
       >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {activityNumber !== undefined ? (() => {
           const isMonument = isMonumentQuest || /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(group.headline);
           // Click the number circle to open the same Google place card
@@ -415,15 +421,18 @@ export function ActivityBlock({
           <div style={{ width: 22, flexShrink: 0 }} />
         )}
         {svCoord && (
-          <div style={{ width: 80, flexShrink: 0 }}>
-            <StreetViewThumb
+          <div style={{ width: 64, flexShrink: 0 }}>
+            <StepThumb
               lat={svCoord.lat}
               lng={svCoord.lng}
+              place={place}
+              city={city}
               alt={place ?? group.headline}
               aspectRatio="1/1"
             />
           </div>
         )}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <EditableLine
             line={displayHeadline}

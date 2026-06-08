@@ -630,17 +630,17 @@ export default function AtlasShell() {
           }}
           title="Reset globe orientation"
           style={{
-            background: "rgba(10, 12, 28, 0.42)",
-            border: "1px solid rgba(167, 139, 250, 0.40)",
-            WebkitBackdropFilter: "blur(20px) saturate(160%)",
-            backdropFilter: "blur(20px) saturate(160%)",
+            background: "rgba(14, 16, 32, 0.28)",
+            border: "1px solid rgba(196, 181, 253, 0.45)",
+            WebkitBackdropFilter: "blur(32px) saturate(200%)",
+            backdropFilter: "blur(32px) saturate(200%)",
             borderRadius: 999,
-            color: "#e9d5ff",
+            color: "#f0e7ff",
             fontSize: 10, fontWeight: 700,
             padding: "6px 14px",
             cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6,
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 6px 20px rgba(167,139,250,0.22)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.18), 0 8px 24px rgba(167,139,250,0.26)",
             letterSpacing: "0.05em", textTransform: "uppercase",
             fontFamily: "inherit",
           }}
@@ -766,11 +766,11 @@ export default function AtlasShell() {
                 flex: 1,
                 padding: "12px 16px",
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(10, 12, 28, 0.42)",
-                WebkitBackdropFilter: "blur(20px) saturate(160%)",
-                backdropFilter: "blur(20px) saturate(160%)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 6px 18px rgba(0,0,0,0.30)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(14, 16, 32, 0.28)",
+                WebkitBackdropFilter: "blur(32px) saturate(200%)",
+                backdropFilter: "blur(32px) saturate(200%)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.35)",
                 color: "var(--brand-ink)",
                 fontSize: 15,
                 fontFamily: "var(--font-ui), system-ui, sans-serif",
@@ -1276,14 +1276,14 @@ function NavPill({
     justifyContent: "center" as const,
     borderRadius: 999,
     background: accent
-      ? "rgba(167, 139, 250, 0.20)"
-      : "rgba(10, 12, 28, 0.42)",
-    WebkitBackdropFilter: "blur(20px) saturate(160%)",
-    backdropFilter: "blur(20px) saturate(160%)",
-    border: `1px solid ${accent ? "rgba(167, 139, 250, 0.50)" : "rgba(255, 255, 255, 0.14)"}`,
+      ? "rgba(167, 139, 250, 0.18)"
+      : "rgba(14, 16, 32, 0.28)",
+    WebkitBackdropFilter: "blur(32px) saturate(200%)",
+    backdropFilter: "blur(32px) saturate(200%)",
+    border: `1px solid ${accent ? "rgba(196, 181, 253, 0.55)" : "rgba(255, 255, 255, 0.18)"}`,
     boxShadow: accent
-      ? "inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 20px rgba(167,139,250,0.28)"
-      : "inset 0 1px 0 rgba(255,255,255,0.10), 0 6px 18px rgba(0,0,0,0.30)",
+      ? "inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.20), 0 8px 24px rgba(167,139,250,0.30)"
+      : "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.35)",
     color: accent ? "#e9d5ff" : "var(--brand-ink)",
     fontSize: 11,
     fontWeight: accent ? 700 : 500,
