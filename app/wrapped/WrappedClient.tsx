@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { AuroraBackground } from '@/app/components/animations/AuroraBackground';
 import { TextShimmerWave } from '@/app/components/animations/TextShimmer';
 import { ShimmerButton } from '@/app/components/animations/ShimmerButton';
-import { Globe as ShadcnGlobe } from '@/components/ui/cobe-globe';
+import { MonumentWrappedGlobe } from './MonumentWrappedGlobe';
 import { Sparkle } from '@/lib/icons';
 
 interface TimelineEntry {
@@ -188,36 +188,17 @@ export function WrappedClient({ year, userName, timeline, stats }: WrappedClient
                 {`Where ${userName.split(' ')[0]} went`}
               </TextShimmerWave>
             </h1>
-            {/* shadcn cobe-globe: native cobe arc rendering + per-marker CSS
-                Anchor-positioned labels. Wired with our brand palette so it
-                matches the lavender → icy-blue spectrum used on the main
-                globe's JourneyArcs. Arcs connect each consecutive collection
-                in chronological order; markers carry the city name. */}
+            {/* MonumentWrappedGlobe — cobe-rendered dotted earth with a
+                Three.js overlay rendering the actual GLB models the user
+                collected this year (skins included). Same model + lighting
+                pipeline as the iOS Mapbox globe (CapacitorGlobe), so the
+                wrapped hero mirrors their planner view. */}
             <div style={{ width: 340, maxWidth: '100%' }}>
-              <ShadcnGlobe
-                markers={timeline.map(({ mk, lat, lon, location }, idx) => ({
-                  id: `${mk}-${idx}`,
-                  location: [lat, lon] as [number, number],
-                  label: location.split(',')[0].trim(),
+              <MonumentWrappedGlobe
+                size={340}
+                points={timeline.map(({ mk, lat, lon, skin, name }) => ({
+                  mk, lat, lon, skin, name,
                 }))}
-                arcs={timeline.slice(0, -1).map((entry, idx) => ({
-                  id: `arc-${idx}`,
-                  from: [entry.lat, entry.lon] as [number, number],
-                  to: [timeline[idx + 1].lat, timeline[idx + 1].lon] as [number, number],
-                }))}
-                // Brand palette — cobe takes 0..1 RGB triplets.
-                // baseColor = lavender tint for the dotted earth
-                // markerColor = icy blue dots
-                // arcColor = icy blue arcs (with lavender glow)
-                baseColor={[0.3, 0.3, 0.45]}
-                markerColor={[0.49, 0.83, 0.99]}
-                arcColor={[0.655, 0.545, 0.98]}
-                glowColor={[0.655, 0.545, 0.98]}
-                dark={1}
-                mapBrightness={6}
-                arcWidth={0.7}
-                arcHeight={0.35}
-                markerSize={0.045}
               />
             </div>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', maxWidth: 320, margin: 0 }}>

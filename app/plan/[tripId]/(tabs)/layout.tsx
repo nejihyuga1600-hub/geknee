@@ -29,7 +29,12 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div style={{ minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9' }}>
+    // overflowX: hidden on the page wrapper kills body-level left/right scroll
+    // — wide itinerary cards, monospace mono-tracked tab labels, and the
+    // invite pill together overflow viewport width on iPhone 15 Pro, which
+    // dragged the whole page sideways. Body now stays put; only the nav row
+    // (below) allows horizontal scroll so tabs remain reachable.
+    <div style={{ minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9', overflowX: 'hidden' }}>
       <nav
         aria-label="Trip sections"
         style={{
@@ -51,6 +56,16 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+          // The tab labels are mono-tracked and the row also carries Back +
+          // Invite pills — on phone widths this combo overflows. Allow the
+          // nav itself to scroll horizontally so the user can swipe to reach
+          // hidden tabs. Hide the scrollbar to keep the chrome calm.
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          whiteSpace: 'nowrap',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
         }}
       >
         {/* Shared BackButton — same visual + touch target as every other
@@ -61,8 +76,11 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
             without detouring through the chat panel. Pops an inline
             email/username composer; lists current members. */}
         <InviteFriendsPill />
-        {/* Tabs centered between the back pill and the globe home icon. */}
-        <div style={{ display: 'flex', gap: 28, flex: 1, alignItems: 'center', height: '100%' }}>
+        {/* Tabs — flex naturally to their content width inside the nav's
+            horizontal scroller (no flex: 1; that previously stretched them
+            to fill viewport, fighting the scroll). flexShrink: 0 stops the
+            row from collapsing labels when the nav overflows. */}
+        <div style={{ display: 'flex', gap: 28, alignItems: 'center', height: '100%', flexShrink: 0 }}>
         {tabs.map(t => {
           const active = pathname === t.href || (pathname && pathname.startsWith(t.href + '/'));
           return (
