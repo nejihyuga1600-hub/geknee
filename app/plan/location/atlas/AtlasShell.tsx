@@ -319,6 +319,15 @@ export default function AtlasShell() {
     window.addEventListener('geknee:open-monument-shop', h);
     return () => window.removeEventListener('geknee:open-monument-shop', h);
   }, []);
+  // Pause the globe's WebGL render loops while the MonumentShop modal is
+  // open. The modal applies backdrop-filter: blur over the constantly-painting
+  // Mapbox + Three.js monument-overlay canvases — on WKWebView (iOS) the
+  // per-frame blur compositing of those two GL surfaces OOM-kills the
+  // WebView; Capacitor auto-reloads → reads as "globe crashes" to the user.
+  // CapacitorGlobe listens for the matching pause/resume events.
+  useEffect(() => {
+    window.dispatchEvent(new Event(shopOpen ? 'geknee:globe-pause' : 'geknee:globe-resume'));
+  }, [shopOpen]);
   const [upgradeOpen,  setUpgradeOpen]  = useState(false);
   const [tripsOpen,    setTripsOpen]    = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);

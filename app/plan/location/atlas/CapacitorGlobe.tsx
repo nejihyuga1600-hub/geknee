@@ -424,13 +424,45 @@ export default function CapacitorGlobe() {
       // on its own state changes, which would freeze the Y-spin between
       // gestures.
       let rafId = 0;
+      let paused = false;
       const tick = () => {
         updatePositions();
         rafId = requestAnimationFrame(tick);
       };
-      rafId = requestAnimationFrame(tick);
+      const startTick = () => {
+        if (paused) return;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(tick);
+      };
+      startTick();
+      // Pause both the Mapbox repaint chain (Three.js overlay rendered by
+      // updatePositions on each Mapbox "render" + our rAF) when a heavy
+      // overlay (MonumentShop modal) opens. On WKWebView the modal's
+      // backdrop-filter blur compositing the two underlying WebGL canvases
+      // (Mapbox + the Three.js monument overlay) every frame pegs the GPU
+      // hard enough to OOM the WebView — Capacitor then auto-reloads the
+      // URL, which reads as "globe crashes + force-refreshes" to the user.
+      // Cancelling the rAF + suspending Mapbox rendering while the modal
+      // is up keeps the iPhone GPU idle. Resume on close.
+      const onPause = () => {
+        paused = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = 0;
+        try { (map as unknown as { stop?: () => void }).stop?.(); } catch {}
+      };
+      const onResume = () => {
+        if (!paused) return;
+        paused = false;
+        startTick();
+      };
+      window.addEventListener("geknee:globe-pause", onPause);
+      window.addEventListener("geknee:globe-resume", onResume);
       // Store on the map for cleanup in the useEffect return below.
-      (map as unknown as { __geknee_rafId?: number }).__geknee_rafId = rafId;
+      (map as unknown as { __geknee_rafId?: number; __geknee_pauseHandlers?: () => void }).__geknee_rafId = rafId;
+      (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers = () => {
+        window.removeEventListener("geknee:globe-pause", onPause);
+        window.removeEventListener("geknee:globe-resume", onResume);
+      };
       diag.added = true;
       reportDiag();
 
@@ -470,6 +502,8 @@ export default function CapacitorGlobe() {
       window.removeEventListener("geknee:globe-fly-to", onFlyTo);
       const rafId = (map as unknown as { __geknee_rafId?: number }).__geknee_rafId;
       if (rafId) cancelAnimationFrame(rafId);
+      const detachPause = (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers;
+      if (detachPause) detachPause();
       map.remove();
       mapRef.current = null;
     };

@@ -738,18 +738,20 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
 
   useEffect(() => { if (open) { load(); setSelected(null); setMsg(''); setLastUnlock(null); } }, [open, load]);
 
-  // Pre-select a monument when the shop opens via globe tap. Runs after the
-  // collected list is loaded so we can confirm the user actually owns this mk
-  // before promoting them to the detail / skin picker view.
+  // Pre-select a monument when the shop opens via globe tap. Lands the user
+  // straight on the detail view (quests, proof photos, skin chooser) instead
+  // of the general grid — even for locked monuments, where the detail shows
+  // the rarity tier and the quests required to unlock. Also handles animal
+  // taps by flipping to the Animals tab when the mk is found there.
   useEffect(() => {
     if (!open || !initialMk) return;
-    const target = ALL_MONUMENTS.find(m => m.id === initialMk);
+    const inMonuments = ALL_MONUMENTS.find(m => m.id === initialMk);
+    const inAnimals = inMonuments ? null : ANIMALS.find(a => a.id === initialMk);
+    const target = inMonuments ?? inAnimals;
     if (!target) return;
-    const owned = collected.some(c => c.monumentId === initialMk && c.skin === 'default');
-    if (!owned) return;
-    setTab('monuments');
+    setTab(inAnimals ? 'animals' : 'monuments');
     setSelected(target);
-  }, [open, initialMk, collected]);
+  }, [open, initialMk]);
 
   // Reset selected when switching tabs
   const switchTab = (t: typeof tab) => { setTab(t); setSelected(null); setMsg(''); setLastUnlock(null); };
