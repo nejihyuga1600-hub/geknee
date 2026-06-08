@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { track } from '@/lib/analytics';
-import { _setPendingUnlock } from '@/app/plan/location/globe/landmark';
+import { _setPendingUnlock } from '@/app/plan/location/globe/pendingUnlock';
 import { INFO } from '@/app/plan/location/globe/info';
 import { MONUMENT_LATLON } from '@/app/plan/location/globe/skins';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';

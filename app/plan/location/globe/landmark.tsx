@@ -599,27 +599,20 @@ export function useElevationLiftedPos(pos: [number, number, number]): [number, n
 //      mission — fires with the persisted Blob photoUrl so the share card
 //      can show the user's actual proof shot. This wins the race and Lm's
 //      effect skips when a richer pending unlock for the same mk exists.
-type PendingUnlock = { mk: string; skin: string; photoUrl?: string; ts: number };
-let _pendingUnlock: PendingUnlock | null = null;
-const _pendingUnlockListeners = new Set<() => void>();
-export function _setPendingUnlock(u: { mk: string; skin: string; photoUrl?: string } | null) {
-  _pendingUnlock = u ? { ...u, ts: Date.now() } : null;
-  _pendingUnlockListeners.forEach(fn => fn());
-}
-// Lm uses this to avoid clobbering a richer (photoUrl-bearing) pending unlock
-// the MonumentShop already set for the same monument.
-export function _hasPendingUnlockFor(mk: string): boolean {
-  return _pendingUnlock?.mk === mk;
-}
-export function usePendingUnlock(): PendingUnlock | null {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const cb = () => setTick(t => t + 1);
-    _pendingUnlockListeners.add(cb);
-    return () => { _pendingUnlockListeners.delete(cb); };
-  }, []);
-  return _pendingUnlock;
-}
+// The singleton state + subscriber hook live in ./pendingUnlock so non-Three
+// consumers (MonumentShop, UnlockShareToast) can import them without dragging
+// the R3F/drei/three module graph into their chunks. WKWebView (no JIT) parses
+// that graph slowly enough to trip iOS's WebKit watchdog → app crash + reload.
+// Imported here for internal use (Lm body) + re-exported so legacy imports
+// from this module keep resolving.
+import {
+  _setPendingUnlock,
+  _hasPendingUnlockFor,
+  usePendingUnlock,
+  type PendingUnlock,
+} from "./pendingUnlock";
+export { _setPendingUnlock, _hasPendingUnlockFor, usePendingUnlock };
+export type { PendingUnlock };
 
 export function Lm({ p, s = 0.4, info, mk, children }: { p: SurfPos; s?: number; info?: LmInfo; mk?: string; children: ReactNode }) {
   const { isCollected, activeSkin, viewerAuthed } = useMonumentBridge(mk);

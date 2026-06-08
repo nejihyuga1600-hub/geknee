@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { usePendingUnlock, _setPendingUnlock } from "./globe/landmark";
+import { usePendingUnlock, _setPendingUnlock } from "./globe/pendingUnlock";
 import { INFO } from "./globe/info";
 import { track } from "@/lib/analytics";
 
