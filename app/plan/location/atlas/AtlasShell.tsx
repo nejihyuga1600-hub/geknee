@@ -99,6 +99,8 @@ const AuthModal      = dynamic(() => import("@/app/components/AuthModal"),      
 type SheetState = "peek" | "open" | "full";
 type TripStyle = "relaxed" | "adventure" | "culture" | "foodie" | "luxury" | "budget";
 type TripBudget = "$" | "$$" | "$$$" | "$$$$";
+type FlexVibe = "anywhere" | "warm" | "cold" | "coastal" | "city" | "nature";
+
 type Trip = {
   destination: string;
   lat: number | null;
@@ -108,6 +110,14 @@ type Trip = {
   endDate: string;          // YYYY-MM-DD (free-form return date)
   nights: number;           // 1-30
   flexibleMonth: string | null; // e.g. "Mar"
+  // Flexible destination — when the user picks "Surprise me" / "Anywhere warm"
+  // the destination is left open and the downstream AI uses the vibe to pick.
+  // null means the destination is a specific place (lat/lon/mk filled).
+  flexibleVibe: FlexVibe | null;
+  // Cards the user marked as "open to" on Step 0. Empty when none. The AI can
+  // narrow within this set when flexibleVibe is also set, or treat it as the
+  // candidate list when flexibleVibe is null.
+  openToMks: string[];
   style: TripStyle | null;
   budget: TripBudget | null;
 };
@@ -118,8 +128,20 @@ const EMPTY_TRIP: Trip = {
   destination: "",
   lat: null, lon: null, mk: null,
   startDate: "", endDate: "", nights: 7,
-  flexibleMonth: null, style: null, budget: null,
+  flexibleMonth: null, flexibleVibe: null, openToMks: [],
+  style: null, budget: null,
 };
+
+// Vibe pills shown on the Destination step alongside Surprise me. Chosen to
+// cover the most common "I want to be flexible — but not anywhere" intents.
+const FLEX_VIBES: { id: FlexVibe; label: string; emoji: string }[] = [
+  { id: "anywhere", label: "Anywhere",      emoji: String.fromCodePoint(0x1F30D) },
+  { id: "warm",     label: "Anywhere warm", emoji: String.fromCodePoint(0x1F3D6) },
+  { id: "cold",     label: "Anywhere cold", emoji: String.fromCodePoint(0x2744) },
+  { id: "coastal",  label: "Coastal",       emoji: String.fromCodePoint(0x1F30A) },
+  { id: "city",     label: "Big city",      emoji: String.fromCodePoint(0x1F306) },
+  { id: "nature",   label: "Outdoors",      emoji: String.fromCodePoint(0x1F3D5) },
+];
 
 const STYLE_OPTIONS: { id: TripStyle; label: string; tag: string }[] = [
   { id: "relaxed",   label: "Relaxed",   tag: "Slow mornings, long dinners" },
@@ -354,11 +376,62 @@ export default function AtlasShell() {
   };
 
   const pickSuggestion = (s: Suggestion) => {
-    setTrip({ ...trip, destination: s.name, lat: s.lat, lon: s.lon, mk: s.mk });
+    // Picking a concrete destination clears any flexibility flags so the trip
+    // doesn't carry stale "anywhere warm" intent into Dates / Review.
+    setTrip({
+      ...trip,
+      destination: s.name, lat: s.lat, lon: s.lon, mk: s.mk,
+      flexibleVibe: null, openToMks: [],
+    });
     setDest(s.name);
     setSheet("open");
     setStep(1);
     flyToGlobe(s.lat, s.lon, () => zoomCamera(14));
+  };
+
+  // Surprise me — picks a random POPULAR_SUGGESTIONS entry and routes through
+  // the same flow as a tapped trending card.
+  const pickSurprise = () => {
+    const pool = POPULAR_SUGGESTIONS;
+    if (pool.length === 0) return;
+    const s = pool[Math.floor(Math.random() * pool.length)];
+    pickSuggestion(s);
+  };
+
+  // Flexible vibe — leaves lat/lon/mk null and records intent for downstream
+  // AI to resolve. Advances past Step 0 without locking a destination.
+  const pickFlexible = (vibe: FlexVibe) => {
+    const label = FLEX_VIBES.find(v => v.id === vibe)?.label ?? "Flexible";
+    setTrip({
+      ...trip,
+      destination: label, lat: null, lon: null, mk: null,
+      flexibleVibe: vibe,
+    });
+    setDest(label);
+    setSheet("open");
+    setStep(1);
+  };
+
+  // Toggles a card into / out of the "open to" set for flexible matching.
+  // Lets the user say "any of these works" instead of locking one in.
+  const toggleOpenTo = (mk: string) => {
+    const cur = trip.openToMks ?? [];
+    const next = cur.includes(mk) ? cur.filter(m => m !== mk) : [...cur, mk];
+    setTrip({ ...trip, openToMks: next });
+  };
+
+  // Commits the current "open to" set as a flexible trip — destination stays
+  // null so the AI picks within the set. Mirrors pickFlexible's advance.
+  const submitOpenTo = () => {
+    if ((trip.openToMks ?? []).length === 0) return;
+    setTrip({
+      ...trip,
+      destination: `Open to ${trip.openToMks.length}`,
+      lat: null, lon: null, mk: null,
+      flexibleVibe: trip.flexibleVibe ?? null,
+    });
+    setSheet("open");
+    setStep(1);
   };
 
   return (
@@ -752,6 +825,10 @@ export default function AtlasShell() {
                 setDest={setDest}
                 submitDest={submitDest}
                 pickSuggestion={pickSuggestion}
+                pickSurprise={pickSurprise}
+                pickFlexible={pickFlexible}
+                toggleOpenTo={toggleOpenTo}
+                submitOpenTo={submitOpenTo}
                 trip={trip}
                 onNext={() => setStep(1)}
                 destError={destError}
@@ -1314,6 +1391,10 @@ function StepDestination({
   setDest,
   submitDest,
   pickSuggestion,
+  pickSurprise,
+  pickFlexible,
+  toggleOpenTo,
+  submitOpenTo,
   trip,
   onNext,
   destError,
@@ -1324,12 +1405,18 @@ function StepDestination({
   setDest: (v: string) => void;
   submitDest: (v?: string) => void;
   pickSuggestion: (s: Suggestion) => void;
+  pickSurprise: () => void;
+  pickFlexible: (vibe: FlexVibe) => void;
+  toggleOpenTo: (mk: string) => void;
+  submitOpenTo: () => void;
   trip: Trip;
   onNext: () => void;
   destError: string | null;
   setDestError: (e: string | null) => void;
   extraVer: number;
 }) {
+  const openSet = new Set(trip.openToMks ?? []);
+  const openCount = openSet.size;
   return (
     <div>
       <h2
@@ -1448,9 +1535,12 @@ function StepDestination({
         );
       })()}
 
+      {/* Flexibility row — Surprise me + vibe pills. Lets the user proceed
+          without locking a specific destination. Tap a vibe to advance with
+          intent recorded; the downstream AI resolves it. */}
       <div
         style={{
-          marginTop: 20,
+          marginTop: 22,
           fontFamily: "var(--font-mono-display), ui-monospace, monospace",
           fontSize: 10,
           color: "var(--brand-ink-mute)",
@@ -1459,7 +1549,94 @@ function StepDestination({
           fontWeight: 600,
         }}
       >
-        Trending
+        Flexible
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={pickSurprise}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "8px 14px", borderRadius: 999,
+            background: "rgba(167,139,250,0.18)",
+            border: "1px solid rgba(167,139,250,0.45)",
+            WebkitBackdropFilter: "blur(14px) saturate(140%)",
+            backdropFilter: "blur(14px) saturate(140%)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 14px rgba(167,139,250,0.22)",
+            color: "#c4b5fd",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {String.fromCodePoint(0x2728)} Surprise me
+        </button>
+        {FLEX_VIBES.map((v) => {
+          const active = trip.flexibleVibe === v.id;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => pickFlexible(v.id)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 12px", borderRadius: 999,
+                background: active ? "rgba(125,211,252,0.18)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${active ? "rgba(125,211,252,0.50)" : "rgba(255,255,255,0.10)"}`,
+                WebkitBackdropFilter: "blur(14px) saturate(140%)",
+                backdropFilter: "blur(14px) saturate(140%)",
+                boxShadow: active
+                  ? "inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 14px rgba(125,211,252,0.22)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.25)",
+                color: active ? "#bae6fd" : "var(--brand-ink-dim)",
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{v.emoji}</span>
+              {v.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          marginTop: 22,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "var(--font-mono-display), ui-monospace, monospace",
+            fontSize: 10,
+            color: "var(--brand-ink-mute)",
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
+          Trending
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--font-ui), system-ui, sans-serif",
+            fontSize: 10,
+            color: "var(--brand-ink-mute)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          tap {String.fromCodePoint(0x2661)} to mark &ldquo;open to&rdquo;
+        </div>
       </div>
       <div
         style={{
@@ -1471,11 +1648,12 @@ function StepDestination({
       >
         {POPULAR_SUGGESTIONS.map((s) => {
           const active = trip.mk === s.mk;
+          const openTo = openSet.has(s.mk);
           return (
-            <button
+            <div
               key={s.mk}
-              onClick={() => pickSuggestion(s)}
               style={{
+                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
@@ -1483,46 +1661,106 @@ function StepDestination({
                 borderRadius: 10,
                 background: active
                   ? "rgba(167, 139, 250, 0.12)"
-                  : "rgba(255,255,255,0.03)",
-                border: `1px solid ${active ? "var(--brand-border-hi)" : "var(--brand-border)"}`,
+                  : openTo
+                    ? "rgba(244,114,182,0.10)"
+                    : "rgba(255,255,255,0.03)",
+                border: `1px solid ${active
+                  ? "var(--brand-border-hi)"
+                  : openTo
+                    ? "rgba(244,114,182,0.40)"
+                    : "var(--brand-border)"}`,
                 color: "var(--brand-ink)",
                 fontFamily: "var(--font-ui), system-ui, sans-serif",
                 fontSize: 13,
                 fontWeight: 500,
-                textAlign: "left",
-                cursor: "pointer",
               }}
             >
-              <span style={{ fontSize: 18 }}>{s.emoji}</span>
-              <span style={{ minWidth: 0, flex: 1 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {s.name}
+              <button
+                type="button"
+                onClick={() => pickSuggestion(s)}
+                aria-label={`Pick ${s.name}`}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, flex: 1,
+                  minWidth: 0, padding: 0,
+                  background: "transparent", border: "none", textAlign: "left",
+                  color: "inherit", fontFamily: "inherit", fontSize: "inherit",
+                  fontWeight: "inherit", cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{s.emoji}</span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "var(--brand-ink-mute)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {s.location}
+                  </span>
                 </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    color: "var(--brand-ink-mute)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {s.location}
-                </span>
-              </span>
-            </button>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); toggleOpenTo(s.mk); }}
+                aria-pressed={openTo}
+                aria-label={openTo ? `Remove ${s.name} from open list` : `Mark ${s.name} as open to`}
+                title={openTo ? "Marked as open to" : "Mark as open to"}
+                style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 28, height: 28, borderRadius: 999, padding: 0,
+                  background: openTo ? "rgba(244,114,182,0.22)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${openTo ? "rgba(244,114,182,0.55)" : "rgba(255,255,255,0.12)"}`,
+                  color: openTo ? "#fbcfe8" : "var(--brand-ink-mute)",
+                  fontSize: 13, lineHeight: 1, cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {openTo ? String.fromCodePoint(0x2665) : String.fromCodePoint(0x2661)}
+              </button>
+            </div>
           );
         })}
       </div>
+
+      {/* "Open to" CTA — surfaces only when the user has marked at least one
+          card. Lets them proceed flexibly with the marked candidate set. */}
+      {openCount > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={submitOpenTo}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "10px 16px", borderRadius: 999,
+              background: "rgba(244,114,182,0.18)",
+              border: "1px solid rgba(244,114,182,0.50)",
+              WebkitBackdropFilter: "blur(14px) saturate(140%)",
+              backdropFilter: "blur(14px) saturate(140%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 14px rgba(244,114,182,0.22)",
+              color: "#fbcfe8",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {String.fromCodePoint(0x2665)} Use these {openCount} {openCount === 1 ? "spot" : "spots"} {String.fromCodePoint(0x2192)}
+          </button>
+        </div>
+      )}
 
       {/* Footer state — confirms what's recorded so far + Next */}
       <div
