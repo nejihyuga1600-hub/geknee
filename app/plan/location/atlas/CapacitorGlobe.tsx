@@ -443,8 +443,15 @@ export default function CapacitorGlobe() {
         el.setAttribute("aria-label", mk);
         el.style.cssText = "width:64px;height:64px;background:transparent;cursor:pointer;";
         el.addEventListener("click", () => {
+          // Existing select event — preserved for any legacy listeners.
           window.dispatchEvent(
             new CustomEvent("geknee:monument-select", { detail: { mk } }),
+          );
+          // Surface the collection panel scoped to this mk, matching the
+          // Three.js landmark behavior on web. Without this, iOS Mapbox
+          // taps fire monument-select into the void.
+          window.dispatchEvent(
+            new CustomEvent("geknee:open-monument-shop", { detail: { mk } }),
           );
         });
         new mapboxgl.Marker({
