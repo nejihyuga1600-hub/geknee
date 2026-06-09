@@ -186,7 +186,10 @@ export default function TripChatDock({ tripId, destination }: Props) {
   // - Collapsed base: hide all but SHEET_PEEK_HEIGHT
   // dragDelta is signed: negative drags reduce translateY (sheet rises),
   // positive drags increase it (sheet falls).
-  const collapsedTranslate = `calc(92svh - ${SHEET_PEEK_HEIGHT}px)`;
+  // Hide all but SHEET_PEEK_HEIGHT when collapsed. Updated to match the
+  // new 86svh sheet height so the math doesn't drift after the bottom-
+  // flush + breathing-room redesign.
+  const collapsedTranslate = `calc(86svh - ${SHEET_PEEK_HEIGHT}px)`;
   const transformValue = dragStartY.current !== null
     ? `translate3d(0, calc(${dragStartExpanded.current ? '0px' : collapsedTranslate} + ${dragDelta}px), 0)`
     : `translate3d(0, ${expanded ? '0px' : collapsedTranslate}, 0)`;
@@ -199,9 +202,17 @@ export default function TripChatDock({ tripId, destination }: Props) {
       aria-label="Trip group chat"
       style={{
         position: 'fixed',
-        left: 12, right: 12,
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-        height: '92svh',
+        // Sheet flush with the screen edges horizontally. Bottom drops to
+        // 0 so the composer reaches the actual bottom of the screen — the
+        // previous 12px gap was causing the input to float above a dead
+        // strip of dim page underneath.
+        left: 0, right: 0,
+        bottom: 0,
+        // 86svh leaves ~14% of the underlying page peeking above the
+        // expanded sheet, so the user can still see where they are while
+        // chatting. Bottom rounded corners flattened since the sheet is
+        // now flush; only the top corners stay rounded.
+        height: '86svh',
         zIndex: 9400,
         display: 'flex', flexDirection: 'column',
         transform: transformValue,
@@ -209,13 +220,14 @@ export default function TripChatDock({ tripId, destination }: Props) {
           ? 'transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1)'
           : 'none',
         willChange: 'transform',
-        // Glass surface.
-        borderRadius: 24,
+        borderRadius: '24px 24px 0 0',
         background: 'rgba(14, 16, 32, 0.55)',
-        border: '1px solid rgba(255,255,255,0.18)',
+        borderTop: '1px solid rgba(255,255,255,0.18)',
+        borderLeft: '1px solid rgba(255,255,255,0.18)',
+        borderRight: '1px solid rgba(255,255,255,0.18)',
         WebkitBackdropFilter: 'blur(28px) saturate(200%)',
         backdropFilter: 'blur(28px) saturate(200%)',
-        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.18), 0 12px 36px rgba(0,0,0,0.50)',
+        boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.22), 0 -12px 36px rgba(0,0,0,0.50)',
         overflow: 'hidden',
       }}
     >
@@ -230,6 +242,8 @@ export default function TripChatDock({ tripId, destination }: Props) {
           flexShrink: 0,
           cursor: 'pointer',
           touchAction: 'none',
+          // Anchors the absolute-positioned collapse chevron above.
+          position: 'relative',
         }}
       >
         <div aria-hidden style={{
@@ -292,10 +306,33 @@ export default function TripChatDock({ tripId, destination }: Props) {
                 : (latest ? `${latest.author}: ${latest.content}` : 'Tap or pull up to chat')}
             </span>
           </div>
-          {/* Chevron-down collapse button removed — was sitting right under
-              the top-right mascot and reading as a stacked second button.
-              The drag handle at the top of the sheet is the sole collapse
-              affordance, with double-tap on the handle row as a fallback. */}
+          {/* Down-arrow collapse button — only shown when expanded. Mascot
+              fades out while expanded, so the top-right corner is free.
+              Anchored slightly above the header row so it sits closer to
+              the drag handle and reads as the "shrink" companion to the
+              drag-down gesture. */}
+          {expanded && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); collapse(); }}
+              aria-label="Collapse chat"
+              style={{
+                position: 'absolute',
+                top: 4, right: 10,
+                background: 'rgba(255,255,255,0.10)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                width: 30, height: 30, borderRadius: '50%',
+                color: 'rgba(255,255,255,0.85)', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.30)',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
