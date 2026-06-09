@@ -226,7 +226,17 @@ export default function CapacitorGlobe() {
       //     (acceptable at globe zoom; they're already tiny)
       const overlayCanvas = document.createElement("canvas");
       overlayCanvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2;";
+      overlayCanvas.className = "geknee-monument-overlay";
       const mapContainer = map.getContainer();
+      // Defensive: nuke any overlay canvases left over from previous
+      // mounts of the buggy code path (where cleanup didn't remove the
+      // canvas). Without this, users still running a cached old bundle
+      // who upgrade will keep seeing stacked stale monuments until they
+      // force-kill the app. Also safe in the steady-state — at most one
+      // canvas with this class exists per mount, so the loop is a no-op.
+      mapContainer.querySelectorAll(".geknee-monument-overlay").forEach((node) => {
+        try { node.remove(); } catch {}
+      });
       mapContainer.appendChild(overlayCanvas);
 
       const overlayRenderer = new THREE.WebGLRenderer({
