@@ -920,17 +920,23 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       <UnlockCeremony trigger={lastUnlock} originRef={unlockOriginRef} />
       {open && (
     <div style={{
+      // Sheet now docks to the bottom 70vh of the screen instead of
+      // overlaying the whole viewport — so the user can see the globe
+      // (and the equipped skin re-render) at the top while reading
+      // quests. Backdrop dropped to 0.25 so the globe stays visible
+      // behind the sheet. Tap outside the sheet still closes.
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.78)', WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.25)', WebkitBackdropFilter: 'blur(2px)', backdropFilter: 'blur(2px)',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         position: 'relative',
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
         border: '1px solid rgba(167, 139, 250,0.3)',
-        borderRadius: 24, width: '92%', maxWidth: 560, animation: 'modalSlideUp 0.3s ease-out',
-        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(167, 139, 250,0.1)',
+        borderTopLeftRadius: 24, borderTopRightRadius: 24,
+        width: '100%', maxWidth: 640, animation: 'modalSlideUp 0.3s ease-out',
+        height: '70vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 -16px 60px rgba(0,0,0,0.6), 0 0 60px rgba(167, 139, 250,0.1)',
         overflow: 'hidden',
       }}>
         {/* Absolute-positioned Close pill — anchored top-right of the modal

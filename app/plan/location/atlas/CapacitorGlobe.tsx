@@ -27,7 +27,7 @@
 // Long-term answer is a native Capacitor Mapbox plugin (what Polarsteps
 // actually does on mobile) — but this WebView swap unblocks ship today.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -44,6 +44,17 @@ export default function CapacitorGlobe() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { data: session } = useSession();
   const isAuthed = !!session?.user;
+  // Bumped on geknee:monuments-updated (MonumentShop dispatches after skin
+  // equip / mission complete). Added to the effect deps below so the map +
+  // GLB layer re-mount and pick up the new activeSkins. Heavy but
+  // reliable; the alternative is wiring a per-monument GLB swap which is
+  // out of scope right now.
+  const [skinReloadKey, setSkinReloadKey] = useState(0);
+  useEffect(() => {
+    const bump = () => setSkinReloadKey(k => k + 1);
+    window.addEventListener('geknee:monuments-updated', bump);
+    return () => window.removeEventListener('geknee:monuments-updated', bump);
+  }, []);
   const initialView = { center: [0, 20] as [number, number], zoom: 1.2, pitch: 0, bearing: 0 };
 
   useEffect(() => {
@@ -514,7 +525,7 @@ export default function CapacitorGlobe() {
   // Re-mount when auth state flips so signing in mid-session refreshes
   // the markers (guest → authed users see their pins without a reload).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed]);
+  }, [isAuthed, skinReloadKey]);
 
   if (!TOKEN) {
     // Fallback when no token is configured — show the static gradient so
