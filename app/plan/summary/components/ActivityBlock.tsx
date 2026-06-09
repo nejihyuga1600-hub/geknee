@@ -365,13 +365,8 @@ export function ActivityBlock({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {activityNumber !== undefined ? (() => {
+        {(() => {
           const isMonument = isMonumentQuest || /monument|quest|⏚|temple|shrine|cathedral|landmark|tower|palace|castle/i.test(group.headline);
-          // Click the number circle to open the same Google place card
-          // the on-map pin click opens. Dispatches a window event the
-          // UnifiedTripMap listens for and resolves to the matching
-          // marker. Falls back to a direct Google Maps URL if the
-          // unified map isn't mounted (e.g. small-screen edit views).
           const openInMaps = () => {
             if (!place) return;
             const ev = new CustomEvent('geknee:focus-map-pin', {
@@ -392,46 +387,72 @@ export function ActivityBlock({
               );
             }
           };
+          // Step number rides as an overlay on the thumb's top-left corner
+          // so the prose below picks up the full container width instead of
+          // ceding a column to the badge. UX skill §6 visual-hierarchy: this
+          // ties the step number to its image rather than floating it in
+          // dead space on the left margin.
+          if (svCoord) {
+            return (
+              <div style={{ width: 64, flexShrink: 0, position: 'relative' }}>
+                <StepThumb
+                  lat={svCoord.lat}
+                  lng={svCoord.lng}
+                  place={place}
+                  city={city}
+                  alt={place ?? group.headline}
+                  aspectRatio="1/1"
+                />
+                {activityNumber !== undefined && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); openInMaps(); }}
+                    disabled={!place}
+                    aria-label={place ? `Open ${place} in Google Maps` : `Step ${activityNumber}`}
+                    title={place ? `Open ${place} in Google Maps` : undefined}
+                    style={{
+                      position: 'absolute', top: -6, left: -6,
+                      width: 24, height: 24, borderRadius: '50%',
+                      background: isMonument ? 'var(--brand-gold)' : '#a78bfa',
+                      border: `2px solid var(--brand-bg, #0a0f1e)`,
+                      color: isMonument ? 'var(--brand-bg)' : '#0a0f1e',
+                      fontSize: 11, fontWeight: 800,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                      cursor: place ? 'pointer' : 'default',
+                      padding: 0, lineHeight: 1,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+                    }}
+                  >{activityNumber}</button>
+                )}
+              </div>
+            );
+          }
+          if (activityNumber === undefined) return <div style={{ width: 22, flexShrink: 0 }} />;
+          // No thumb available — fall back to inline numbered badge so the
+          // step still reads as numbered.
           return (
             <button
               type="button"
-              // Number-circle has its own openInMaps; stopPropagation so
-              // the parent activity row's onClick (which would also fire
-              // openOnMap) doesn't double-trigger the panel for the same
-              // pin.
               onClick={(e) => { e.stopPropagation(); openInMaps(); }}
               disabled={!place}
               aria-label={place ? `Open ${place} in Google Maps` : `Step ${activityNumber}`}
               title={place ? `Open ${place} in Google Maps` : undefined}
               style={{
-                flexShrink: 0, marginTop: 3,
-                width: 22, height: 22, borderRadius: '50%',
-                background: isMonument ? 'var(--brand-gold)' : 'rgba(167,139,250,0.15)',
-                border: `1.5px solid ${isMonument ? 'var(--brand-bg)' : 'rgba(167,139,250,0.45)'}`,
+                flexShrink: 0,
+                width: 24, height: 24, borderRadius: '50%',
+                background: isMonument ? 'var(--brand-gold)' : 'rgba(167,139,250,0.18)',
+                border: `1.5px solid ${isMonument ? 'var(--brand-bg)' : 'rgba(167,139,250,0.50)'}`,
                 color: isMonument ? 'var(--brand-bg)' : 'var(--brand-accent)',
-                fontSize: 10, fontWeight: 700,
+                fontSize: 11, fontWeight: 700,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
                 cursor: place ? 'pointer' : 'default',
-                padding: 0,
+                padding: 0, lineHeight: 1,
               }}
             >{activityNumber}</button>
           );
-        })() : (
-          <div style={{ width: 22, flexShrink: 0 }} />
-        )}
-        {svCoord && (
-          <div style={{ width: 64, flexShrink: 0 }}>
-            <StepThumb
-              lat={svCoord.lat}
-              lng={svCoord.lng}
-              place={place}
-              city={city}
-              alt={place ?? group.headline}
-              aspectRatio="1/1"
-            />
-          </div>
-        )}
+        })()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <EditableLine

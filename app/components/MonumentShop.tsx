@@ -499,30 +499,34 @@ function DetailView({
         gap: 12, marginBottom: 18, paddingBottom: 14,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {/* Title + rarity + unlocked tick now read as ONE scan instead
+              of stacking onto two lines. Per skill §6 visual-hierarchy:
+              metadata stays glued to the headline it describes. */}
           <div style={{
             fontSize: 20, fontWeight: 700, color: '#f2f2f8',
             fontFamily: 'var(--font-display, Georgia, serif)',
             letterSpacing: '-0.01em', lineHeight: 1.15,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            maxWidth: '100%',
           }}>
             {item.name}
           </div>
-          <div style={{
-            marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8,
+          <span style={{
+            padding: '2px 10px', borderRadius: 99,
+            background: `${RARITY_COLOR[item.rarity]}18`,
+            border: `1px solid ${RARITY_COLOR[item.rarity]}40`,
+            color: RARITY_COLOR[item.rarity], fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+            whiteSpace: 'nowrap',
           }}>
-            <span style={{
-              padding: '2px 10px', borderRadius: 99,
-              background: `${RARITY_COLOR[item.rarity]}18`,
-              border: `1px solid ${RARITY_COLOR[item.rarity]}40`,
-              color: RARITY_COLOR[item.rarity], fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-            }}>
-              {item.rarity.toUpperCase()}
+            {item.rarity.toUpperCase()}
+          </span>
+          {unlocked && (
+            <span aria-label="Collected" title="Collected" style={{ color: '#a78bfa', fontSize: 14, lineHeight: 1 }}>
+              {String.fromCodePoint(0x2713)}
             </span>
-            {unlocked && (
-              <span style={{ color: '#a78bfa', fontSize: 14 }}>{String.fromCodePoint(0x2713)}</span>
-            )}
-          </div>
+          )}
         </div>
         <div style={{ flexShrink: 0 }}>
           {!unlocked && canUnlock && (
@@ -580,9 +584,20 @@ function DetailView({
         </Link>
       )}
 
-      {/* Missions */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.07em', marginBottom: 10 }}>
-        {String.fromCodePoint(0x1F3AF)} EXCLUSIVE SKIN MISSIONS
+      {/* Missions divider — quieter than the previous heavy mono caps which
+          were competing with the title. Skill §6: section headings should
+          guide the eye, not shout for attention. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        margin: '0 0 12px',
+        color: 'rgba(255,255,255,0.42)',
+        fontSize: 10, fontWeight: 600, letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+      }}>
+        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} aria-hidden />
+        <span>Skin Quests</span>
+        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} aria-hidden />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

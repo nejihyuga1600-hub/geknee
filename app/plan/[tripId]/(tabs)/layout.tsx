@@ -23,7 +23,11 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
     // the day-by-day. Itinerary then renders the day plan around those
     // commitments. Vault holds passports / tickets / bookings for the
     // trip, scoped to this tripId.
-    { href: `/plan/${tripId}/planning`,  label: 'Planning / Itinerary' },
+    // Single-word tab labels per UI-skill nav guidance — the prior
+    // "Planning / Itinerary" was one tab doing two jobs; the slash read as
+    // a separator and confused tap targets. Pick the user-facing noun
+    // (Itinerary) and let the planning sub-routes live under it.
+    { href: `/plan/${tripId}/planning`,  label: 'Itinerary' },
     { href: `/plan/${tripId}/booking`,   label: 'Booking' },
     { href: `/plan/${tripId}/vault`,     label: 'Vault' },
   ];
@@ -90,35 +94,35 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
               prefetch
               aria-current={active ? 'page' : undefined}
               style={{
+                // Tighter type per skill §6 (letter-spacing 0.18em was way
+                // outside the recommended body range — caused the iPhone
+                // overflow that forced the horizontal scroller below).
+                // 0.08em keeps the mono-uppercase feel without spreading
+                // each tab to 200+ pixels.
                 position: 'relative',
                 display: 'inline-flex',
                 alignItems: 'center',
-                height: '100%',
+                height: 'auto',
+                padding: '6px 12px',
+                borderRadius: 999,
                 fontFamily: MONO,
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: 700,
-                letterSpacing: '0.18em',
+                letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: active ? 'var(--brand-accent, #38bdf8)' : 'rgba(255, 255, 255, 0.5)',
+                color: active ? '#e0f2fe' : 'rgba(255, 255, 255, 0.55)',
+                background: active ? 'rgba(56, 189, 248, 0.14)' : 'transparent',
+                border: `1px solid ${active ? 'rgba(56, 189, 248, 0.45)' : 'transparent'}`,
+                WebkitBackdropFilter: active ? 'blur(20px) saturate(180%)' : undefined,
+                backdropFilter: active ? 'blur(20px) saturate(180%)' : undefined,
+                boxShadow: active
+                  ? 'inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 14px rgba(56,189,248,0.20)'
+                  : undefined,
                 textDecoration: 'none',
-                transition: 'color 180ms ease',
+                transition: 'color 180ms ease, background 180ms ease',
               }}
             >
               {t.label}
-              {active && (
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: -1,
-                    height: 2,
-                    background: 'var(--brand-accent, #38bdf8)',
-                    borderRadius: 2,
-                  }}
-                />
-              )}
             </Link>
           );
         })}

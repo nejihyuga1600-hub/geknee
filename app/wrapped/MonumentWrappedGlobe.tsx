@@ -181,15 +181,17 @@ export function MonumentWrappedGlobe({
       phi: 0,
       theta: THETA,
       dark: 1,
-      diffuse: 1.2,
+      diffuse: 1.0,
       mapSamples: 16000,
-      mapBrightness: 6,
+      // mapBrightness 6 → 3 + markerSize 0.05 → 0.018 so the dotted earth
+      // recedes and the GLB monuments become the focal point. Skill UX:
+      // primary action per screen — the collection IS the story, the dots
+      // are just anchor cues.
+      mapBrightness: 3,
       baseColor: [0.3, 0.3, 0.45],
-      // Markers and glow toned down so the GLBs are the focal point — the
-      // dots are just an anchor cue for "your collection lives here".
       markerColor: [0.66, 0.55, 0.98],
       glowColor: [0.66, 0.55, 0.98],
-      markers: points.map((p) => ({ location: [p.lat, p.lon] as [number, number], size: 0.05 })),
+      markers: points.map((p) => ({ location: [p.lat, p.lon] as [number, number], size: 0.018 })),
       onRender: (state: Record<string, unknown>) => {
         if (pointerInteracting.current === null) {
           phiRef.current += 0.003;
