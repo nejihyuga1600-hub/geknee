@@ -36,13 +36,15 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
   return (
     // Hard lockdown on horizontal scroll for the body. overflowX: hidden +
     // maxWidth: 100vw guard against any descendant that ignores the
-    // constraint. touchAction: pan-y stops iOS's elastic sideways pull when
-    // an inner card overshoots. The nav row below opts back into horizontal
-    // scroll with overflowX: auto so its tab labels stay reachable.
+    // constraint. touchAction allows vertical pan AND pinch-zoom (was
+    // pan-y alone, which also blocked the user's two-finger zoom — they
+    // reported "doesn't allow the user to zoom out"). The nav row below
+    // opts back into horizontal scroll with overflowX: auto so its tab
+    // labels stay reachable.
     <div style={{
       minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9',
       overflowX: 'hidden', maxWidth: '100vw',
-      touchAction: 'pan-y',
+      touchAction: 'pan-y pinch-zoom',
       // Prevents content from getting hidden behind the new bottom chat dock.
       paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
     }}>
