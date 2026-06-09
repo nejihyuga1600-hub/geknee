@@ -34,14 +34,25 @@ async function resolveImage(place: string, city: string | null): Promise<string 
     if (city) sp.set('location', city);
     const r = await fetch(`/api/place-images?${sp.toString()}`);
     if (r.ok) {
-      const d = await r.json() as { images?: string[] };
+      const d = await r.json() as { images?: string[]; status?: string };
+      // Surface the API status to the console once per (place,city) so we
+      // can diagnose why a thumb fell back to Street View — most commonly
+      // "no-google-key" (env var missing on Vercel) vs "empty" (key set
+      // but Places returned no usable photos for this query).
+      if (d.status && d.status !== 'ok-google' && d.status !== 'ok-foursquare') {
+        console.warn(`[StepThumb] place-images status=${d.status} for "${place}"${city ? ` in ${city}` : ''}`);
+      }
       const first = d.images?.[0];
       if (first) {
         imgCache.set(key, first);
         return first;
       }
+    } else {
+      console.warn(`[StepThumb] place-images http ${r.status} for "${place}"`);
     }
-  } catch {}
+  } catch (err) {
+    console.warn(`[StepThumb] place-images threw for "${place}":`, err);
+  }
 
   // No Places hit — caller falls through to Street View.
   imgCache.set(key, null);

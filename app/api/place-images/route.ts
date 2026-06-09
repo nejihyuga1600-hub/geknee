@@ -1,22 +1,51 @@
 // Returns proxy URLs for place photos.
 // Pipeline: Google Places → Foursquare → empty array
+//
+// Diagnostics: every response includes a `status` field so the client
+// (or curl) can verify whether photos came from Google, Foursquare,
+// neither, or whether the API key is missing entirely. The previous
+// shape ({ images: [...] }) is preserved for back-compat.
 
 import { auth } from "@/auth";
 
+type PlaceImagesStatus =
+  | "ok-google"             // Google Places returned at least one usable photo
+  | "ok-foursquare"         // Google had nothing/keyless, Foursquare returned photos
+  | "no-google-key"         // GOOGLE_PLACES_API_KEY not configured in env
+  | "google-no-photos"      // Key configured, but the query returned no photos
+  | "google-error"          // Google API threw / non-OK response
+  | "no-name"               // Caller didn't pass `name`
+  | "unauthorized"          // Session missing
+  | "empty";                // Nothing matched anywhere
+
+function log(status: PlaceImagesStatus, query: string, extra?: unknown) {
+  // Server-side log so we can grep Vercel runtime logs for "place-images:".
+  console.log(`[place-images] status=${status} q=${JSON.stringify(query)}${extra ? ` extra=${JSON.stringify(extra)}` : ""}`);
+}
+
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) return Response.json({ images: [] }, { status: 401 });
+  if (!session?.user) {
+    log("unauthorized", "");
+    return Response.json({ images: [], status: "unauthorized" as PlaceImagesStatus }, { status: 401 });
+  }
 
   const { searchParams } = new URL(req.url);
   const name     = searchParams.get("name")     ?? "";
   const location = searchParams.get("location") ?? "";
 
-  if (!name) return Response.json({ images: [] });
+  if (!name) {
+    log("no-name", "");
+    return Response.json({ images: [], status: "no-name" as PlaceImagesStatus });
+  }
 
   const query = `${name} ${location}`.trim();
 
   // ── 1. Google Places ────────────────────────────────────────────────────────
   const GOOGLE_KEY = process.env.GOOGLE_PLACES_API_KEY;
+  if (!GOOGLE_KEY) {
+    log("no-google-key", query);
+  }
   if (GOOGLE_KEY) {
     try {
       const res = await fetch(
@@ -72,15 +101,16 @@ export async function GET(req: Request) {
             : (landscape.length > 0 ? landscape : dimensioned));     // unknown — prefer landscape
 
       if (pool.length > 0) {
-        // Up to 8 images so the inline slideshow has real variety.
         const images = pool.slice(0, 8).map(
           (p) => `/api/place-photo?ref=${encodeURIComponent(p.photo_reference)}`
         );
-        return Response.json({ images });
+        log("ok-google", query, { count: images.length, types });
+        return Response.json({ images, status: "ok-google" as PlaceImagesStatus });
       }
-      // Nothing qualified — fall through to Foursquare / empty.
+      log("google-no-photos", query, { hitCount: data.results?.length ?? 0 });
     } catch (err) {
-      console.error("Google Places error:", err);
+      console.error("[place-images] google error:", err);
+      log("google-error", query, { error: String(err) });
     }
   }
 
@@ -110,12 +140,19 @@ export async function GET(req: Request) {
         const images = (photoData ?? []).map(
           (p) => `${p.prefix}800x600${p.suffix}`
         );
-        if (images.length > 0) return Response.json({ images });
+        if (images.length > 0) {
+          log("ok-foursquare", query, { count: images.length });
+          return Response.json({ images, status: "ok-foursquare" as PlaceImagesStatus });
+        }
       }
     } catch (err) {
-      console.error("Foursquare error:", err);
+      console.error("[place-images] foursquare error:", err);
     }
   }
 
-  return Response.json({ images: [] });
+  // Determine final empty-state status so the client can distinguish
+  // "key missing" from "key present but no photos matched".
+  const finalStatus: PlaceImagesStatus = GOOGLE_KEY ? "empty" : "no-google-key";
+  log(finalStatus, query);
+  return Response.json({ images: [], status: finalStatus });
 }
