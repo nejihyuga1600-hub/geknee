@@ -299,14 +299,16 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
       {/* Genie selector modal */}
       {selectorOpen && <GenieSelector onClose={() => setSelectorOpen(false)} />}
 
-      {/* Floating toggle button — fixed bottom-right. translate3d forces
-          its own compositor layer so iOS WKWebView never drops it during
-          fast scroll (user reported the mascot "disappearing" on scroll-up
-          — was a paint flicker, not unmount). will-change holds the
-          layer. zIndex pushed above any sheet/modal we render. */}
+      {/* Floating toggle button — fixed TOP-right per user request, anchored
+          below the iOS Dynamic Island / status bar via safe-area inset.
+          translate3d/willChange forces its own compositor layer so iOS
+          WKWebView never drops it during fast scroll. zIndex above any
+          sheet/modal we render. */}
       <div style={{
-        position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)',
-        right: 22, zIndex: 9500,
+        position: 'fixed',
+        top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+        right: 14,
+        zIndex: 9500,
         transform: 'translate3d(0,0,0)', willChange: 'transform',
         pointerEvents: 'auto',
       }}>
@@ -341,10 +343,13 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
           </button>
         )}
 
-        {/* Chat panel */}
+        {/* Chat panel — drops DOWN from the mascot (now top-right). Was
+            bottom: 68 anchored to a bottom-right mascot; flipped to top so
+            the panel grows beneath the icon instead of into the status
+            bar. */}
         {open && (
           <div style={{
-            position: 'absolute', bottom: 68, right: 0, width: 340, maxHeight: '65vh',
+            position: 'absolute', top: 72, right: 0, width: 340, maxHeight: '65vh',
             background: 'rgba(6,8,22,0.97)', WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
             border: '1px solid rgba(129,140,248,0.3)', borderRadius: 20,
             display: 'flex', flexDirection: 'column',
