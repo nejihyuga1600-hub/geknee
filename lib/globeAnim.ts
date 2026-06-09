@@ -17,15 +17,14 @@ export function consumeResetTilt(): boolean {
 }
 
 /** Called by GlobalChat when user submits a destination. */
-export function flyToGlobe(lat: number, lon: number, onDone: () => void) {
+export function flyToGlobe(lat: number, lon: number, onDone: () => void, zoom?: number) {
   _pending = { lat, lon, onDone };
-  // Also fan out to the iOS Capacitor Mapbox globe (which doesn't run the
-  // R3F useFrame loop that drives consumeGlobeTarget). Mapbox listens for
-  // this event and calls map.flyTo to spin+zoom to the same destination.
-  // Safe no-op on SSR / when no listener is registered.
+  // Optional `zoom` is the Mapbox zoom level the Capacitor globe lands on:
+  // ~3 continent, ~5 country, ~11 city, ~14 landmark. CapacitorGlobe.tsx
+  // reads detail.zoom and falls back to 3 when undefined.
   if (typeof window !== "undefined") {
     window.dispatchEvent(
-      new CustomEvent("geknee:globe-fly-to", { detail: { lat, lon } }),
+      new CustomEvent("geknee:globe-fly-to", { detail: { lat, lon, zoom } }),
     );
   }
 }

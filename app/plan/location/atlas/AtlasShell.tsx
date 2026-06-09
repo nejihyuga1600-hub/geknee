@@ -124,6 +124,21 @@ type Trip = {
 
 const STEPS = ["Destination", "Dates", "Style", "Review"] as const;
 
+// Map a Suggestion.mk to the Mapbox zoom level the globe should land on.
+// Mapbox zoom scale: 0 globe, 3 continent, 5 country, 8 region, 11 city,
+// 14 landmark/neighborhood, 16 street. The search-box previously always
+// fell back to zoom 3 (continent), so "New York" zoomed only to the
+// US east coast. Now city: prefix → 11 (whole city in frame),
+// monument keys (no colon) → 14 (the actual landmark + surrounding
+// neighborhood). Anything else (free text that hit no city) stays at
+// country-level so the user can still orient.
+function zoomForMk(mk: string | null | undefined): number {
+  if (!mk) return 5;
+  if (mk.startsWith("city:")) return 11;
+  if (mk.startsWith("country:")) return 5;
+  return 14;
+}
+
 const EMPTY_TRIP: Trip = {
   destination: "",
   lat: null, lon: null, mk: null,
@@ -378,10 +393,7 @@ export default function AtlasShell() {
     setDest(match.name);
     setSheet("open");
     setStep(1);
-    // Spin the background globe to the chosen destination + standard zoom.
-    // Matches the LocationClient pattern at line ~3031 (free-text destination
-    // navigation): fly first, then settle camera at distance 14.
-    flyToGlobe(match.lat, match.lon, () => zoomCamera(14));
+    flyToGlobe(match.lat, match.lon, () => zoomCamera(14), zoomForMk(match.mk));
   };
 
   const pickSuggestion = (s: Suggestion) => {
@@ -395,7 +407,7 @@ export default function AtlasShell() {
     setDest(s.name);
     setSheet("open");
     setStep(1);
-    flyToGlobe(s.lat, s.lon, () => zoomCamera(14));
+    flyToGlobe(s.lat, s.lon, () => zoomCamera(14), zoomForMk(s.mk));
   };
 
   // Surprise me — picks a random POPULAR_SUGGESTIONS entry and routes through
