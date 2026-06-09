@@ -99,7 +99,21 @@ const AuthModal      = dynamic(() => import("@/app/components/AuthModal"),      
 type SheetState = "peek" | "open" | "full";
 type TripStyle = "relaxed" | "adventure" | "culture" | "foodie" | "luxury" | "budget";
 type TripBudget = "$" | "$$" | "$$$" | "$$$$";
-type FlexVibe = "anywhere" | "warm" | "cold" | "coastal" | "city" | "nature";
+type FlexVibe = "anywhere" | "warm" | "cold" | "coastal" | "city" | "nature" | "cheap";
+
+// Vibe → POPULAR_SUGGESTIONS mk pool. Each vibe picks a random pick from
+// its pool when the user taps the chip. Lets users browse "I just want
+// somewhere warm" without committing to a specific spot, while still
+// landing the globe + the rest of the flow on a real destination.
+const VIBE_POOLS: Record<FlexVibe, string[]> = {
+  anywhere: ["eiffelTower","tajMahal","colosseum","machuPicchu","greatWall","pyramidGiza","tokyoSkytree","statueLiberty","sydneyOpera"],
+  warm:     ["tajMahal","pyramidGiza","sydneyOpera","machuPicchu"],
+  cold:     ["eiffelTower","statueLiberty","tokyoSkytree","greatWall"],
+  coastal:  ["sydneyOpera","statueLiberty","pyramidGiza"],
+  city:     ["eiffelTower","colosseum","tokyoSkytree","statueLiberty"],
+  nature:   ["machuPicchu","greatWall","pyramidGiza"],
+  cheap:    ["tajMahal","machuPicchu","greatWall","pyramidGiza"],
+};
 
 type Trip = {
   destination: string;
@@ -156,6 +170,7 @@ const FLEX_VIBES: { id: FlexVibe; label: string; emoji: string }[] = [
   { id: "coastal",  label: "Coastal",       emoji: String.fromCodePoint(0x1F30A) },
   { id: "city",     label: "Big city",      emoji: String.fromCodePoint(0x1F306) },
   { id: "nature",   label: "Outdoors",      emoji: String.fromCodePoint(0x1F3D5) },
+  { id: "cheap",    label: "Cheap flights", emoji: String.fromCodePoint(0x1F4B0) },
 ];
 
 const STYLE_OPTIONS: { id: TripStyle; label: string; tag: string }[] = [
@@ -419,18 +434,31 @@ export default function AtlasShell() {
     pickSuggestion(s);
   };
 
-  // Flexible vibe — leaves lat/lon/mk null and records intent for downstream
-  // AI to resolve. Advances past Step 0 without locking a destination.
+  // Flexible vibe — picks a RANDOM concrete destination from the vibe's
+  // pool (POPULAR_SUGGESTIONS subset) so the globe actually flies + the
+  // user lands on a real lat/lon to keep planning around. Records the
+  // vibe on the trip so downstream surfaces can show "you said Anywhere
+  // warm" context. Earlier this just set destination = label and stalled
+  // the globe at zoom 0 — the user couldn't see where they were going.
   const pickFlexible = (vibe: FlexVibe) => {
-    const label = FLEX_VIBES.find(v => v.id === vibe)?.label ?? "Flexible";
-    setTrip({
-      ...trip,
-      destination: label, lat: null, lon: null, mk: null,
-      flexibleVibe: vibe,
-    });
-    setDest(label);
-    setSheet("open");
-    setStep(1);
+    const pool = (VIBE_POOLS[vibe] ?? []).map(mk =>
+      POPULAR_SUGGESTIONS.find(s => s.mk === mk)
+    ).filter((s): s is Suggestion => !!s);
+    if (pool.length === 0) {
+      // Fallback — old behavior: just record intent and advance.
+      const label = FLEX_VIBES.find(v => v.id === vibe)?.label ?? "Flexible";
+      setTrip({ ...trip, destination: label, lat: null, lon: null, mk: null, flexibleVibe: vibe });
+      setDest(label);
+      setSheet("open");
+      setStep(1);
+      return;
+    }
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    // Reuse pickSuggestion so the globe flies, the trip gets full lat/lon,
+    // and the step advances. Then stamp the vibe back on so the user still
+    // sees "you said Anywhere warm" downstream.
+    pickSuggestion(pick);
+    setTrip(t => ({ ...t, flexibleVibe: vibe }));
   };
 
   // Toggles a card into / out of the "open to" set for flexible matching.
