@@ -103,18 +103,51 @@ type TripStyle = "relaxed" | "adventure" | "culture" | "foodie" | "luxury" | "bu
 type TripBudget = "$" | "$$" | "$$$" | "$$$$";
 type FlexVibe = "anywhere" | "warm" | "cold" | "coastal" | "city" | "nature" | "cheap";
 
-// Vibe → mk pool. Drawn from the WHOLE monument catalog (MONUMENT_LATLON,
-// 30+ landmarks) so the user gets real variety instead of the same handful.
-// Warm/cold use latitude bands. Coastal/city/nature/cheap are manually
-// curated subsets because lat alone can't tell beach from desert.
-// "anywhere" = every monument on the globe.
+// Tourist-friendly cities with nice attractions. Combined with the monument
+// catalog so flexible vibes draw from BOTH landmarks AND cities — not just
+// the 30 monuments. Each entry carries vibe tags so warm/cold/coastal/etc
+// can filter directly. Lat/lon inlined so we don't have to do a CITIES_LIST
+// name-search at click time.
+type CityEntry = {
+  name: string; country: string;
+  lat: number; lon: number;
+  vibes: FlexVibe[];
+};
+const TOURIST_CITIES: CityEntry[] = [
+  { name: "Bangkok",      country: "Thailand",     lat: 13.75, lon: 100.50, vibes: ["warm","city","cheap"] },
+  { name: "Istanbul",     country: "Türkiye",      lat: 41.01, lon: 28.98,  vibes: ["coastal","city","cheap"] },
+  { name: "Barcelona",    country: "Spain",        lat: 41.39, lon: 2.17,   vibes: ["coastal","city","warm"] },
+  { name: "Lisbon",       country: "Portugal",     lat: 38.72, lon: -9.14,  vibes: ["coastal","city","warm","cheap"] },
+  { name: "Vienna",       country: "Austria",      lat: 48.21, lon: 16.37,  vibes: ["cold","city"] },
+  { name: "Amsterdam",    country: "Netherlands",  lat: 52.37, lon: 4.90,   vibes: ["cold","city"] },
+  { name: "Prague",       country: "Czechia",      lat: 50.08, lon: 14.43,  vibes: ["cold","city","cheap"] },
+  { name: "Dubai",        country: "UAE",          lat: 25.20, lon: 55.27,  vibes: ["warm","city"] },
+  { name: "Singapore",    country: "Singapore",    lat: 1.35,  lon: 103.82, vibes: ["warm","coastal","city"] },
+  { name: "Marrakech",    country: "Morocco",      lat: 31.63, lon: -7.99,  vibes: ["warm","city","cheap"] },
+  { name: "Cape Town",    country: "South Africa", lat: -33.92,lon: 18.42,  vibes: ["coastal","city","warm"] },
+  { name: "Buenos Aires", country: "Argentina",    lat: -34.60,lon: -58.38, vibes: ["coastal","city"] },
+  { name: "Mexico City",  country: "Mexico",       lat: 19.43, lon: -99.13, vibes: ["warm","city","cheap"] },
+  { name: "Cusco",        country: "Peru",         lat: -13.53,lon: -71.97, vibes: ["nature","cheap"] },
+  { name: "Reykjavik",    country: "Iceland",      lat: 64.15, lon: -21.94, vibes: ["cold","nature","coastal"] },
+  { name: "Edinburgh",    country: "Scotland",     lat: 55.95, lon: -3.19,  vibes: ["cold","city"] },
+  { name: "Hanoi",        country: "Vietnam",      lat: 21.03, lon: 105.85, vibes: ["warm","city","cheap"] },
+  { name: "Bali",         country: "Indonesia",    lat: -8.34, lon: 115.09, vibes: ["warm","coastal","nature","cheap"] },
+  { name: "Santorini",    country: "Greece",       lat: 36.39, lon: 25.46,  vibes: ["coastal","warm"] },
+  { name: "Rio de Janeiro", country: "Brazil",     lat: -22.91,lon: -43.17, vibes: ["coastal","city","warm"] },
+  { name: "Kyoto",        country: "Japan",        lat: 35.01, lon: 135.77, vibes: ["city","nature"] },
+  { name: "Seoul",        country: "South Korea",  lat: 37.57, lon: 126.98, vibes: ["cold","city"] },
+  { name: "Hong Kong",    country: "Hong Kong",    lat: 22.32, lon: 114.17, vibes: ["coastal","city","warm"] },
+  { name: "Banff",        country: "Canada",       lat: 51.18, lon: -115.57,vibes: ["cold","nature"] },
+  { name: "Queenstown",   country: "New Zealand",  lat: -45.03,lon: 168.66, vibes: ["cold","nature"] },
+  { name: "Havana",       country: "Cuba",         lat: 23.13, lon: -82.38, vibes: ["coastal","warm","cheap"] },
+  { name: "Cartagena",    country: "Colombia",     lat: 10.39, lon: -75.51, vibes: ["coastal","warm","cheap"] },
+];
+
 const ALL_MK = Object.keys(MONUMENT_LATLON);
 const COASTAL_MKS = ["sydneyOpera","statueLiberty","goldenGate","christRedeem","easterIsland","hagiaSophia","pyramidGiza","acropolis","bigBen","notreDame","eiffelTower"];
 const CITY_MKS    = ["eiffelTower","colosseum","tokyoSkytree","statueLiberty","bigBen","notreDame","sagradaFamilia","forbiddenCity","hagiaSophia","burjKhalifa","goldenGate"];
 const NATURE_MKS  = ["machuPicchu","greatWall","iguazuFalls","victoriaFalls","niagaraFalls","mountFuji","uluru","easterIsland","stonehenge","petra","mtRushmore"];
-// Tourist-friendly destinations with historically cheaper international
-// flights from the US — rough heuristic, can swap in a real fares API later.
-const CHEAP_MKS = ["tajMahal","angkorWat","greatWall","chichenItza","petra","pyramidGiza","forbiddenCity","fushimiInari","hagiaSophia","victoriaFalls"];
+const CHEAP_MKS   = ["tajMahal","angkorWat","greatWall","chichenItza","petra","pyramidGiza","forbiddenCity","fushimiInari","hagiaSophia","victoriaFalls"];
 
 const VIBE_POOLS: Record<FlexVibe, string[]> = {
   anywhere: ALL_MK,
@@ -452,29 +485,34 @@ export default function AtlasShell() {
   // warm" context. Earlier this just set destination = label and stalled
   // the globe at zoom 0 — the user couldn't see where they were going.
   const pickFlexible = (vibe: FlexVibe) => {
-    const mks = VIBE_POOLS[vibe] ?? [];
-    // Build a Suggestion for every mk in the pool. Most monuments aren't in
-    // POPULAR_SUGGESTIONS (which is just the 9 trending cards) — we fall
-    // through to MONUMENT_LATLON + INFO to construct one on the fly, so
-    // the random pick can be ANY of the 30+ landmarks on the globe, not
-    // just one of nine.
-    const pool: Suggestion[] = mks
+    // Monument leg — pull every monument matching the vibe.
+    const monumentMks = VIBE_POOLS[vibe] ?? [];
+    const monumentPool: Suggestion[] = monumentMks
       .map(mk => {
         const fromPop = POPULAR_SUGGESTIONS.find(s => s.mk === mk);
         if (fromPop) return fromPop;
         const ll = MONUMENT_LATLON[mk];
         const info = (INFO as Record<string, { name: string; location: string } | undefined>)[mk];
         if (!ll || !info) return null;
-        return {
-          mk,
-          name: info.name,
-          location: info.location,
-          lat: ll.lat,
-          lon: ll.lon,
-          emoji: String.fromCodePoint(0x1F4CD),
-        } as Suggestion;
+        return { mk, name: info.name, location: info.location, lat: ll.lat, lon: ll.lon, emoji: String.fromCodePoint(0x1F4CD) } as Suggestion;
       })
       .filter((s): s is Suggestion => !!s);
+
+    // City leg — every TOURIST_CITIES entry tagged with this vibe
+    // (or every city when vibe is "anywhere"). City mks use the `city:`
+    // prefix so zoomForMk lands at city zoom (11).
+    const cityPool: Suggestion[] = TOURIST_CITIES
+      .filter(c => vibe === "anywhere" || c.vibes.includes(vibe))
+      .map(c => ({
+        mk: `city:${c.name}`,
+        name: c.name,
+        location: c.country,
+        lat: c.lat,
+        lon: c.lon,
+        emoji: String.fromCodePoint(0x1F306),
+      }));
+
+    const pool = [...monumentPool, ...cityPool];
 
     if (pool.length === 0) {
       const label = FLEX_VIBES.find(v => v.id === vibe)?.label ?? "Flexible";
