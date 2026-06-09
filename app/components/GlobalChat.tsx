@@ -328,20 +328,19 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
       {/* Genie selector modal */}
       {selectorOpen && <GenieSelector onClose={() => setSelectorOpen(false)} />}
 
-      {/* Floating toggle button — fixed TOP-right per user request, anchored
-          below the iOS Dynamic Island / status bar via safe-area inset.
-          translate3d/willChange forces its own compositor layer so iOS
-          WKWebView never drops it during fast scroll. zIndex above any
-          sheet/modal we render. */}
+      {/* Floating mascot — position is route-aware:
+            - On trip detail pages (/plan/{id}/*) the bottom dock owns the
+              bottom edge, so the mascot lives top-right (and steps aside
+              while the dock is fullscreen).
+            - Everywhere else (globe, summary, booking flow, …) the mascot
+              returns to bottom-right per the user's preferred layout. */}
       <div style={{
         position: 'fixed',
-        top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-        right: 14,
+        ...(ctx.page === 'trip'
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 14 }
+          : { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)', right: 18 }),
         zIndex: 9500,
         transform: 'translate3d(0,0,0)', willChange: 'transform',
-        // Step aside when the trip chat sheet is expanded — both can't own
-        // the top-right corner simultaneously. Fades the mascot out while
-        // the chat is fullscreen; chat collapse restores it.
         opacity: tripChatExpanded ? 0 : 1,
         pointerEvents: tripChatExpanded ? 'none' : 'auto',
         transition: 'opacity 200ms ease',
@@ -378,13 +377,12 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
           </button>
         )}
 
-        {/* Chat panel — drops DOWN from the mascot (now top-right). Was
-            bottom: 68 anchored to a bottom-right mascot; flipped to top so
-            the panel grows beneath the icon instead of into the status
-            bar. */}
+        {/* Chat panel — opens from the side the mascot sits on. */}
         {open && (
           <div style={{
-            position: 'absolute', top: 72, right: 0, width: 340, maxHeight: '65vh',
+            position: 'absolute',
+            ...(ctx.page === 'trip' ? { top: 72 } : { bottom: 68 }),
+            right: 0, width: 340, maxHeight: '65vh',
             background: 'rgba(6,8,22,0.97)', WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
             border: '1px solid rgba(129,140,248,0.3)', borderRadius: 20,
             display: 'flex', flexDirection: 'column',

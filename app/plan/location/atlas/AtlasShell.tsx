@@ -531,10 +531,9 @@ export default function AtlasShell() {
           alignItems: "center",
           justifyContent: "space-between",
           paddingTop: `max(${isMobile ? 10 : 14}px, env(safe-area-inset-top))`,
-          // Right padding bumped on mobile to reserve a corridor for the
-          // top-right AI mascot (52px wide + 14px inset) — without this
-          // the hamburger / Trips pills slid under the mascot on iPhone.
-          paddingRight: isMobile ? 78 : 16,
+          // Mascot returned to bottom-right on the globe page (see
+          // GlobalChat) so the top-right padding corridor isn't needed.
+          paddingRight: isMobile ? 10 : 16,
           paddingBottom: isMobile ? 10 : 14,
           paddingLeft: isMobile ? 10 : 16,
         }}
@@ -553,23 +552,6 @@ export default function AtlasShell() {
             </NavPill>
             <NavPill onClick={() => setShopOpen(true)} title="Collection" iconOnly>
               <ColIcon />
-            </NavPill>
-            {/* Reset-globe pill moves into the left cluster on mobile so the
-                centered version can be hidden (it was overlapping the
-                Trips pill in the right cluster). */}
-            <NavPill
-              onClick={() => {
-                resetGlobeTilt();
-                window.dispatchEvent(new Event("geknee:globe-initialize"));
-              }}
-              title="Reset globe orientation"
-              iconOnly
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
             </NavPill>
           </div>
         ) : (
@@ -637,16 +619,14 @@ export default function AtlasShell() {
       {/* Vertical zoom indicator — sits just under the hamburger Menu pill. */}
       <ZoomIndicator />
 
-      {/* Initialize / Home — top-center on desktop only. On mobile the
-          centered pill collided with the right-side Trips pill, so the
-          mobile-only copy moved into the left cluster above as an
-          iconOnly NavPill. */}
+      {/* Initialize / Home — top-center, prominent. Same affordance the
+          legacy planner had: tap to reset the globe orientation. Top respects
+          iOS standalone safe-area so it sits below the Dynamic Island. */}
       <div style={{
         position: "absolute",
         top: "max(12px, env(safe-area-inset-top))",
         left: "50%", transform: "translateX(-50%)",
         zIndex: 11,
-        display: isMobile ? "none" : "block",
       }}>
         <button
           onClick={() => {
@@ -677,11 +657,7 @@ export default function AtlasShell() {
             <line x1="2" y1="12" x2="22" y2="12" />
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
-          {/* "Initialize" label hidden on mobile — the centered pill was
-              overlapping the Trips pill in the right cluster on iPhone.
-              Icon alone is enough since the title attribute exposes the
-              meaning for screen readers / desktop hover. */}
-          {!isMobile && "Initialize"}
+          Initialize
         </button>
       </div>
 
