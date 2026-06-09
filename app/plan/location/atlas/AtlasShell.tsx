@@ -2145,17 +2145,23 @@ function StepDates({
   onNext: () => void;
 }) {
   const dateInput = {
-    width: "100%", boxSizing: "border-box" as const,
-    padding: "12px 14px",
+    // minWidth: 0 lets the input shrink to fit the grid cell. Without it,
+    // iOS Safari's intrinsic min-width on <input type="date"> pushes the
+    // two columns to overflow into each other on iPhone. fontSize 13 +
+    // padding 10/10 trims the box just enough to read comfortably while
+    // sitting comfortably inside a single column.
+    width: "100%", minWidth: 0, boxSizing: "border-box" as const,
+    padding: "10px 10px",
     borderRadius: 10,
     border: "1px solid var(--brand-border)",
     background: "rgba(255,255,255,0.04)",
     color: "var(--brand-ink)",
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: "var(--font-ui), system-ui, sans-serif",
     outline: "none",
     colorScheme: "dark" as const,
   };
+  const dateCell = { minWidth: 0 } as const;
   const labelText = {
     fontSize: 10,
     color: "var(--brand-ink-mute)",
@@ -2177,8 +2183,8 @@ function StepDates({
         {trip.destination ? `For your trip to ${trip.destination}` : "Pick a travel window — dates optional"}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minWidth: 0 }}>
+        <label style={dateCell}>
           <span style={labelText}>Depart</span>
           <input type="date" value={trip.startDate}
             onChange={(e) => {
@@ -2194,7 +2200,7 @@ function StepDates({
             }}
             style={dateInput} />
         </label>
-        <label>
+        <label style={dateCell}>
           <span style={labelText}>Return</span>
           <input type="date" value={trip.endDate}
             onChange={(e) => {
