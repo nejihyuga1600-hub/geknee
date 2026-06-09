@@ -27,7 +27,7 @@
 // Long-term answer is a native Capacitor Mapbox plugin (what Polarsteps
 // actually does on mobile) — but this WebView swap unblocks ship today.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -44,17 +44,6 @@ export default function CapacitorGlobe() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { data: session } = useSession();
   const isAuthed = !!session?.user;
-  // Bumped on geknee:monuments-updated (MonumentShop dispatches after skin
-  // equip / mission complete). Added to the effect deps below so the map +
-  // GLB layer re-mount and pick up the new activeSkins. Heavy but
-  // reliable; the alternative is wiring a per-monument GLB swap which is
-  // out of scope right now.
-  const [skinReloadKey, setSkinReloadKey] = useState(0);
-  useEffect(() => {
-    const bump = () => setSkinReloadKey(k => k + 1);
-    window.addEventListener('geknee:monuments-updated', bump);
-    return () => window.removeEventListener('geknee:monuments-updated', bump);
-  }, []);
   const initialView = { center: [0, 20] as [number, number], zoom: 1.2, pitch: 0, bearing: 0 };
 
   useEffect(() => {
@@ -78,6 +67,16 @@ export default function CapacitorGlobe() {
     });
 
     mapRef.current = map;
+
+    // Refresh hook for skin equip / mission completion. MonumentShop
+    // dispatches geknee:monuments-updated; the previous fix triggered a
+    // full map remount which leaked the appended Three.js overlay canvas
+    // every cycle (visible as stacked-tower duplicates). Instead we
+    // refresh in-place — assigned once `loadAllMonuments` exists inside
+    // the style.load callback below.
+    let refreshMonuments: (() => void) | null = null;
+    const onMonumentsUpdated = () => { refreshMonuments?.(); };
+    window.addEventListener("geknee:monuments-updated", onMonumentsUpdated);
 
     // Surface Mapbox errors visibly — WKWebView swallows console output and
     // silent style/tile failures show as "black globe with markers", which
@@ -287,6 +286,17 @@ export default function CapacitorGlobe() {
       const ro = new ResizeObserver(resize);
       ro.observe(mapContainer);
 
+      // Hand the outer cleanup a teardown for the overlay we just
+      // appended. Without this, every effect re-run (auth flip) leaves a
+      // dead WebGL context + canvas behind in the map container, visible
+      // as duplicated/stacked monuments on subsequent mounts.
+      (map as unknown as { __geknee_detachOverlay?: () => void }).__geknee_detachOverlay = () => {
+        try { ro.disconnect(); } catch {}
+        try { pmrem.dispose(); } catch {}
+        try { overlayRenderer.dispose(); } catch {}
+        try { mapContainer.removeChild(overlayCanvas); } catch {}
+      };
+
       // Models: load all GLBs, attach each to a wrapper Object3D positioned
       // at projected screen coords each frame.
       type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean };
@@ -369,6 +379,28 @@ export default function CapacitorGlobe() {
           tryLoad(skinUrl ?? defaultUrl, !skinUrl);
         }
       };
+
+      // In-place reload triggered by `geknee:monuments-updated`. Tears down
+      // existing wrappers (and disposes their GPU resources) so the next
+      // loadAllMonuments() doesn't stack a second copy of every monument
+      // on top of the first — that was the visible duplication bug.
+      refreshMonuments = () => {
+        for (const e of entries) {
+          overlayScene.remove(e.wrapper);
+          e.wrapper.traverse((node) => {
+            const mesh = node as THREE.Mesh;
+            if (mesh.geometry) mesh.geometry.dispose();
+            const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+            if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+            else if (mat && typeof (mat as THREE.Material).dispose === "function") (mat as THREE.Material).dispose();
+          });
+        }
+        entries.length = 0;
+        diag.loaded = 0;
+        reportDiag();
+        loadAllMonuments();
+      };
+
       loadAllMonuments();
 
       // Each frame: project each lat/lon to screen pixels, hide back-of-globe
@@ -515,17 +547,24 @@ export default function CapacitorGlobe() {
     return () => {
       window.removeEventListener("geknee:globe-initialize", onInitialize);
       window.removeEventListener("geknee:globe-fly-to", onFlyTo);
+      window.removeEventListener("geknee:monuments-updated", onMonumentsUpdated);
       const rafId = (map as unknown as { __geknee_rafId?: number }).__geknee_rafId;
       if (rafId) cancelAnimationFrame(rafId);
       const detachPause = (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers;
       if (detachPause) detachPause();
+      // Tear down the Three.js overlay we appended into the Mapbox
+      // container. Mapbox's own remove() only clears children it owns,
+      // so without this the overlay canvas + WebGL context leak on
+      // every effect re-run (auth flip etc.).
+      const detachOverlay = (map as unknown as { __geknee_detachOverlay?: () => void }).__geknee_detachOverlay;
+      if (detachOverlay) detachOverlay();
       map.remove();
       mapRef.current = null;
     };
   // Re-mount when auth state flips so signing in mid-session refreshes
   // the markers (guest → authed users see their pins without a reload).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed, skinReloadKey]);
+  }, [isAuthed]);
 
   if (!TOKEN) {
     // Fallback when no token is configured — show the static gradient so
