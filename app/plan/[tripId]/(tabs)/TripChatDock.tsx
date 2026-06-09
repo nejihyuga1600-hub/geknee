@@ -382,8 +382,9 @@ export default function TripChatDock({ tripId, destination }: Props) {
           collapsed state lightweight. Scrollable area; gestures inside the
           list don't drag the sheet (touchAction: pan-y). */}
       <div style={{
-        flex: 1, minHeight: 0,
+        flex: 1, minHeight: 0, minWidth: 0,
         overflowY: 'auto',
+        overflowX: 'hidden',
         padding: '0 14px 8px',
         display: 'flex', flexDirection: 'column', gap: 8,
         touchAction: 'pan-y',
@@ -449,6 +450,9 @@ export default function TripChatDock({ tripId, destination }: Props) {
           display: 'flex', alignItems: 'center', gap: 8,
           borderTop: expanded ? '1px solid rgba(255,255,255,0.10)' : 'none',
           background: 'rgba(0,0,0,0.18)',
+          minWidth: 0,
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
         <input
@@ -458,12 +462,19 @@ export default function TripChatDock({ tripId, destination }: Props) {
           placeholder={expanded ? 'Message your trip…' : 'Reply'}
           aria-label="Type a message"
           style={{
-            flex: 1, padding: '10px 14px',
+            // minWidth: 0 lets the flex item shrink past its intrinsic
+            // content width — without it the input refuses to shrink past
+            // its default ~160px min-content and pushes the send button
+            // off the right edge of the sheet (user saw a partial purple
+            // circle clipped at the edge).
+            flex: 1, minWidth: 0,
+            padding: '10px 14px',
             borderRadius: 999, border: '1px solid rgba(255,255,255,0.16)',
             background: 'rgba(255,255,255,0.08)',
             color: 'var(--brand-ink, #f1f5f9)', fontSize: 14,
             fontFamily: 'inherit',
             outline: 'none',
+            boxSizing: 'border-box',
           }}
         />
         <button
