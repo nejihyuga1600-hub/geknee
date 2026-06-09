@@ -17,6 +17,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { Keyboard } from '@capacitor/keyboard';
+import { Capacitor } from '@capacitor/core';
 
 function SendArrow({ size = 16 }: { size?: number }) {
   return (
@@ -134,6 +136,40 @@ export default function TripChatDock({ tripId, destination }: Props) {
     window.dispatchEvent(new CustomEvent('geknee:trip-chat-expanded', { detail: { expanded } }));
   }, [expanded]);
 
+  // ── Keyboard handling ───────────────────────────────────────────────────
+  // 1) Track on-screen keyboard via window.visualViewport so we can lift
+  //    the sheet above it; otherwise iOS hides the messages behind the
+  //    keyboard while only the focused composer stays visible.
+  // 2) On Capacitor (iOS), hide the keyboard accessory bar (Previous /
+  //    Next / Done) — the user reported it as visual clutter and we have
+  //    a single input, so there's no nav to navigate.
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onChange = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(offset);
+      if (offset > 50) {
+        // Keyboard is up — auto-expand so the user sees the chat history
+        // they're typing into. Also marks read so the unread badge clears.
+        setExpanded(true);
+      }
+    };
+    vv.addEventListener('resize', onChange);
+    vv.addEventListener('scroll', onChange);
+    return () => {
+      vv.removeEventListener('resize', onChange);
+      vv.removeEventListener('scroll', onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     const content = text.trim();
     if (!content) return;
@@ -207,7 +243,10 @@ export default function TripChatDock({ tripId, destination }: Props) {
         // previous 12px gap was causing the input to float above a dead
         // strip of dim page underneath.
         left: 0, right: 0,
-        bottom: 0,
+        // bottom lifts to clear the on-screen keyboard so the chat list
+        // stays visible while typing instead of being hidden behind it.
+        // 0 when no keyboard, otherwise the height visualViewport reports.
+        bottom: keyboardOffset,
         // 86svh leaves ~14% of the underlying page peeking above the
         // expanded sheet, so the user can still see where they are while
         // chatting. Bottom rounded corners flattened since the sheet is
