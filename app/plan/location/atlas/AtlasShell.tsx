@@ -648,12 +648,16 @@ export default function AtlasShell() {
             fontFamily: "inherit",
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="12" cy="12" r="10" />
             <line x1="2" y1="12" x2="22" y2="12" />
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
-          Initialize
+          {/* "Initialize" label hidden on mobile — the centered pill was
+              overlapping the Trips pill in the right cluster on iPhone.
+              Icon alone is enough since the title attribute exposes the
+              meaning for screen readers / desktop hover. */}
+          {!isMobile && "Initialize"}
         </button>
       </div>
 
@@ -729,6 +733,22 @@ export default function AtlasShell() {
         {/* Grab bar */}
         <div
           onClick={cycleSheet}
+          onTouchStart={(e) => {
+            (e.currentTarget as HTMLDivElement & { __sy?: number }).__sy = e.touches[0].clientY;
+          }}
+          onTouchEnd={(e) => {
+            const start = (e.currentTarget as HTMLDivElement & { __sy?: number }).__sy;
+            if (start == null) return;
+            const dy = e.changedTouches[0].clientY - start;
+            // Swipe up >= 40px → grow one step; swipe down >= 40px → shrink.
+            // Matches the dock-style gesture on the trip chat sheet so the
+            // two sheets feel like the same affordance.
+            if (dy < -40) {
+              setSheet((s) => (s === "peek" ? "open" : "full"));
+            } else if (dy > 40) {
+              setSheet((s) => (s === "full" ? "open" : "peek"));
+            }
+          }}
           role="button"
           tabIndex={0}
           aria-label="Toggle sheet"
@@ -741,6 +761,7 @@ export default function AtlasShell() {
             borderBottom:
               sheet !== "peek" ? "1px solid var(--brand-border)" : "none",
             cursor: "pointer",
+            touchAction: "none",
           }}
         >
           <div
