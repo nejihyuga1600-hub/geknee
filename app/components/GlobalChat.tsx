@@ -78,6 +78,17 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
   const { genieId } = useSelectedGenie();
   const [open, setOpen]               = useState(false);
   const [selectorOpen, setSelectorOpen] = useState(false);
+  // Trip-chat dock signals expansion via window event so the mascot can
+  // step aside — both occupy the top-right when chat is full-screen.
+  const [tripChatExpanded, setTripChatExpanded] = useState(false);
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const d = (e as CustomEvent<{ expanded?: boolean }>).detail;
+      setTripChatExpanded(!!d?.expanded);
+    };
+    window.addEventListener('geknee:trip-chat-expanded', onChange);
+    return () => window.removeEventListener('geknee:trip-chat-expanded', onChange);
+  }, []);
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -310,7 +321,12 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
         right: 14,
         zIndex: 9500,
         transform: 'translate3d(0,0,0)', willChange: 'transform',
-        pointerEvents: 'auto',
+        // Step aside when the trip chat sheet is expanded — both can't own
+        // the top-right corner simultaneously. Fades the mascot out while
+        // the chat is fullscreen; chat collapse restores it.
+        opacity: tripChatExpanded ? 0 : 1,
+        pointerEvents: tripChatExpanded ? 'none' : 'auto',
+        transition: 'opacity 200ms ease',
       }}>
         {!open && (
           <button
@@ -318,24 +334,25 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             aria-label="Open GeKnee AI assistant"
             title="Ask GeKnee"
             style={{
-              // Outer circle + yellow ring removed per user request — the
-              // mascot now stands on its own. Soft drop shadow keeps it
-              // readable over both dark and light pages.
-              width: 64, height: 64, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              // Smaller (52 vs 64) so it leaves room for AtlasShell's right-
+              // edge nav cluster (sparkle / Trips / hamburger) without
+              // overlapping. Drop shadow + soft purple glow stand in for
+              // the chrome we removed earlier.
+              width: 52, height: 52, borderRadius: '50%', border: 'none', cursor: 'pointer',
               background: 'transparent',
               padding: 0, overflow: 'visible',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.45)) drop-shadow(0 0 12px rgba(167,139,250,0.35))',
+              filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 10px rgba(167,139,250,0.35))',
               animation: 'geniePulse 2.5s ease-in-out infinite',
             }}
           >
             <img
               src="/brand/geknee-mascot.jpg"
               alt="geknee mascot"
-              width={64}
-              height={64}
+              width={52}
+              height={52}
               style={{
-                width: 64, height: 64, objectFit: 'contain',
+                width: 52, height: 52, objectFit: 'contain',
                 borderRadius: '50%',
                 display: 'block',
               }}

@@ -59,7 +59,9 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
           // it with the same blurred-dark surface) so we don't see the
           // body underneath. User feedback 2026-06-05: title + buttons
           // were colliding with the iPhone 15 Pro front camera island.
-          padding: 'calc(env(safe-area-inset-top) + 0px) 18px 0 16px',
+          // Right padding reserves a corridor for the top-right AI mascot
+          // (52px + 14px inset) so the Vault tab doesn't tuck under it.
+          padding: 'calc(env(safe-area-inset-top) + 0px) 78px 0 16px',
           minHeight: 'calc(env(safe-area-inset-top) + 56px)',
           height: 'auto',
           alignItems: 'center',

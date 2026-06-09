@@ -531,7 +531,10 @@ export default function AtlasShell() {
           alignItems: "center",
           justifyContent: "space-between",
           paddingTop: `max(${isMobile ? 10 : 14}px, env(safe-area-inset-top))`,
-          paddingRight: isMobile ? 10 : 16,
+          // Right padding bumped on mobile to reserve a corridor for the
+          // top-right AI mascot (52px wide + 14px inset) — without this
+          // the hamburger / Trips pills slid under the mascot on iPhone.
+          paddingRight: isMobile ? 78 : 16,
           paddingBottom: isMobile ? 10 : 14,
           paddingLeft: isMobile ? 10 : 16,
         }}

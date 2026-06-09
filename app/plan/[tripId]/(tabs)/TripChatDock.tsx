@@ -126,6 +126,14 @@ export default function TripChatDock({ tripId, destination }: Props) {
   }, [markRead]);
   const collapse = useCallback(() => { setExpanded(false); }, []);
 
+  // Tell the rest of the chrome (notably the AI mascot floating top-right)
+  // to step aside while the chat occupies the full screen. The mascot
+  // listens for this event and hides itself — two primary affordances
+  // can't both live in the top-right corner.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('geknee:trip-chat-expanded', { detail: { expanded } }));
+  }, [expanded]);
+
   const sendMessage = useCallback(async (text: string) => {
     const content = text.trim();
     if (!content) return;
@@ -216,11 +224,11 @@ export default function TripChatDock({ tripId, destination }: Props) {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        onClick={() => { if (!expanded) expand(); }}
+        onClick={() => { expanded ? collapse() : expand(); }}
         style={{
           padding: '8px 14px 10px',
           flexShrink: 0,
-          cursor: expanded ? 'default' : 'pointer',
+          cursor: 'pointer',
           touchAction: 'none',
         }}
       >
@@ -284,23 +292,10 @@ export default function TripChatDock({ tripId, destination }: Props) {
                 : (latest ? `${latest.author}: ${latest.content}` : 'Tap or pull up to chat')}
             </span>
           </div>
-          {expanded && (
-            <button
-              type="button"
-              onClick={collapse}
-              aria-label="Collapse chat"
-              style={{
-                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.16)',
-                width: 30, height: 30, borderRadius: '50%',
-                color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                padding: 0,
-                flexShrink: 0,
-              }}
-            >
-              {String.fromCodePoint(0x2304)}
-            </button>
-          )}
+          {/* Chevron-down collapse button removed — was sitting right under
+              the top-right mascot and reading as a stacked second button.
+              The drag handle at the top of the sheet is the sole collapse
+              affordance, with double-tap on the handle row as a fallback. */}
         </div>
       </div>
 
