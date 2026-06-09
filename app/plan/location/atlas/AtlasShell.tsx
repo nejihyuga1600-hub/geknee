@@ -554,6 +554,23 @@ export default function AtlasShell() {
             <NavPill onClick={() => setShopOpen(true)} title="Collection" iconOnly>
               <ColIcon />
             </NavPill>
+            {/* Reset-globe pill moves into the left cluster on mobile so the
+                centered version can be hidden (it was overlapping the
+                Trips pill in the right cluster). */}
+            <NavPill
+              onClick={() => {
+                resetGlobeTilt();
+                window.dispatchEvent(new Event("geknee:globe-initialize"));
+              }}
+              title="Reset globe orientation"
+              iconOnly
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </NavPill>
           </div>
         ) : (
           <>
@@ -620,10 +637,17 @@ export default function AtlasShell() {
       {/* Vertical zoom indicator — sits just under the hamburger Menu pill. */}
       <ZoomIndicator />
 
-      {/* Initialize / Home — top-center, prominent. Same affordance the
-          legacy planner had: tap to reset the globe orientation. Top respects
-          iOS standalone safe-area so it sits below the Dynamic Island. */}
-      <div style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: "translateX(-50%)", zIndex: 11 }}>
+      {/* Initialize / Home — top-center on desktop only. On mobile the
+          centered pill collided with the right-side Trips pill, so the
+          mobile-only copy moved into the left cluster above as an
+          iconOnly NavPill. */}
+      <div style={{
+        position: "absolute",
+        top: "max(12px, env(safe-area-inset-top))",
+        left: "50%", transform: "translateX(-50%)",
+        zIndex: 11,
+        display: isMobile ? "none" : "block",
+      }}>
         <button
           onClick={() => {
             // Three.js globe (web) listens through resetGlobeTilt;
@@ -732,22 +756,49 @@ export default function AtlasShell() {
       >
         {/* Grab bar */}
         <div
-          onClick={cycleSheet}
+          onClick={(e) => {
+            // Treat plain tap as cycle-sheet UNLESS the tap is on the
+            // text input (it has its own handler). Drag distance is
+            // tracked below; if any movement happened, suppress the
+            // cycle so a slow swipe doesn't accidentally cycle.
+            const moved = (e.currentTarget as HTMLDivElement & { __moved?: boolean }).__moved;
+            if (moved) {
+              (e.currentTarget as HTMLDivElement & { __moved?: boolean }).__moved = false;
+              return;
+            }
+            cycleSheet();
+          }}
           onTouchStart={(e) => {
-            (e.currentTarget as HTMLDivElement & { __sy?: number }).__sy = e.touches[0].clientY;
+            const el = e.currentTarget as HTMLDivElement & { __sy?: number; __moved?: boolean };
+            el.__sy = e.touches[0].clientY;
+            el.__moved = false;
+          }}
+          onTouchMove={(e) => {
+            const el = e.currentTarget as HTMLDivElement & { __sy?: number; __moved?: boolean };
+            if (el.__sy == null) return;
+            const dy = e.touches[0].clientY - el.__sy;
+            if (Math.abs(dy) > 6) el.__moved = true;
           }}
           onTouchEnd={(e) => {
-            const start = (e.currentTarget as HTMLDivElement & { __sy?: number }).__sy;
+            const el = e.currentTarget as HTMLDivElement & { __sy?: number; __moved?: boolean };
+            const start = el.__sy;
             if (start == null) return;
             const dy = e.changedTouches[0].clientY - start;
-            // Swipe up >= 40px → grow one step; swipe down >= 40px → shrink.
-            // Matches the dock-style gesture on the trip chat sheet so the
-            // two sheets feel like the same affordance.
-            if (dy < -40) {
+            // If the touch involved any drag (>= 6px), iOS may still try
+            // to focus the input the touch ended on. Blur the active
+            // element so the keyboard doesn't pop up just from a swipe.
+            // The user can still tap the input directly to type — that's
+            // a no-movement touch, doesn't trigger this branch.
+            if (el.__moved) {
+              const active = document.activeElement as HTMLElement | null;
+              active?.blur?.();
+            }
+            if (dy < -30) {
               setSheet((s) => (s === "peek" ? "open" : "full"));
-            } else if (dy > 40) {
+            } else if (dy > 30) {
               setSheet((s) => (s === "full" ? "open" : "peek"));
             }
+            el.__sy = undefined;
           }}
           role="button"
           tabIndex={0}
@@ -761,7 +812,9 @@ export default function AtlasShell() {
             borderBottom:
               sheet !== "peek" ? "1px solid var(--brand-border)" : "none",
             cursor: "pointer",
-            touchAction: "none",
+            // pan-y lets the user vertically pan to scroll the page below
+            // when needed; gesture detection is purely above.
+            touchAction: "pan-y",
           }}
         >
           <div
