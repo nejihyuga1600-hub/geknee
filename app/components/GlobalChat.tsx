@@ -299,30 +299,43 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
       {/* Genie selector modal */}
       {selectorOpen && <GenieSelector onClose={() => setSelectorOpen(false)} />}
 
-      {/* Floating toggle button */}
-      <div style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9000 }}>
+      {/* Floating toggle button — fixed bottom-right. translate3d forces
+          its own compositor layer so iOS WKWebView never drops it during
+          fast scroll (user reported the mascot "disappearing" on scroll-up
+          — was a paint flicker, not unmount). will-change holds the
+          layer. zIndex pushed above any sheet/modal we render. */}
+      <div style={{
+        position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)',
+        right: 22, zIndex: 9500,
+        transform: 'translate3d(0,0,0)', willChange: 'transform',
+        pointerEvents: 'auto',
+      }}>
         {!open && (
           <button
             onClick={() => setOpen(true)}
+            aria-label="Open GeKnee AI assistant"
+            title="Ask GeKnee"
             style={{
-              width: 68, height: 68, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: 'radial-gradient(circle at 40% 40%, #1e3a7a, #0d1a40)',
-              boxShadow: '0 4px 24px rgba(59,130,246,0.5), 0 0 0 2px rgba(245,197,24,0.35)',
+              // Outer circle + yellow ring removed per user request — the
+              // mascot now stands on its own. Soft drop shadow keeps it
+              // readable over both dark and light pages.
+              width: 64, height: 64, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'transparent',
+              padding: 0, overflow: 'visible',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 6, overflow: 'hidden',
+              filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.45)) drop-shadow(0 0 12px rgba(167,139,250,0.35))',
               animation: 'geniePulse 2.5s ease-in-out infinite',
             }}
-            title="Open GeKnee AI"
           >
             <img
               src="/brand/geknee-mascot.jpg"
               alt="geknee mascot"
-              width={56}
-              height={56}
+              width={64}
+              height={64}
               style={{
-                width: 56, height: 56, objectFit: 'contain',
+                width: 64, height: 64, objectFit: 'contain',
                 borderRadius: '50%',
-                filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.7))',
+                display: 'block',
               }}
             />
           </button>

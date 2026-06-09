@@ -8,6 +8,7 @@ import { NextStepHint } from './NextStepHint';
 import BackButton from '@/app/components/BackButton';
 
 const InviteFriendsPill = dynamic(() => import('./InviteFriendsPill'), { ssr: false });
+const TripChatDock = dynamic(() => import('./TripChatDock'), { ssr: false });
 
 const MONO = 'var(--font-mono-display), ui-monospace, monospace';
 
@@ -33,12 +34,18 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    // overflowX: hidden on the page wrapper kills body-level left/right scroll
-    // — wide itinerary cards, monospace mono-tracked tab labels, and the
-    // invite pill together overflow viewport width on iPhone 15 Pro, which
-    // dragged the whole page sideways. Body now stays put; only the nav row
-    // (below) allows horizontal scroll so tabs remain reachable.
-    <div style={{ minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9', overflowX: 'hidden' }}>
+    // Hard lockdown on horizontal scroll for the body. overflowX: hidden +
+    // maxWidth: 100vw guard against any descendant that ignores the
+    // constraint. touchAction: pan-y stops iOS's elastic sideways pull when
+    // an inner card overshoots. The nav row below opts back into horizontal
+    // scroll with overflowX: auto so its tab labels stay reachable.
+    <div style={{
+      minHeight: '100svh', background: '#0a0f1e', color: '#f1f5f9',
+      overflowX: 'hidden', maxWidth: '100vw',
+      touchAction: 'pan-y',
+      // Prevents content from getting hidden behind the new bottom chat dock.
+      paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
+    }}>
       <nav
         aria-label="Trip sections"
         style={{
@@ -135,6 +142,11 @@ export default function TripTabsLayout({ children }: { children: ReactNode }) {
             → Booking, Vault → Live). Hides when no useful suggestion. */}
         <NextStepHint />
       </main>
+      {/* Bottom group-chat dock — always visible per user spec, glass
+          surface, tap to open the full TripSocialPanel. paddingBottom on
+          the page wrapper above already reserves space so content never
+          sits behind it. */}
+      <TripChatDock tripId={tripId} />
     </div>
   );
 }
