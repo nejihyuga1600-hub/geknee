@@ -13,6 +13,8 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
+import { MONUMENT_LATLON } from "@/app/plan/location/globe/skins";
+import { INFO } from "@/app/plan/location/globe/info";
 import { currentIssueYear } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
 import {
@@ -101,18 +103,27 @@ type TripStyle = "relaxed" | "adventure" | "culture" | "foodie" | "luxury" | "bu
 type TripBudget = "$" | "$$" | "$$$" | "$$$$";
 type FlexVibe = "anywhere" | "warm" | "cold" | "coastal" | "city" | "nature" | "cheap";
 
-// Vibe → POPULAR_SUGGESTIONS mk pool. Each vibe picks a random pick from
-// its pool when the user taps the chip. Lets users browse "I just want
-// somewhere warm" without committing to a specific spot, while still
-// landing the globe + the rest of the flow on a real destination.
+// Vibe → mk pool. Drawn from the WHOLE monument catalog (MONUMENT_LATLON,
+// 30+ landmarks) so the user gets real variety instead of the same handful.
+// Warm/cold use latitude bands. Coastal/city/nature/cheap are manually
+// curated subsets because lat alone can't tell beach from desert.
+// "anywhere" = every monument on the globe.
+const ALL_MK = Object.keys(MONUMENT_LATLON);
+const COASTAL_MKS = ["sydneyOpera","statueLiberty","goldenGate","christRedeem","easterIsland","hagiaSophia","pyramidGiza","acropolis","bigBen","notreDame","eiffelTower"];
+const CITY_MKS    = ["eiffelTower","colosseum","tokyoSkytree","statueLiberty","bigBen","notreDame","sagradaFamilia","forbiddenCity","hagiaSophia","burjKhalifa","goldenGate"];
+const NATURE_MKS  = ["machuPicchu","greatWall","iguazuFalls","victoriaFalls","niagaraFalls","mountFuji","uluru","easterIsland","stonehenge","petra","mtRushmore"];
+// Tourist-friendly destinations with historically cheaper international
+// flights from the US — rough heuristic, can swap in a real fares API later.
+const CHEAP_MKS = ["tajMahal","angkorWat","greatWall","chichenItza","petra","pyramidGiza","forbiddenCity","fushimiInari","hagiaSophia","victoriaFalls"];
+
 const VIBE_POOLS: Record<FlexVibe, string[]> = {
-  anywhere: ["eiffelTower","tajMahal","colosseum","machuPicchu","greatWall","pyramidGiza","tokyoSkytree","statueLiberty","sydneyOpera"],
-  warm:     ["tajMahal","pyramidGiza","sydneyOpera","machuPicchu"],
-  cold:     ["eiffelTower","statueLiberty","tokyoSkytree","greatWall"],
-  coastal:  ["sydneyOpera","statueLiberty","pyramidGiza"],
-  city:     ["eiffelTower","colosseum","tokyoSkytree","statueLiberty"],
-  nature:   ["machuPicchu","greatWall","pyramidGiza"],
-  cheap:    ["tajMahal","machuPicchu","greatWall","pyramidGiza"],
+  anywhere: ALL_MK,
+  warm:     ALL_MK.filter(mk => Math.abs(MONUMENT_LATLON[mk].lat) < 30),
+  cold:     ALL_MK.filter(mk => Math.abs(MONUMENT_LATLON[mk].lat) > 40),
+  coastal:  COASTAL_MKS,
+  city:     CITY_MKS,
+  nature:   NATURE_MKS,
+  cheap:    CHEAP_MKS,
 };
 
 type Trip = {
@@ -441,11 +452,31 @@ export default function AtlasShell() {
   // warm" context. Earlier this just set destination = label and stalled
   // the globe at zoom 0 — the user couldn't see where they were going.
   const pickFlexible = (vibe: FlexVibe) => {
-    const pool = (VIBE_POOLS[vibe] ?? []).map(mk =>
-      POPULAR_SUGGESTIONS.find(s => s.mk === mk)
-    ).filter((s): s is Suggestion => !!s);
+    const mks = VIBE_POOLS[vibe] ?? [];
+    // Build a Suggestion for every mk in the pool. Most monuments aren't in
+    // POPULAR_SUGGESTIONS (which is just the 9 trending cards) — we fall
+    // through to MONUMENT_LATLON + INFO to construct one on the fly, so
+    // the random pick can be ANY of the 30+ landmarks on the globe, not
+    // just one of nine.
+    const pool: Suggestion[] = mks
+      .map(mk => {
+        const fromPop = POPULAR_SUGGESTIONS.find(s => s.mk === mk);
+        if (fromPop) return fromPop;
+        const ll = MONUMENT_LATLON[mk];
+        const info = (INFO as Record<string, { name: string; location: string } | undefined>)[mk];
+        if (!ll || !info) return null;
+        return {
+          mk,
+          name: info.name,
+          location: info.location,
+          lat: ll.lat,
+          lon: ll.lon,
+          emoji: String.fromCodePoint(0x1F4CD),
+        } as Suggestion;
+      })
+      .filter((s): s is Suggestion => !!s);
+
     if (pool.length === 0) {
-      // Fallback — old behavior: just record intent and advance.
       const label = FLEX_VIBES.find(v => v.id === vibe)?.label ?? "Flexible";
       setTrip({ ...trip, destination: label, lat: null, lon: null, mk: null, flexibleVibe: vibe });
       setDest(label);
@@ -454,9 +485,6 @@ export default function AtlasShell() {
       return;
     }
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    // Reuse pickSuggestion so the globe flies, the trip gets full lat/lon,
-    // and the step advances. Then stamp the vibe back on so the user still
-    // sees "you said Anywhere warm" downstream.
     pickSuggestion(pick);
     setTrip(t => ({ ...t, flexibleVibe: vibe }));
   };
