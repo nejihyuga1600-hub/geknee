@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
 import { auth } from "@/auth";
 import { addTokenUsage } from "@/lib/tokenTracking";
+import { prisma } from "@/lib/prisma";
+import { getTripAccess } from "@/lib/tripAccess";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -15,6 +17,12 @@ interface ChatBody {
   itinerary?: string;
   pageContext?: string;
   tripInfo?: { location?: string; nights?: string; purpose?: string; style?: string; budget?: string };
+  // When the user is on a trip-detail page (/plan/[tripId]/*) the client
+  // passes the trip id so we can graft this trip's destination, itinerary,
+  // members, recent group-chat messages, and pending vote suggestions into
+  // the system prompt — turns the global genie into a trip-scoped helper
+  // for the duration of that conversation.
+  tripId?: string | null;
 }
 
 export async function POST(req: Request) {
@@ -48,6 +56,84 @@ export async function POST(req: Request) {
   const pageSection = body.pageContext
     ? `\nCurrent page context:\n${body.pageContext}`
     : "";
+
+  // ── Trip-scoped context block ──────────────────────────────────────────
+  // Pulled fresh on every request when the user is on a trip-detail page,
+  // so the genie always answers about the current state of the trip.
+  // Fail-soft: any error here falls back to the empty string and the
+  // global genie behavior is unchanged.
+  let tripSection = "";
+  const userId = (session.user as { id?: string }).id;
+  if (body.tripId && userId) {
+    try {
+      const hasAccess = await getTripAccess(body.tripId, userId);
+      if (hasAccess) {
+        const [trip, members, recentMessages, pendingSuggestions] = await Promise.all([
+          prisma.tripDraft.findUnique({
+            where: { id: body.tripId },
+            select: {
+              title: true, location: true, startDate: true, endDate: true,
+              nights: true, style: true, notes: true,
+              itinerary: true, timezone: true,
+            },
+          }),
+          prisma.tripMember.findMany({
+            where: { tripId: body.tripId },
+            select: { role: true, user: { select: { name: true, email: true } } },
+          }),
+          prisma.tripMessage.findMany({
+            where: { tripId: body.tripId },
+            orderBy: { createdAt: "desc" },
+            take: 12,
+            select: { author: true, content: true, createdAt: true },
+          }),
+          prisma.itinerarySuggestion.findMany({
+            where: { tripId: body.tripId, status: { in: ["pending", "pending_apply"] } },
+            orderBy: { createdAt: "desc" },
+            take: 8,
+            select: { id: true, summary: true, status: true, createdAt: true, votes: { select: { userId: true, vote: true } } },
+          }),
+        ]);
+
+        if (trip) {
+          const memberLine = members.length
+            ? members.map(m => {
+                const handle = m.user?.name?.trim() || m.user?.email?.split("@")[0] || "anonymous";
+                return `${handle}${m.role === "owner" ? " (owner)" : ""}`;
+              }).join(", ")
+            : "Solo trip — no co-travellers";
+
+          // Recent group-chat snippets, oldest first so the model reads
+          // them as a normal forward-flowing conversation transcript.
+          const chatLog = recentMessages.length
+            ? recentMessages.slice().reverse().map(m => `- ${m.author}: ${m.content.replace(/\s+/g, " ").slice(0, 180)}`).join("\n")
+            : "No group-chat messages yet.";
+
+          const voteSummary = pendingSuggestions.length
+            ? pendingSuggestions.map(s => {
+                const ups = s.votes.filter(v => v.vote === "up").length;
+                const downs = s.votes.filter(v => v.vote === "down").length;
+                return `- [${s.status}] "${s.summary.slice(0, 120)}" — ${ups}👍 / ${downs}👎`;
+              }).join("\n")
+            : "No suggestions awaiting votes.";
+
+          // Cap itinerary so a 50-day trip doesn't blow the system prompt.
+          const itin = (trip.itinerary ?? "").slice(0, 2400);
+
+          tripSection = `\nDEDICATED TRIP CONTEXT — you are the AI assistant for THIS specific trip. Be concrete about its details rather than generic.\n` +
+            `Title: ${trip.title}\n` +
+            `Destination: ${trip.location}\n` +
+            `Dates: ${trip.startDate ?? "TBD"} → ${trip.endDate ?? "TBD"} (${trip.nights ?? "?"} nights)${trip.timezone ? ` · ${trip.timezone}` : ""}\n` +
+            `Members: ${memberLine}\n` +
+            `\nRecent group chat (oldest → newest):\n${chatLog}\n` +
+            `\nPending vote suggestions:\n${voteSummary}\n` +
+            (itin ? `\nCurrent itinerary (truncated):\n${itin}\n` : "");
+        }
+      }
+    } catch (err) {
+      console.warn("[api/chat] trip-context fetch failed:", err);
+    }
+  }
 
 
   // Inject weather forecast into system prompt when trip location is known.
@@ -108,7 +194,7 @@ Trip details (if known):
 - Destination: ${location || "not yet chosen"}
 - Duration: ${nights ? nights + " nights" : "not yet set"}
 - Purpose: ${purpose || "not specified"} | Style: ${style || "not specified"} | Budget: ${budget || "not specified"}
-${weatherSection}${pageSection}${itinerarySection}
+${weatherSection}${pageSection}${itinerarySection}${tripSection}
 
 Guidelines:
 - Be warm, enthusiastic, and concise (2-4 sentences or a short list)

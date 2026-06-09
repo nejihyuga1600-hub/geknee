@@ -27,11 +27,22 @@ function usePageContext() {
   const endDate       = params.get('endDate')       ?? '';
   const travelingFrom = params.get('travelingFrom') ?? '';
 
-  const page = pathname === '/plan'          ? 'atlas'
-             : pathname === '/plan/style'   ? 'style'
-             : pathname === '/plan/dates'   ? 'dates'
-             : pathname === '/plan/summary' ? 'summary'
-             : pathname === '/plan/book'    ? 'book'
+  // Trip-detail routes: /plan/{tripId}/{planning|booking|vault|itinerary}.
+  // Pulling tripId out lets the AI mascot become the "trip genie" — same
+  // chat surface, but the API gets a tripId and injects this trip's
+  // destination, dates, members, recent group-chat messages, and pending
+  // vote suggestions into the system prompt. Less confusing for the user
+  // (one mascot scoped to where they are), and the model has the context
+  // it needs to actually be useful.
+  const tripDetailMatch = pathname?.match(/^\/plan\/([^\/]+)\/(planning|booking|vault|itinerary)/);
+  const tripId = tripDetailMatch ? tripDetailMatch[1] : null;
+
+  const page = tripId                          ? 'trip'
+             : pathname === '/plan'            ? 'atlas'
+             : pathname === '/plan/style'     ? 'style'
+             : pathname === '/plan/dates'     ? 'dates'
+             : pathname === '/plan/summary'   ? 'summary'
+             : pathname === '/plan/book'      ? 'book'
              : 'globe';
 
   const placeholders: Record<string, string> = {
@@ -41,17 +52,19 @@ function usePageContext() {
     dates:   'Ask me about the best time to visit...',
     summary: 'Ask me about your itinerary...',
     book:    'Ask me about flights, hotels, or activities...',
+    trip:    'Ask about this trip — itinerary, votes, who is going...',
   };
 
   const pageDesc =
-    page === 'globe'   ? 'The user is on the globe destination discovery page, browsing the interactive 3D globe to choose a travel destination.'
+    page === 'trip'    ? `The user is on a SPECIFIC trip detail page. A tripId is supplied — the system prompt will be augmented with that trip's destination, dates, itinerary, recent group-chat messages, members, and any pending vote suggestions. Treat yourself as the dedicated genie for THIS trip.`
+    : page === 'globe'   ? 'The user is on the globe destination discovery page, browsing the interactive 3D globe to choose a travel destination.'
     : page === 'atlas' ? `The user is in Atlas — the unified trip planner — setting up a trip to ${location || 'their destination'}. Atlas walks them through destination, dates, purpose, style, budget, interests, and origin in a single guided flow.`
     : page === 'style' ? `The user is on the travel preferences page, setting up a trip to ${location || 'their destination'}. They are selecting: travel purpose, style (${style || 'not yet chosen'}), budget (${budget || 'not yet set'}), interests (${interests || 'none yet'}), departure city, and arrival airport.`
     : page === 'dates' ? `The user is selecting travel dates for ${location || 'their destination'}. They are choosing departure and return dates and setting up multi-city stops if any.`
     : page === 'summary' ? `The user is viewing their AI-generated itinerary for ${location} — ${nights} nights, ${startDate} to ${endDate}. Purpose: ${purpose}. Style: ${style}. Budget: ${budget}.`
     : `The user is on the booking page for ${location} (${nights} nights, ${startDate}–${endDate}). They are booking flights from ${travelingFrom || 'their origin'}, hotels, and activities.`;
 
-  return { page, pageDesc, placeholder: placeholders[page], location, purpose, style, budget, nights, startDate, endDate, travelingFrom };
+  return { page, pageDesc, placeholder: placeholders[page], location, purpose, style, budget, nights, startDate, endDate, travelingFrom, tripId };
 }
 
 // ─── Inner component (uses hooks that need Suspense) ─────────────────────────
@@ -271,6 +284,11 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             style:    ctx.style,
             budget:   ctx.budget,
           },
+          // When the user is on a trip-detail page, the API pulls this
+          // trip's destination, itinerary, members, recent group-chat
+          // messages, and pending vote suggestions into the system prompt.
+          // null on every other page so the global genie behaves normally.
+          tripId: ctx.tripId ?? null,
         }),
       });
       if (!res.body) throw new Error('no body');
@@ -397,6 +415,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {messages.length === 0 && (() => {
                 const examples: Record<string, string[]> = {
+                  trip:    ['What did the group decide about Day 2?', 'Suggest a swap for the dinner on Day 3', 'Who has not voted yet?'],
                   globe:   ['Best places for beaches', 'Hidden gems in Asia', 'Where to go with kids?'],
                   style:   ['What travel style suits a foodie?', 'Difference between budget and backpacker?', 'Best style for solo travel?'],
                   dates:   ['Best month to visit Tokyo', 'When is cherry blossom season in Japan?', 'Avoid monsoon in Southeast Asia?'],
