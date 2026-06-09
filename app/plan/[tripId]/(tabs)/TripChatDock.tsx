@@ -243,15 +243,18 @@ export default function TripChatDock({ tripId, destination }: Props) {
         // previous 12px gap was causing the input to float above a dead
         // strip of dim page underneath.
         left: 0, right: 0,
-        // bottom lifts to clear the on-screen keyboard so the chat list
-        // stays visible while typing instead of being hidden behind it.
-        // 0 when no keyboard, otherwise the height visualViewport reports.
+        // bottom rides above the on-screen keyboard. height is no longer
+        // fixed at 86svh — letting top + bottom drive the box means the
+        // sheet shrinks to fit the available viewport instead of being
+        // pushed off the top of the screen when the keyboard rises.
         bottom: keyboardOffset,
-        // 86svh leaves ~14% of the underlying page peeking above the
-        // expanded sheet, so the user can still see where they are while
-        // chatting. Bottom rounded corners flattened since the sheet is
-        // now flush; only the top corners stay rounded.
-        height: '86svh',
+        // Top anchored at 14svh (14% breathing room above the sheet) so
+        // when the keyboard rises and the bottom lifts, the sheet HEIGHT
+        // shrinks to fit instead of being pushed off the top of the
+        // screen. Without this the chat went above the viewport when the
+        // keyboard opened. Bottom rounded corners flattened since the
+        // sheet is flush; only the top corners stay rounded.
+        top: '14svh',
         zIndex: 9400,
         display: 'flex', flexDirection: 'column',
         transform: transformValue,
