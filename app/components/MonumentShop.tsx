@@ -920,14 +920,13 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       <UnlockCeremony trigger={lastUnlock} originRef={unlockOriginRef} />
       {open && (
     <div style={{
-      // Sheet now docks to the bottom 70vh of the screen instead of
-      // overlaying the whole viewport — so the user can see the globe
-      // (and the equipped skin re-render) at the top while reading
-      // quests. Backdrop dropped to 0.25 so the globe stays visible
-      // behind the sheet. Tap outside the sheet still closes.
+      // Sheet docks to the bottom of the screen, sized so the upper
+      // ~45% of the viewport stays open for the live globe + monument
+      // skin re-render. Backdrop near-clear with minimal blur so the
+      // globe stays sharp behind the sheet. Tap outside still closes.
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.25)', WebkitBackdropFilter: 'blur(2px)', backdropFilter: 'blur(2px)',
+      background: 'rgba(0,0,0,0.18)', WebkitBackdropFilter: 'blur(1px)', backdropFilter: 'blur(1px)',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         position: 'relative',
@@ -935,7 +934,11 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
         border: '1px solid rgba(167, 139, 250,0.3)',
         borderTopLeftRadius: 24, borderTopRightRadius: 24,
         width: '100%', maxWidth: 640, animation: 'modalSlideUp 0.3s ease-out',
-        height: '70vh', display: 'flex', flexDirection: 'column',
+        // 55svh — small viewport height so iOS Safari's URL bar swing
+        // doesn't pop the sheet over the globe. Keeps ~45% of the
+        // screen for live globe + skin preview while reading quests.
+        height: '55svh', maxHeight: '55svh',
+        display: 'flex', flexDirection: 'column',
         boxShadow: '0 -16px 60px rgba(0,0,0,0.6), 0 0 60px rgba(167, 139, 250,0.1)',
         overflow: 'hidden',
       }}>
