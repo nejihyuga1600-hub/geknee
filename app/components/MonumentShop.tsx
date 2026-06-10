@@ -920,38 +920,29 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       <UnlockCeremony trigger={lastUnlock} originRef={unlockOriginRef} />
       {open && (
     <div style={{
-      // Sheet docks to the bottom; the area above the sheet stays a
-      // TRANSPARENT pass-through to the globe so the live monument skin
-      // swap is visible while the user reads quests. No backdrop blur
-      // and no dimming overlay above the sheet — the user explicitly
-      // can't see skin changes when the globe is fogged. Tap outside
-      // the sheet still closes via the onClick on this container.
+      // Fullscreen overlay. Earlier iterations docked the sheet to the
+      // bottom 55svh so the globe stayed visible behind, but the user
+      // wanted the full detail screen back — too much content (skin
+      // quests, share, leaderboard) was getting cropped at the bottom.
+      // Globe-zoom-to-monument now happens on tap (see CapacitorGlobe
+      // marker click), so the live preview moment lives BEFORE the
+      // shop opens, not behind it.
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      background: 'transparent',
-      // Allow taps on the globe area above the sheet to fall through
-      // to the globe markers (pinch-zoom, drag-rotate) instead of all
-      // gestures dying on this overlay. The sheet itself re-enables
-      // pointer-events on its own root below.
-      pointerEvents: 'none',
+      display: 'flex', alignItems: 'stretch', justifyContent: 'center',
+      background: 'rgba(2, 4, 12, 0.92)',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         position: 'relative',
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
         border: '1px solid rgba(167, 139, 250,0.3)',
-        borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        width: '100%', maxWidth: 640, animation: 'modalSlideUp 0.3s ease-out',
-        // 55svh — small viewport height so iOS Safari's URL bar swing
-        // doesn't pop the sheet over the globe. Keeps ~45% of the
-        // screen for live globe + skin preview while reading quests.
-        height: '55svh', maxHeight: '55svh',
+        width: '100%', maxWidth: 640,
+        animation: 'modalSlideUp 0.3s ease-out',
+        // Fullscreen — claim the entire viewport. iOS safe-area insets
+        // handled inside the inner content padding where needed.
+        height: '100svh', maxHeight: '100svh',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 -16px 60px rgba(0,0,0,0.6), 0 0 60px rgba(167, 139, 250,0.1)',
         overflow: 'hidden',
-        // Re-enable interactions on the sheet itself — the outer
-        // container is pointer-events: none so taps above the sheet
-        // fall through to the globe.
-        pointerEvents: 'auto',
       }}>
         {/* Absolute-positioned Close pill — anchored top-right of the modal
             so it stays visible regardless of how wide the header content

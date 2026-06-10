@@ -532,6 +532,18 @@ export default function CapacitorGlobe() {
         el.setAttribute("aria-label", mk);
         el.style.cssText = "width:72px;height:72px;background:transparent;cursor:pointer;";
         el.addEventListener("click", () => {
+          // Fly the globe IN to the tapped monument so the user sees
+          // the live skin preview at street/landmark level before the
+          // fullscreen shop opens. Zoom 14 lands at landmark scale
+          // (matches the search-bar zoom for landmark mks). The pause
+          // handler kicks in once the shop mounts so the heavy zoom
+          // doesn't compound with the modal backdrop GPU load.
+          map.flyTo({
+            center: [lon, lat],
+            zoom: 14,
+            duration: 1400,
+            essential: true,
+          });
           // Existing select event — preserved for any legacy listeners.
           window.dispatchEvent(
             new CustomEvent("geknee:monument-select", { detail: { mk } }),
