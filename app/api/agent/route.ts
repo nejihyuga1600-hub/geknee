@@ -8,6 +8,10 @@ import { captureError } from '@/lib/sentry';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
+// Same 5-minute ceiling as /api/itinerary. The agent loop fans out
+// multiple tool calls before synthesis; on big trips it routinely
+// approaches 2-3 minutes. Default 60 s cuts it off mid-stream.
+export const maxDuration = 300;
 
 const SYSTEM_PROMPT = `You are geknee's travel-planning agent. Plan trips by gathering real facts with tools BEFORE writing any prose.
 

@@ -7,6 +7,25 @@ import { captureError } from "@/lib/sentry";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Force per-request rendering and disable buffering. Without these,
+// Vercel's default routing buffers the streaming body until the whole
+// response is generated, so the user sees a frozen UI until completion
+// (then everything appears at once). Also raise maxDuration above the
+// 60 s Pro default — agent-path replans pull tool calls before the
+// first text byte and can run 30-90 s.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const maxDuration = 300;
+
+const STREAM_HEADERS = {
+  "Content-Type": "text/plain; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  "X-Accel-Buffering": "no",
+  "Transfer-Encoding": "chunked",
+  "Connection": "keep-alive",
+};
+
 interface ReplanBody {
   section: string;     // markdown of the section to rewrite
   itinerary: string;   // full itinerary for context
@@ -52,6 +71,14 @@ Output ONLY the rewritten section markdown. Keep the same heading. Match the exi
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
+      // 8 KB prime breaks through Vercel/Node small-write buffering so
+      // the client's reader wakes up before the first real byte.
+      try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
+      let firstDeltaSeen = false;
+      const heartbeat = setInterval(() => {
+        if (firstDeltaSeen) return;
+        try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
+      }, 500);
       try {
         await runAgent({
           client,
@@ -62,20 +89,23 @@ Output ONLY the rewritten section markdown. Keep the same heading. Match the exi
           onEvent: (e) => {
             // Adapt SSE events → plain text. Existing client expects raw
             // text deltas, not data: framed events.
-            if (e.type === "text") controller.enqueue(encoder.encode(e.delta));
+            if (e.type === "text") {
+              firstDeltaSeen = true;
+              try { controller.enqueue(encoder.encode(e.delta)); } catch {}
+            }
           },
         });
       } catch (err) {
         captureError(err, { route: "/api/itinerary/replan", path: "agent", userId });
+        try { controller.enqueue(encoder.encode("\n\n[Error regenerating section. Please try again.]")); } catch {}
       } finally {
-        controller.close();
+        clearInterval(heartbeat);
+        try { controller.close(); } catch {}
       }
     },
   });
 
-  return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+  return new Response(readable, { headers: STREAM_HEADERS });
 }
 
 async function runLegacy(body: ReplanBody): Promise<Response> {
@@ -100,25 +130,37 @@ ${section}
 
 Rewrite ONLY the section above. Keep the same markdown heading (## ...) but replace the content with an improved version. Match the format exactly (bullet points, time blocks, cost estimates). Output only the rewritten section — no preamble, no commentary.`;
 
-  const stream = await client.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
-  });
-
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
-      for await (const chunk of stream) {
-        if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
-          controller.enqueue(encoder.encode(chunk.delta.text));
+      try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
+      let firstDeltaSeen = false;
+      const heartbeat = setInterval(() => {
+        if (firstDeltaSeen) return;
+        try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
+      }, 500);
+      try {
+        const stream = await client.messages.stream({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: prompt }],
+        });
+        for await (const chunk of stream) {
+          if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+            firstDeltaSeen = true;
+            try { controller.enqueue(encoder.encode(chunk.delta.text)); } catch {}
+          }
         }
+      } catch (err) {
+        console.error("[itinerary/replan/legacy] error:", err);
+        captureError(err, { route: "/api/itinerary/replan", path: "legacy" });
+        try { controller.enqueue(encoder.encode("\n\n[Error regenerating section. Please try again.]")); } catch {}
+      } finally {
+        clearInterval(heartbeat);
+        try { controller.close(); } catch {}
       }
-      controller.close();
     },
   });
 
-  return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+  return new Response(readable, { headers: STREAM_HEADERS });
 }

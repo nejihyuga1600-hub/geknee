@@ -7,6 +7,23 @@ import { captureError } from "@/lib/sentry";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Optimize rewrites the full itinerary — easily 30–90 s on the agent
+// path (route_between calls per bookmark + synthesis). Default 60 s
+// Pro timeout cuts it off mid-stream; bump to 300 s like /api/itinerary.
+// Disable buffering so deltas reach the client live.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const maxDuration = 300;
+
+const STREAM_HEADERS = {
+  "Content-Type": "text/plain; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  "X-Accel-Buffering": "no",
+  "Transfer-Encoding": "chunked",
+  "Connection": "keep-alive",
+};
+
 interface OptimizeBody {
   itinerary: string;
   bookmarks: Array<{ name: string; coords: [number, number] }>;
@@ -71,6 +88,12 @@ ${buildPromptShared(body)}`;
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
+      try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
+      let firstDeltaSeen = false;
+      const heartbeat = setInterval(() => {
+        if (firstDeltaSeen) return;
+        try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
+      }, 500);
       try {
         await runAgent({
           client,
@@ -79,19 +102,22 @@ ${buildPromptShared(body)}`;
           tools: getAgentTools(),
           ctx: { userId },
           onEvent: (e) => {
-            if (e.type === "text") controller.enqueue(encoder.encode(e.delta));
+            if (e.type === "text") {
+              firstDeltaSeen = true;
+              try { controller.enqueue(encoder.encode(e.delta)); } catch {}
+            }
           },
         });
       } catch (err) {
         captureError(err, { route: "/api/itinerary/optimize", path: "agent", userId });
+        try { controller.enqueue(encoder.encode("\n\n[Error optimizing itinerary. Please try again.]")); } catch {}
       } finally {
-        controller.close();
+        clearInterval(heartbeat);
+        try { controller.close(); } catch {}
       }
     },
   });
-  return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+  return new Response(readable, { headers: STREAM_HEADERS });
 }
 
 async function runLegacy(body: OptimizeBody): Promise<Response> {
@@ -99,25 +125,37 @@ async function runLegacy(body: OptimizeBody): Promise<Response> {
 
 ${buildPromptShared(body)}`;
 
-  const stream = await client.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8000,
-    messages: [{ role: "user", content: prompt }],
-  });
-
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
-      for await (const chunk of stream) {
-        if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
-          controller.enqueue(encoder.encode(chunk.delta.text));
+      try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
+      let firstDeltaSeen = false;
+      const heartbeat = setInterval(() => {
+        if (firstDeltaSeen) return;
+        try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
+      }, 500);
+      try {
+        const stream = await client.messages.stream({
+          model: "claude-sonnet-4-6",
+          max_tokens: 8000,
+          messages: [{ role: "user", content: prompt }],
+        });
+        for await (const chunk of stream) {
+          if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+            firstDeltaSeen = true;
+            try { controller.enqueue(encoder.encode(chunk.delta.text)); } catch {}
+          }
         }
+      } catch (err) {
+        console.error("[itinerary/optimize/legacy] error:", err);
+        captureError(err, { route: "/api/itinerary/optimize", path: "legacy" });
+        try { controller.enqueue(encoder.encode("\n\n[Error optimizing itinerary. Please try again.]")); } catch {}
+      } finally {
+        clearInterval(heartbeat);
+        try { controller.close(); } catch {}
       }
-      controller.close();
     },
   });
 
-  return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+  return new Response(readable, { headers: STREAM_HEADERS });
 }

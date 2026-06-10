@@ -1047,6 +1047,7 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     const section = sections[sectionIdx];
     if (!section || replanningSection !== null) return;
     setReplanningSection(sectionIdx);
+    setError('');
     const sectionText = `## ${section.heading}\n${section.lines.join('\n')}`;
     try {
       const res = await fetch('/api/itinerary/replan', {
@@ -1058,7 +1059,11 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
           tripInfo: { location, nights, purpose, style: travelStyle, budget },
         }),
       });
-      if (!res.body) throw new Error('No body');
+      if (!res.ok || !res.body) {
+        console.error('[replan] HTTP', res.status, res.statusText);
+        setError(`Couldn't regenerate that section (${res.status}). Try again in a moment.`);
+        return;
+      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = '';
@@ -1073,7 +1078,15 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
           ));
         }
       }
-    } catch {}
+      // Server emits "[Error regenerating section. …]" on failure.
+      // Surface it instead of silently leaving the section half-rewritten.
+      if (acc.includes('[Error regenerating section')) {
+        setError("Section regeneration hit an error mid-stream. The original section is unchanged — try again.");
+      }
+    } catch (err) {
+      console.error('[replan] network/stream error:', err);
+      setError("Network hiccup regenerating that section. Check your connection and retry.");
+    }
     finally { setReplanningSection(null); }
   }, [sections, replanningSection, fullItinerary, location, nights, purpose, travelStyle, budget]);
 

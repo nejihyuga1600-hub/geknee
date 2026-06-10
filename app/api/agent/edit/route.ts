@@ -5,6 +5,10 @@ import { isAgentEnabledFor } from '@/lib/agent/feature-flag';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
+// Agent edits fan out to multiple tool calls before synthesizing the
+// edited itinerary; 60 s Pro default isn't enough. 300 s matches
+// /api/itinerary so smart-edit doesn't get cut off mid-stream.
+export const maxDuration = 300;
 
 // Convenience endpoint: looks up the trip's saved itinerary and forwards
 // to /api/agent in edit mode. Saves the client a round-trip and ensures
