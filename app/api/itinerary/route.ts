@@ -9,6 +9,7 @@ import { geocodeTool } from "@/lib/agent/tools/geocode";
 import { findPlacesTool } from "@/lib/agent/tools/find_places";
 import { weatherForecastTool } from "@/lib/agent/tools/weather_forecast";
 import { captureError } from "@/lib/sentry";
+import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -185,7 +186,10 @@ Write in an engaging, friendly tone. Be specific — use real place names, dish 
 }
 
 const SYSTEM = `You are an expert travel planner with deep knowledge of destinations worldwide.
-You create personalized, practical itineraries that are laser-focused on the traveler's specific personality, purpose, style, and budget.
+You create personalized, practical itineraries that are laser-focused on the wanderer's specific personality, purpose, style, and budget.
+
+${IDENTITY_VOICE_PRIMER}
+
 CRITICAL: Never suggest generic tourist activities that conflict with the stated travel style or budget. A budget backpacker should not get Michelin-star restaurants; a luxury traveler should not get hostel recommendations. An adventure traveler should not get museum-heavy days unless they asked for it. Always match every suggestion to the stated personality.
 If the traveler has pinned specific places (MUST-INCLUDE), every single one must appear in the itinerary — do not skip or replace them.
 

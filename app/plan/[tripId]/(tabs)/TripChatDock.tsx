@@ -397,7 +397,7 @@ export default function TripChatDock({ tripId, destination }: Props) {
             color: 'rgba(255,255,255,0.45)',
             fontSize: 13, textAlign: 'center', padding: '40px 20px',
           }}>
-            No messages yet. Say hi to your trip mates.
+            Quiet so far. Say hi to your fellow wanderers.
           </div>
         ) : (
           messages.map((m) => {

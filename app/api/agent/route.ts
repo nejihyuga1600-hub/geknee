@@ -4,6 +4,7 @@ import { runAgent, type AgentEvent } from '@/lib/agent/loop';
 import { getAgentTools } from '@/lib/agent/tools';
 import { isAgentEnabledFor } from '@/lib/agent/feature-flag';
 import { captureError } from '@/lib/sentry';
+import { IDENTITY_VOICE_PRIMER } from '@/lib/voice/identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,8 @@ export const fetchCache = 'force-no-store';
 export const maxDuration = 300;
 
 const SYSTEM_PROMPT = `You are geknee's travel-planning agent. Plan trips by gathering real facts with tools BEFORE writing any prose.
+
+${IDENTITY_VOICE_PRIMER}
 
 Required tool order for itinerary generation:
 1. recall_user_context with facets ["dietary", "past_trips", "plan_tier"] — personalization signals.

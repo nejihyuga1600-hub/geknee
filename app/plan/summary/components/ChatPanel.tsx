@@ -188,7 +188,7 @@ export function ChatPanel({
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {friendMessages.length === 0 && (
               <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, textAlign: 'center', marginTop: 24, lineHeight: 1.7 }}>
-                No messages yet.{'\n'}Share the invite link so friends can join!
+                Quiet so far.{'\n'}Share the invite link so fellow wanderers can join!
               </p>
             )}
             {friendMessages.map(msg => (

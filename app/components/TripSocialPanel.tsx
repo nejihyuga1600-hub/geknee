@@ -1290,7 +1290,7 @@ export default function TripSocialPanel({
               {chatMsgs.length === 0 && (
                 <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 13, marginTop: 40 }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{String.fromCodePoint(0x1F4AC)}</div>
-                  No messages yet — say hello!
+                  Quiet so far — say hi to your fellow wanderers!
                 </div>
               )}
               {chatMsgs.map(msg => {

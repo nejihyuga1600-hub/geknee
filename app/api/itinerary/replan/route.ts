@@ -4,6 +4,7 @@ import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
 import { runAgent } from "@/lib/agent/loop";
 import { getAgentTools } from "@/lib/agent/tools";
 import { captureError } from "@/lib/sentry";
+import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -66,7 +67,9 @@ ${instruction ? `Specific instruction: "${instruction}"` : ""}
 
 Output ONLY the rewritten section markdown. Keep the same heading. Match the existing bullet/time-block format. No preamble, no commentary.`;
 
-  const systemPrompt = `You replan single sections of travel itineraries. Use tools (find_places, route_between, weather_forecast) to validate restaurant names and transit times BEFORE outputting. Output only the rewritten section markdown — no preamble, no commentary, no explanation.`;
+  const systemPrompt = `You replan single sections of travel itineraries for geknee's wanderers. Use tools (find_places, route_between, weather_forecast) to validate restaurant names and transit times BEFORE outputting. Output only the rewritten section markdown — no preamble, no commentary, no explanation.
+
+${IDENTITY_VOICE_PRIMER}`;
 
   const encoder = new TextEncoder();
   const readable = new ReadableStream({

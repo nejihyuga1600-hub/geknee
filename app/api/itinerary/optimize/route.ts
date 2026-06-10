@@ -4,6 +4,7 @@ import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
 import { runAgent } from "@/lib/agent/loop";
 import { getAgentTools } from "@/lib/agent/tools";
 import { captureError } from "@/lib/sentry";
+import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -83,7 +84,9 @@ Output the COMPLETE revised itinerary in markdown. No preamble, no commentary.`;
 async function runViaAgent(body: OptimizeBody, userId: string): Promise<Response> {
   const userPrompt = `EXISTING ITINERARY (this is what you are revising):
 ${buildPromptShared(body)}`;
-  const systemPrompt = `You optimize travel itineraries by inserting newly-bookmarked destinations on the days where they fit best. Use route_between to verify which existing day each new place is geographically nearest to. Use find_places only when you need to validate a name. Output the COMPLETE rewritten itinerary in markdown — no preamble, no commentary.`;
+  const systemPrompt = `You optimize travel itineraries for geknee's wanderers by inserting newly-bookmarked destinations on the days where they fit best. Use route_between to verify which existing day each new place is geographically nearest to. Use find_places only when you need to validate a name. Output the COMPLETE rewritten itinerary in markdown — no preamble, no commentary.
+
+${IDENTITY_VOICE_PRIMER}`;
 
   const encoder = new TextEncoder();
   const readable = new ReadableStream({

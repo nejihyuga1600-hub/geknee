@@ -920,7 +920,7 @@ export default function AtlasShell() {
               onKeyDown={(e) => e.key === "Enter" && submitDest()}
               onClick={(e) => e.stopPropagation()}
               onFocus={() => setSheet("open")}
-              placeholder="Try 'Kyoto', 'Iceland', 'somewhere warm'…"
+              placeholder="Where to, wanderer? 'Kyoto', 'Iceland', 'somewhere warm'…"
               style={{
                 flex: 1,
                 padding: "12px 16px",
@@ -1642,7 +1642,7 @@ function StepDestination({
         value={dest}
         onChange={(e) => { setDest(e.target.value); if (destError) setDestError(null); }}
         onKeyDown={(e) => e.key === "Enter" && submitDest()}
-        placeholder="Try 'Kyoto', 'Iceland', 'Eiffel Tower'…"
+        placeholder="Where to, explorer? 'Kyoto', 'Iceland', 'Eiffel Tower'…"
         style={{
           width: "100%",
           marginTop: 16,
