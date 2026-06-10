@@ -34,7 +34,7 @@ import { ActivityBlock } from './components/ActivityBlock';
 import { ChatPanel } from './components/ChatPanel';
 import { SectionCard } from './components/SectionCard';
 import type { EditTarget, RouteStop, ChatMessage } from './lib/types';
-import { Sparkle } from '@/lib/icons';
+import { Sparkle, Map as MapIcon } from '@/lib/icons';
 
 // Unified trip map (one Google Map for all days, with day-filter chips).
 // Lazy-loaded so the maps SDK doesn't ship until the itinerary tab opens.
@@ -365,6 +365,13 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // taps. Desktop always renders live. Resets when tripId changes.
   const [mapInteractive, setMapInteractive] = useState(false);
   useEffect(() => { setMapInteractive(false); }, [savedTripId]);
+
+  // Mobile slide-out drawer for the trip map. Default closed — phone
+  // users get a left-edge floating button (Map icon) that toggles it
+  // open. The drawer is position:fixed and slides in from the left so
+  // the itinerary text stays readable underneath. Desktop ignores this
+  // state entirely (map sticky-renders in the right column).
+  const [mapDrawerOpen, setMapDrawerOpen] = useState(false);
   const mapControlRef = useRef<{ panTo: (coords: [number, number]) => void; openPlace: (placeId: string, coords: [number, number]) => void } | null>(null);
 
   // Persist pins across refresh, keyed by destination so each trip has its
@@ -1373,6 +1380,147 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
         onClose={() => setUpgradeModal({ open: false })}
       />
 
+      {/* Mobile left-edge map drawer. Replaces the inline map block on
+          phones — the map is a context tool, not the centre of the
+          page, so docking it off-screen until summoned keeps the
+          itinerary readable. Pattern mirrors the slide-in side nav in
+          the Claude mobile app: left-edge toggle button + 88%-wide
+          drawer + dimmed backdrop. Desktop keeps the inline sticky
+          map (this block returns null on >=768 px). */}
+      {isMobile && (
+        <>
+          {/* Floating left-edge toggle — Map icon from lib/icons.tsx
+              (cyan/gold geknee palette). Hides while the drawer is
+              open so it doesn't sit on top of the drawer's own close
+              button. Anchored above the trip-chat dock (zIndex 9400)
+              so it stays reachable when the chat sheet is collapsed. */}
+          {!mapDrawerOpen && (
+            <button
+              type="button"
+              onClick={() => setMapDrawerOpen(true)}
+              aria-label="Open trip map"
+              style={{
+                position: 'fixed',
+                left: 0,
+                top: 'calc(50svh - 28px)',
+                zIndex: 9450,
+                width: 44, height: 56,
+                padding: 0,
+                background: 'rgba(14, 16, 32, 0.78)',
+                border: '1px solid rgba(167,139,250,0.35)',
+                borderLeft: 'none',
+                borderTopRightRadius: 14,
+                borderBottomRightRadius: 14,
+                color: '#a78bfa',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                WebkitBackdropFilter: 'blur(14px)',
+                backdropFilter: 'blur(14px)',
+                boxShadow: '0 12px 36px rgba(0,0,0,0.55)',
+              }}
+            >
+              <MapIcon size={22} />
+            </button>
+          )}
+
+          {/* Backdrop. Tap to close. Only renders when the drawer is
+              open so it doesn't block touches on the itinerary. */}
+          {mapDrawerOpen && (
+            <div
+              onClick={() => setMapDrawerOpen(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9460,
+                background: 'rgba(6, 8, 22, 0.6)',
+                animation: 'modalFadeIn 0.2s ease-out',
+              }}
+            />
+          )}
+
+          {/* The drawer itself — slides in from the left via translateX.
+              Holds the live UnifiedTripMap with the same props the
+              inline mobile render uses, so pin/regenerate behaviour is
+              unchanged. The drawer hosts the heavy Google-Maps mount
+              only while open (lazy via the mapInteractive sentinel
+              already in place) so we don't pay the OOM tax on cold
+              loads of the itinerary tab. */}
+          <aside
+            aria-label="Trip map"
+            aria-hidden={!mapDrawerOpen}
+            style={{
+              position: 'fixed',
+              top: 0, bottom: 0, left: 0,
+              width: '88vw', maxWidth: 480,
+              zIndex: 9470,
+              background: '#0a0f1e',
+              borderRight: '1px solid rgba(167,139,250,0.25)',
+              boxShadow: mapDrawerOpen ? '12px 0 40px rgba(0,0,0,0.6)' : 'none',
+              transform: mapDrawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 300ms cubic-bezier(0.2, 0.9, 0.3, 1)',
+              willChange: 'transform',
+              display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+              overscrollBehavior: 'contain',
+            }}
+          >
+            <header style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              gap: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <MapIcon size={18} />
+                <span style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)',
+                  fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                }}>Trip Map</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMapDrawerOpen(false)}
+                aria-label="Close map"
+                style={{
+                  width: 32, height: 32, borderRadius: 999,
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#cbd5e1', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 0, fontFamily: 'inherit',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </header>
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              {mapDrawerOpen && (savedTripId || location) && (
+                <UnifiedTripMap
+                  sections={sections}
+                  location={location}
+                  sticky={false}
+                  fillHeight={true}
+                  bookmarks={bookmarks}
+                  onAddBookmark={handlePinFromMap}
+                  onRemoveBookmark={(id) => {
+                    setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                    setPendingBookmarkIds((prev) => {
+                      if (!prev.has(id)) return prev;
+                      const next = new Set(prev); next.delete(id); return next;
+                    });
+                  }}
+                  pinChangeCount={pinChangeCount}
+                  onRegenerate={requestGeneration}
+                  tripId={savedTripId ?? undefined}
+                />
+              )}
+            </div>
+          </aside>
+        </>
+      )}
+
       {/* Regen-confirm modal — fires when the user clicks Generate on a
           trip that already has an itinerary. Two paths: smart edit
           (surgical, ~$0.02) or full regenerate (current behavior, ~$0.05). */}
@@ -2252,34 +2400,40 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                   map's overlays (search bar + Find recs button) live at
                   top:8 of the map div, so any offset less than the
                   navbar's 56px hides them behind it. */}
-              <div
-                style={{
-                  position: isMobile ? 'static' : 'sticky',
-                  top: isMobile ? undefined : 72,
-                  alignSelf: 'start',
-                  height: isMobile ? 320 : 'calc(100svh - 88px)',
-                }}
-              >
-                <UnifiedTripMap
-                  sections={[]}
-                  location={location}
-                  sticky={false}
-                  height={isMobile ? 320 : undefined}
-                  fillHeight={!isMobile}
-                  bookmarks={bookmarks}
-                  onAddBookmark={handlePinFromMap}
-                  onRemoveBookmark={(id) => {
-                    setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
-                    setPendingBookmarkIds((prev) => {
-                      if (!prev.has(id)) return prev;
-                      const next = new Set(prev); next.delete(id); return next;
-                    });
+              {/* Desktop renders the sticky inline map column. Mobile
+                  delegates to the left-edge drawer at the top of the
+                  return so the itinerary text gets the full viewport
+                  width — the user opens the drawer from the floating
+                  Map button only when they actually need the map. */}
+              {!isMobile && (
+                <div
+                  style={{
+                    position: 'sticky',
+                    top: 72,
+                    alignSelf: 'start',
+                    height: 'calc(100svh - 88px)',
                   }}
-                  pinChangeCount={pinChangeCount}
-                  onRegenerate={requestGeneration}
-                  tripId={savedTripId ?? undefined}
-                />
-              </div>
+                >
+                  <UnifiedTripMap
+                    sections={[]}
+                    location={location}
+                    sticky={false}
+                    fillHeight={true}
+                    bookmarks={bookmarks}
+                    onAddBookmark={handlePinFromMap}
+                    onRemoveBookmark={(id) => {
+                      setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                      setPendingBookmarkIds((prev) => {
+                        if (!prev.has(id)) return prev;
+                        const next = new Set(prev); next.delete(id); return next;
+                      });
+                    }}
+                    pinChangeCount={pinChangeCount}
+                    onRegenerate={requestGeneration}
+                    tripId={savedTripId ?? undefined}
+                  />
+                </div>
+              )}
             </div>
           );
         })()}
@@ -2460,71 +2614,38 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                   );
                 })}
               </div>
-              {sections.length > 0 && (
+              {/* Desktop keeps the sticky right-column map. Mobile
+                  routes through the left-edge slide-out drawer at the
+                  top of the return — the inline map block was eating
+                  the entire upper half of the phone viewport before
+                  the user even reached the itinerary text. */}
+              {sections.length > 0 && !isMobile && (
                 <div
                   style={{
-                    position: isMobile ? 'static' : 'sticky',
-                    top: isMobile ? undefined : 72,
+                    position: 'sticky',
+                    top: 72,
                     alignSelf: 'start',
-                    height: isMobile ? 'auto' : 'calc(100svh - 88px)',
+                    height: 'calc(100svh - 88px)',
                   }}
                 >
-                  {isMobile && !mapInteractive && (savedTripId || location) ? (
-                    <button
-                      type="button"
-                      onClick={() => setMapInteractive(true)}
-                      aria-label="Load interactive map"
-                      style={{
-                        position: 'relative', display: 'block', width: '100%', height: 320,
-                        padding: 0, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14,
-                        overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)',
-                      }}
-                    >
-                      <img
-                        src={savedTripId
-                          ? `/api/og-trip-map/${savedTripId}`
-                          : `/api/staticmap?location=${encodeURIComponent(location)}&w=640&h=320&zoom=11`}
-                        alt="Trip map preview"
-                        loading="lazy"
-                        decoding="async"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
-                      <div style={{
-                        position: 'absolute', inset: 0,
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 45%)',
-                        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                        padding: 16, pointerEvents: 'none',
-                      }}>
-                        <span style={{
-                          background: 'rgba(167,139,250,0.95)', color: '#0b0b0f',
-                          padding: '8px 16px', borderRadius: 999, fontSize: 12, fontWeight: 700,
-                          letterSpacing: 0.3, textTransform: 'uppercase',
-                        }}>
-                          Tap to interact
-                        </span>
-                      </div>
-                    </button>
-                  ) : (
-                    <UnifiedTripMap
-                      sections={sections}
-                      location={location}
-                      sticky={false}
-                      height={isMobile ? 320 : undefined}
-                      fillHeight={!isMobile}
-                      bookmarks={bookmarks}
-                      onAddBookmark={handlePinFromMap}
-                      onRemoveBookmark={(id) => {
-                        setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
-                        setPendingBookmarkIds((prev) => {
-                          if (!prev.has(id)) return prev;
-                          const next = new Set(prev); next.delete(id); return next;
-                        });
-                      }}
-                      pinChangeCount={pinChangeCount}
-                      onRegenerate={requestGeneration}
-                      tripId={savedTripId ?? undefined}
-                    />
-                  )}
+                  <UnifiedTripMap
+                    sections={sections}
+                    location={location}
+                    sticky={false}
+                    fillHeight={true}
+                    bookmarks={bookmarks}
+                    onAddBookmark={handlePinFromMap}
+                    onRemoveBookmark={(id) => {
+                      setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+                      setPendingBookmarkIds((prev) => {
+                        if (!prev.has(id)) return prev;
+                        const next = new Set(prev); next.delete(id); return next;
+                      });
+                    }}
+                    pinChangeCount={pinChangeCount}
+                    onRegenerate={requestGeneration}
+                    tripId={savedTripId ?? undefined}
+                  />
                 </div>
               )}
             </div>
