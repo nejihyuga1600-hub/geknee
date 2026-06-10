@@ -233,6 +233,11 @@ export default function TripChatDock({ tripId, destination }: Props) {
   const titleText = destination ? `${destination} chat` : 'Trip chat';
 
   return (
+    <>
+    {/* WebKit scrollbar hide for the messages list inside the dock.
+        scrollbarWidth / msOverflowStyle (Firefox / IE) are set inline on
+        the list; Safari / Chrome need this CSS pseudo-element. */}
+    <style>{`.geknee-chat-list::-webkit-scrollbar { width: 0; height: 0; display: none; }`}</style>
     <div
       role="region"
       aria-label="Trip group chat"
@@ -271,6 +276,12 @@ export default function TripChatDock({ tripId, destination }: Props) {
         backdropFilter: 'blur(28px) saturate(200%)',
         boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.22), 0 -12px 36px rgba(0,0,0,0.50)',
         overflow: 'hidden',
+        // Hard lock — the dock root never scrolls on either axis. Only
+        // the inner messages list scrolls, and overscrollBehavior on
+        // that list contains its bounce. Without this, iOS rubber-band
+        // was bouncing the entire sheet up/down and the form button
+        // sometimes slid off the bottom edge.
+        overscrollBehavior: 'contain',
       }}
     >
       {/* Header — drag handle + preview row. Drag handlers live here only. */}
@@ -381,16 +392,25 @@ export default function TripChatDock({ tripId, destination }: Props) {
       {/* Messages — only renders when expanded or near-expanded to keep the
           collapsed state lightweight. Scrollable area; gestures inside the
           list don't drag the sheet (touchAction: pan-y). */}
-      <div style={{
+      <div className="geknee-chat-list" style={{
         flex: 1, minHeight: 0, minWidth: 0,
         overflowY: 'auto',
         overflowX: 'hidden',
+        // overscroll-behavior: contain prevents the messages list's
+        // bounce from chaining up into the page underneath (which was
+        // what made "everything move" when scrolling near the top or
+        // bottom of the list).
+        overscrollBehavior: 'contain',
         padding: '0 14px 8px',
         display: 'flex', flexDirection: 'column', gap: 8,
         touchAction: 'pan-y',
         opacity: expanded ? 1 : 0,
         pointerEvents: expanded ? 'auto' : 'none',
         transition: 'opacity 200ms ease',
+        // Hide the scrollbar chrome on both axes — Firefox / IE first,
+        // WebKit handled via the global style block at the file root.
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
       }}>
         {messages.length === 0 ? (
           <div style={{
@@ -496,5 +516,6 @@ export default function TripChatDock({ tripId, destination }: Props) {
         </button>
       </form>
     </div>
+    </>
   );
 }
