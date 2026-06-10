@@ -5,6 +5,22 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CheckoutButton from '../pricing/CheckoutButton';
 import createGlobe, { type COBEOptions } from 'cobe';
+import { track, useScreen } from '@/lib/analytics';
+
+// Human-readable slide names for analytics events. Indexed by step so
+// PostHog funnels show "welcome → educate-concept → tiers → ..." instead
+// of opaque step numbers. Keep in lockstep with the slide order below.
+const STEP_NAMES = [
+  'welcome',          // 0
+  'educate_concept',  // 1
+  'tiers',            // 2
+  'go_prove_unlock',  // 3
+  'pick_style',       // 4
+  'pick_destinations',// 5
+  'profile_name',     // 6
+  'personalizing',    // 7
+  'paywall',          // 8
+] as const;
 
 // ── Brand tokens — match the cosmic design used across /pricing and /plan ──
 const T = {
@@ -103,7 +119,37 @@ export default function OnboardingFlow() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
   }, [data]);
 
-  const go = (delta: number) => setStep((s) => Math.max(0, Math.min(TOTAL_STEPS - 1, s + delta)));
+  // Screen-level event for the whole onboarding route — keeps
+  // /onboarding visible in the screen funnel even though we also fire
+  // a per-slide event below.
+  useScreen('onboarding');
+
+  // Per-slide funnel event. Fires every time the step index changes,
+  // including the initial mount, so the conversion rate from each
+  // slide → next is computable in PostHog without inferring from
+  // pageviews.
+  useEffect(() => {
+    track('onboarding_step_view', {
+      step,
+      name: STEP_NAMES[step] ?? `step_${step}`,
+    });
+  }, [step]);
+
+  const go = (delta: number) => {
+    setStep((s) => {
+      const next = Math.max(0, Math.min(TOTAL_STEPS - 1, s + delta));
+      // Direction-aware funnel event so we can separate intentional
+      // forward progress from back-presses.
+      if (next !== s) {
+        track(delta > 0 ? 'onboarding_step_continue' : 'onboarding_back', {
+          from: s, to: next,
+          from_name: STEP_NAMES[s] ?? `step_${s}`,
+          to_name: STEP_NAMES[next] ?? `step_${next}`,
+        });
+      }
+      return next;
+    });
+  };
   const update = (patch: Partial<Data>) => setData((d) => ({ ...d, ...patch }));
   const toggle = (key: 'styles' | 'dests', val: string) =>
     setData((d) => {
@@ -116,8 +162,28 @@ export default function OnboardingFlow() {
   const showSkip = step > 0 && step < 7;
 
   const finishFree = () => {
+    track('onboarding_completed_free', {
+      styles_picked: data.styles.length,
+      dests_picked: data.dests.length,
+      has_name: !!data.name,
+    });
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
     router.push('/plan/location');
+  };
+
+  // Skip button click — jumps straight to the paywall (step 8). Tag
+  // the from_step so we know where users are bailing out from.
+  const onSkip = () => {
+    track('onboarding_skip', { from_step: step, from_name: STEP_NAMES[step] ?? `step_${step}` });
+    setStep(8);
+  };
+
+  // "I already have an account" — both the welcome slide and the
+  // header link route here. Distinct event so the funnel can subtract
+  // returning users from the new-acquisition rate.
+  const onExistingAccount = (surface: 'welcome' | 'header') => {
+    track('onboarding_existing_account', { surface });
+    setStep(8);
   };
 
   return (
@@ -223,7 +289,7 @@ export default function OnboardingFlow() {
         )}
         {showSkip && (
           <button
-            onClick={() => setStep(8)}
+            onClick={onSkip}
             style={{
               position: 'absolute', top: 34, right: 26, zIndex: 10,
               fontFamily: T.mono, fontSize: 11,
@@ -246,7 +312,7 @@ export default function OnboardingFlow() {
           <Globe />
           <FooterArea>
             <PrimaryButton onClick={() => go(1)}>Show me how →</PrimaryButton>
-            <GhostButton onClick={() => setStep(8)} small>I already have an account</GhostButton>
+            <GhostButton onClick={() => onExistingAccount('welcome')} small>I already have an account</GhostButton>
           </FooterArea>
         </Slide>
 

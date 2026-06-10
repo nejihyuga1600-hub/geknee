@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useScreen } from "@/lib/analytics";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
@@ -270,6 +271,7 @@ function nextMonthStart(monthIdx: number): string {
 }
 
 export default function AtlasShell() {
+  useScreen('globe_home');
   const [sheet, setSheet] = useState<SheetState>("peek");
   // Globe fallback state — false by default so the WebGL globe mounts.
   // Flips true if (a) sessionStorage flag from a prior crash this session,

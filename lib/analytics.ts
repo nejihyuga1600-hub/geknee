@@ -1,5 +1,6 @@
 'use client';
 import posthog from 'posthog-js';
+import { useEffect } from 'react';
 
 // Five events we care about right now — if you need more, add here, not inline.
 // The union is narrow on purpose: analytics debt starts when "event names" are free-form.
@@ -34,7 +35,26 @@ export type AnalyticsEvent =
   // before Safari/Chrome killed the tab. Chromium-only (Safari has no
   // performance.memory). Pair with globe_load_failed to tell preemptive
   // bail-outs apart from "user actually stared at a blank sphere".
-  | 'globe_preemptive_fallback';
+  | 'globe_preemptive_fallback'
+  // Onboarding funnel — one event per slide so PostHog can compute
+  // step-to-step retention. `onboarding_step_view` fires on every
+  // slide enter with `{step, name}`; the other events tag the exits
+  // we care about (skip, back, existing-account jump, paywall
+  // outcome). Without these we can't tell if drop-offs come from a
+  // specific copy/UX issue or general fatigue.
+  | 'onboarding_step_view'
+  | 'onboarding_step_continue'
+  | 'onboarding_back'
+  | 'onboarding_skip'
+  | 'onboarding_existing_account'
+  | 'onboarding_completed_free'
+  | 'onboarding_completed_paid'
+  // SCREEN-LEVEL CONVENTION — fired by useScreen() on every new
+  // page/screen. Properties carry `{screen, params?}` so PostHog
+  // funnel analysis works without us hand-rolling a per-page event
+  // type. New screens MUST call useScreen('<name>') (see memory
+  // rule: screen-needs-analytics).
+  | 'screen_view';
 
 let initialized = false;
 
@@ -96,4 +116,30 @@ export function resetAnalytics() {
   if (typeof window === 'undefined') return;
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   posthog.reset();
+}
+
+/**
+ * Screen-view hook — call once at the top of every new page/screen
+ * component. Fires `screen_view` with `{screen, ...params}` on mount.
+ * The PostHog SDK already captures $pageview on URL change, but those
+ * fire on every client navigation and don't carry semantic names; the
+ * explicit screen_view lets us name screens meaningfully ("globe_home"
+ * vs "/plan/location") and attach screen-specific properties.
+ *
+ * Usage:
+ *   useScreen('globe_home');
+ *   useScreen('trip_planning', { tripId });
+ *
+ * Project rule (saved to memory): every new screen MUST call this. If
+ * you add a route and don't add a useScreen call, the funnel breaks.
+ */
+export function useScreen(screen: string, params?: Record<string, unknown>) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paramsKey = params ? JSON.stringify(params) : '';
+  useEffect(() => {
+    track('screen_view', { screen, ...(params ?? {}) });
+    // We intentionally re-fire when the params hash changes (e.g. user
+    // navigates to a different trip's planning page without unmount).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, paramsKey]);
 }

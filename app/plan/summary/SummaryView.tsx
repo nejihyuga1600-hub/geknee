@@ -15,7 +15,7 @@ import dynamic from 'next/dynamic';
 // already passes — BookView accepts the same prop interface.
 const BookTabDynamic = dynamic(() => import('./components/BookView'), { ssr: false });
 const UpgradeModal   = dynamic(() => import('@/app/components/UpgradeModal'), { ssr: false });
-import { track } from '@/lib/analytics';
+import { track, useScreen } from '@/lib/analytics';
 import {
   parseLines, isTimeLine, groupLines, extractDayNumber, stripDayPrefix,
   type Section, type ActivityGroup,
@@ -122,6 +122,7 @@ export interface SummaryViewProps {
 function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }: SummaryViewProps) {
   const params = useSearchParams();
   const router = useRouter();
+  useScreen('trip_planning', { tripId: tripIdOverride ?? params.get('savedTripId') ?? undefined });
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768);

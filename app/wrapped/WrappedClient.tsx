@@ -16,6 +16,7 @@ import { TextShimmerWave } from '@/app/components/animations/TextShimmer';
 import { ShimmerButton } from '@/app/components/animations/ShimmerButton';
 import { MonumentWrappedGlobe } from './MonumentWrappedGlobe';
 import { Sparkle } from '@/lib/icons';
+import { useScreen } from '@/lib/analytics';
 
 interface TimelineEntry {
   mk: string;
@@ -93,6 +94,7 @@ const headlineStyle: React.CSSProperties = {
 };
 
 export function WrappedClient({ year, userName, timeline, stats }: WrappedClientProps) {
+  useScreen('wrapped', { year, hasTimeline: timeline.length > 0 });
   const [page, setPage] = useState(0);
   const total = 5;
   const next = () => setPage((p) => Math.min(p + 1, total - 1));
