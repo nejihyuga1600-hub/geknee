@@ -253,13 +253,16 @@ export default function TripChatDock({ tripId, destination }: Props) {
         // sheet shrinks to fit the available viewport instead of being
         // pushed off the top of the screen when the keyboard rises.
         bottom: keyboardOffset,
-        // Top anchored at 14svh (14% breathing room above the sheet) so
-        // when the keyboard rises and the bottom lifts, the sheet HEIGHT
-        // shrinks to fit instead of being pushed off the top of the
-        // screen. Without this the chat went above the viewport when the
-        // keyboard opened. Bottom rounded corners flattened since the
-        // sheet is flush; only the top corners stay rounded.
-        top: '14svh',
+        // Floor the top against the device safe area so the chat
+        // header never slips under the Dynamic Island / camera notch
+        // when the keyboard opens and the sheet stretches. max() picks
+        // whichever is LOWER on the screen (= further from top): the
+        // 14svh breathing-room rule OR safe-area + ~56 px of buffer
+        // (matches the trip-tabs sticky nav minHeight). Without this
+        // floor the user saw the "Trip chat / Drag down to collapse"
+        // row sitting right under the iPhone 17 Pro front-camera
+        // island.
+        top: 'max(14svh, calc(env(safe-area-inset-top, 0px) + 56px))',
         zIndex: 9400,
         display: 'flex', flexDirection: 'column',
         transform: transformValue,
@@ -467,12 +470,21 @@ export default function TripChatDock({ tripId, destination }: Props) {
         style={{
           flexShrink: 0,
           padding: '8px 14px calc(env(safe-area-inset-bottom, 0px) + 10px)',
-          display: 'flex', alignItems: 'center', gap: 8,
-          borderTop: expanded ? '1px solid rgba(255,255,255,0.10)' : 'none',
-          background: 'rgba(0,0,0,0.18)',
+          // CSS Grid instead of flex — flex `flex: 1` + `min-width: 0`
+          // wasn't reliable here (iOS Safari was honoring the input's
+          // intrinsic min-content and pushing the send button off the
+          // edge anyway). Grid `1fr auto` is bulletproof: input occupies
+          // the leftover width, button takes exactly its content width.
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
           minWidth: 0,
           overflowX: 'hidden',
           boxSizing: 'border-box',
+          borderTop: expanded ? '1px solid rgba(255,255,255,0.10)' : 'none',
+          background: 'rgba(0,0,0,0.18)',
         }}
       >
         <input
@@ -482,12 +494,9 @@ export default function TripChatDock({ tripId, destination }: Props) {
           placeholder={expanded ? 'Message your trip…' : 'Reply'}
           aria-label="Type a message"
           style={{
-            // minWidth: 0 lets the flex item shrink past its intrinsic
-            // content width — without it the input refuses to shrink past
-            // its default ~160px min-content and pushes the send button
-            // off the right edge of the sheet (user saw a partial purple
-            // circle clipped at the edge).
-            flex: 1, minWidth: 0,
+            // width: 100% inside the 1fr grid cell + minWidth: 0 means
+            // the input snaps to the column width exactly — never wider.
+            width: '100%', minWidth: 0,
             padding: '10px 14px',
             borderRadius: 999, border: '1px solid rgba(255,255,255,0.16)',
             background: 'rgba(255,255,255,0.08)',
