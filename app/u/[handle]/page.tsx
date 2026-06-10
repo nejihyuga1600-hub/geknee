@@ -71,7 +71,7 @@ export async function generateMetadata(
   const user = await lookupUser(handle);
   if (!user) return { title: 'Not found · geknee' };
 
-  const displayName = user.name ?? user.username ?? 'traveler';
+  const displayName = user.name ?? user.username ?? 'wanderer';
   const handleForUrl = user.username ?? user.id;
   // Count distinct monumentIds (not rows) so a user with gold+default rows
   // for the same monument doesn't double-count.
@@ -153,7 +153,7 @@ export default async function ProfilePage(
     return { mk, displaySkin, owned: e.owned };
   });
 
-  const displayName = user.name ?? user.username ?? 'traveler';
+  const displayName = user.name ?? user.username ?? 'wanderer';
   const handleForUrl = user.username ?? user.id;
   const totalMonuments = collected.length;
   // Count monuments that have at least one skin above Silver (rank 4+ = Gold or rarer)
@@ -215,7 +215,7 @@ export default async function ProfilePage(
               {displayName}
             </h1>
             <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
-              {user.username ? `@${user.username}` : 'traveler'} · member since {memberSince}
+              {user.username ? `@${user.username}` : 'wanderer'} · member since {memberSince}
             </div>
             <div style={{ display: 'flex', gap: 20, marginTop: 14, fontSize: 14 }}>
               <Stat label="Collected" value={totalMonuments.toString()} />

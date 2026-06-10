@@ -111,7 +111,7 @@ export function WrappedClient({ year, userName, timeline, stats }: WrappedClient
             is empty
           </h1>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', maxWidth: 320, margin: 0 }}>
-            No monuments collected this year yet — visit a city and start your
+            No monuments collected yet, wanderer — visit a city and start your
             passport. Issue {String(year).slice(-2)} is waiting.
           </p>
           <ShimmerButton onClick={() => { window.location.href = '/plan/location'; }}>

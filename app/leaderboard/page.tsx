@@ -91,7 +91,7 @@ async function loadLeaderboard(limit = 50): Promise<LeaderRow[]> {
     return {
       userId: c.userId,
       handle: u?.username ?? c.userId,
-      displayName: u?.name ?? u?.username ?? 'traveler',
+      displayName: u?.name ?? u?.username ?? 'wanderer',
       image: u?.image ?? null,
       rare: c.rare,
       total: c.total,
@@ -133,7 +133,7 @@ export default async function LeaderboardPage() {
             letterSpacing: '0.22em', textTransform: 'uppercase',
             color: 'var(--brand-accent)', marginBottom: 14,
           }}>
-            {String.fromCodePoint(0x2726)} Top collectors · Updated every minute
+            {String.fromCodePoint(0x2726)} Top wanderers · Updated every minute
           </div>
           <h1 style={{
             margin: 0, fontSize: 'clamp(40px, 6vw, 64px)',

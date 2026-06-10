@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CheckoutButton from '../pricing/CheckoutButton';
+import createGlobe, { type COBEOptions } from 'cobe';
 
 // ── Brand tokens — match the cosmic design used across /pricing and /plan ──
 const T = {
@@ -142,7 +143,6 @@ export default function OnboardingFlow() {
         @keyframes gk-slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes gk-pulse { 0%, 100% { opacity: .5 } 50% { opacity: 1 } }
         .gk-star { animation: gk-tw 4s ease-in-out infinite; }
-        .gk-globe { animation: gk-spin 26s linear infinite; }
         .gk-tier-row { animation: gk-slide-up 480ms ${T.ease} both; }
         .gk-btn { transition: transform 120ms ${T.ease}, background 160ms; }
         .gk-btn:active:not(:disabled) { transform: scale(0.98); }
@@ -239,9 +239,9 @@ export default function OnboardingFlow() {
         {/* 0 · WELCOME */}
         <Slide active={step === 0}>
           <div style={{ marginTop: 20 }}>
-            <Eyebrow>✦ welcome to geknee</Eyebrow>
+            <Eyebrow>✦ welcome, wanderer</Eyebrow>
             <Title>The world is<br/>a <Em>collection</Em>.</Title>
-            <Body>Sixty monuments. Seven rarity tiers. The only way to earn the rare ones is to go there.</Body>
+            <Body>Sixty monuments. Seven rarity tiers. The rarest ones only drop for the wanderers who actually go.</Body>
           </div>
           <Globe />
           <FooterArea>
@@ -649,14 +649,54 @@ const fieldLabelStyle: React.CSSProperties = {
 };
 
 // ─── Globe vignette (welcome step) ────────────────────────────────────
+// Mesh globe — same cobe-driven look as /wrapped's PointToPointGlobe so
+// onboarding previews the visual world the user is about to enter.
+
+const GLOBE_SIZE = 260;
+const GLOBE_MARKERS = [
+  { location: [35.6762, 139.6503] as [number, number], size: 0.08 },  // Tokyo
+  { location: [40.7128, -74.006]  as [number, number], size: 0.08 },  // NYC
+  { location: [48.8566, 2.3522]   as [number, number], size: 0.08 },  // Paris
+  { location: [-22.9068, -43.1729] as [number, number], size: 0.08 }, // Rio
+  { location: [-33.8688, 151.2093] as [number, number], size: 0.08 }, // Sydney
+];
 
 function Globe() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const phiRef = useRef(0);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const opts = {
+      devicePixelRatio: 2,
+      width: GLOBE_SIZE * 2,
+      height: GLOBE_SIZE * 2,
+      phi: 0,
+      theta: 0.3,
+      dark: 1,
+      diffuse: 1.2,
+      mapSamples: 16000,
+      mapBrightness: 6,
+      baseColor: [0.3, 0.3, 0.6],
+      markerColor: [1.0, 0.7, 0.25],
+      glowColor: [1, 0.85, 0.4],
+      markers: GLOBE_MARKERS,
+      onRender: (state: Record<string, unknown>) => {
+        phiRef.current += 0.003;
+        (state as { phi: number }).phi = phiRef.current;
+      },
+    } as unknown as COBEOptions;
+    const globe = createGlobe(canvasRef.current, opts);
+    return () => { globe.destroy(); };
+  }, []);
+
   return (
     <div style={{ display: 'grid', placeItems: 'center', flex: 1, position: 'relative' }}>
       <div style={{
-        position: 'absolute', width: 290, height: 290, borderRadius: '50%',
+        position: 'absolute', width: 320, height: 320, borderRadius: '50%',
         border: `1px solid ${T.border}`, top: '50%', left: '50%',
         transform: 'translate(-50%,-50%) rotate(-18deg) scaleY(0.42)',
+        pointerEvents: 'none',
       }}>
         <span style={{
           position: 'absolute', top: -4, left: '50%',
@@ -664,43 +704,11 @@ function Globe() {
           background: T.gold, boxShadow: `0 0 14px ${T.gold}`,
         }} />
       </div>
-      <div
-        className="gk-globe"
-        style={{
-          width: 220, height: 220, borderRadius: '50%',
-          background: 'radial-gradient(circle at 35% 30%, #2a2a55, #0a0a1f 72%)',
-          boxShadow: 'inset -18px -26px 60px #000, 0 0 70px rgba(167,139,250,0.28)',
-          position: 'relative', overflow: 'hidden',
-        }}
-      >
-        <svg viewBox="-50 -50 100 100" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
-          {[-60, -30, 0, 30, 60].map((l) => (
-            <ellipse key={l} cx="0" cy={l * 0.5} rx="48" ry="3" fill="none" stroke={T.accent2} strokeWidth="0.3" />
-          ))}
-          {[-60, -30, 0, 30, 60].map((l) => (
-            <ellipse
-              key={'m' + l}
-              cx={l * 0.4}
-              cy="0"
-              rx={Math.abs(Math.cos((l * Math.PI) / 180) * 48)}
-              ry="48"
-              fill="none"
-              stroke={T.accent2}
-              strokeWidth="0.3"
-            />
-          ))}
-        </svg>
-      </div>
-      {[{ c: T.gold, t: '30%', l: '62%' }, { c: T.success, t: '58%', l: '34%' }, { c: T.accent, t: '44%', l: '72%' }].map((p, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute', top: p.t, left: p.l,
-            width: 10, height: 10, borderRadius: '50%',
-            background: p.c, boxShadow: `0 0 18px ${p.c}`,
-          }}
-        />
-      ))}
+      <canvas
+        ref={canvasRef}
+        style={{ width: GLOBE_SIZE, height: GLOBE_SIZE, display: 'block' }}
+        aria-label="Rotating mesh globe"
+      />
     </div>
   );
 }
@@ -816,7 +824,7 @@ function Paywall({
           fontSize: 33, lineHeight: 1, letterSpacing: '-0.025em',
           margin: '0 0 16px', color: T.ink,
         }}>
-          Unlock the full<br/><Em>experience</Em>, {data.name || 'traveler'}.
+          Unlock the full<br/><Em>experience</Em>, {data.name || 'wanderer'}.
         </h1>
         <div style={{ margin: '14px 0 18px' }}>
           {pills.map((p) => (
