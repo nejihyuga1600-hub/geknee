@@ -1443,24 +1443,43 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               aria-label="Open trip map (swipe right or tap)"
               style={{
                 position: 'fixed',
-                left: 12,
-                top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+                // Edge-flush: connect to the very left of the screen so
+                // the affordance reads as "this is a tab anchored to the
+                // edge" rather than a floating button. Left border drops
+                // out and only the right-side corners stay rounded.
+                left: 0,
+                // Drop below the trip-tab nav (back-to-globe + invite
+                // pills sit at safe-area-inset-top + ~56 px); +72 keeps
+                // the toggle clear of those buttons.
+                top: 'calc(env(safe-area-inset-top, 0px) + 72px)',
                 zIndex: 9450,
-                width: 40, height: 40,
-                padding: 0,
-                background: 'rgba(14, 16, 32, 0.78)',
-                border: '1px solid rgba(167,139,250,0.35)',
-                borderRadius: 12,
+                width: 44, height: 48,
+                padding: '0 6px 0 4px',
+                background: 'rgba(14, 16, 32, 0.85)',
+                border: '1px solid rgba(167,139,250,0.4)',
+                borderLeft: 'none',
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+                borderTopRightRadius: 12,
+                borderBottomRightRadius: 12,
                 color: '#a78bfa',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 2,
                 cursor: 'pointer',
                 touchAction: 'none',
                 WebkitBackdropFilter: 'blur(14px)',
                 backdropFilter: 'blur(14px)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                boxShadow: '6px 0 18px rgba(0,0,0,0.45)',
               }}
             >
               <MapIcon size={20} />
+              {/* Right-chevron — signals "drag me right" / "tap me to
+                  open". Matches the right-edge grab handle inside the
+                  open drawer so the gesture is discoverable from both
+                  ends of the slide. */}
+              <svg width="10" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ opacity: 0.7 }}>
+                <polyline points="9 6 15 12 9 18" />
+              </svg>
             </button>
           )}
 

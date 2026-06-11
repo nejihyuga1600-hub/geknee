@@ -1176,7 +1176,14 @@ export default function UnifiedTripMap({
                 style={{
                   flex: 1, minWidth: 0,
                   background: 'transparent', border: 'none', outline: 'none',
-                  color: '#e2e8f0', fontSize: 12, padding: '6px 8px',
+                  color: '#e2e8f0',
+                  // 16px MIN — iOS Safari auto-zooms on inputs with
+                  // font-size <16, and there's no graceful way to zoom
+                  // back out inside the modal context. Bumping here
+                  // kills the zoom-trap on map search without
+                  // disabling pinch-zoom elsewhere on the page.
+                  fontSize: 16,
+                  padding: '6px 8px',
                   fontFamily: 'inherit',
                 }}
               />
