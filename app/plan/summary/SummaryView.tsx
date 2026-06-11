@@ -1703,17 +1703,12 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               >
                 Cancel
               </button>
-              <button
-                onClick={() => { setRegenConfirmOpen(false); startGeneration(); }}
-                style={{
-                  flex: 1, padding: '9px 0', borderRadius: 10,
-                  background: 'transparent',
-                  border: '1px solid rgba(167,139,250,0.4)',
-                  color: '#c7d2fe', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
-                }}
-              >
-                Regenerate
-              </button>
+              {/* Full Regenerate button removed per user direction —
+                  the smart-edit path (right-hand button) routes through
+                  the genie agent and is the only sanctioned way to
+                  mutate a saved itinerary now. Keeping the full-regen
+                  function for the genie to call internally, but it's
+                  no longer user-reachable. */}
               <button
                 onClick={() => applySmartEdit(smartEditPrompt)}
                 disabled={!smartEditPrompt.trim() || smartEditing}
@@ -2635,10 +2630,10 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
           <>
             {!streaming && (
               <div style={{
-                color: 'rgba(255,255,255,0.35)', fontSize: 11, marginBottom: 14,
+                color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 14,
                 textAlign: 'right', letterSpacing: 0.3,
               }}>
-                Click any line to edit &nbsp;&middot;&nbsp; Hover for {STAR} genie suggestions
+                Need a change? Ask the {STAR} geknee genie — tap the mascot.
               </div>
             )}
             {/* Split layout: itinerary list scrolls on the left, the

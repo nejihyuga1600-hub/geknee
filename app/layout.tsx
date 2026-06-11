@@ -69,6 +69,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Hard-disable user zoom across the app. iOS Safari's keyboard
+  // auto-zoom (focused input < 16 px font-size) + accidental pinch
+  // were both stranding the trip page mid-zoom with no clean way
+  // out. maximumScale: 1 + userScalable: false block every path.
+  // This is the standard mobile-app pattern; geknee runs full-bleed
+  // and never needs OS-level zoom (we own all the affordances).
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f5f1e8" },

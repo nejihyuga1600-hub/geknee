@@ -320,10 +320,41 @@ export default function OnboardingFlow() {
         <Slide active={step === 1}>
           <Eyebrow>§ 01 · the idea</Eyebrow>
           <Title>Every trip<br/><Em>unlocks</Em> something.</Title>
-          <Body style={{ marginBottom: 24 }}>
+          <Body style={{ marginBottom: 16 }}>
             geknee turns travel into a collection game on a 3D globe. Visit a place in person,
             complete the quest, and a monument drops into your collection — forever.
           </Body>
+          {/* Genie tutorial inline — the itinerary text is read-only; the
+              mascot is the only way to change it. Surface that contract
+              up front so users don't go hunting for an edit button
+              that no longer exists. */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            padding: '12px 14px', borderRadius: 14,
+            background: 'rgba(167,139,250,0.08)',
+            border: `1px solid ${T.border}`,
+            marginBottom: 24,
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg,#a78bfa,#7dd3fc)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18,
+            }} aria-hidden>{String.fromCodePoint(0x1F9DE)}</div>
+            <div>
+              <div style={{
+                fontFamily: T.mono, fontSize: 9, letterSpacing: '0.18em',
+                color: T.accent, textTransform: 'uppercase', fontWeight: 700, marginBottom: 4,
+              }}>
+                Want to tweak a day?
+              </div>
+              <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.4 }}>
+                Tap the geknee mascot. Say what to change — &quot;swap dinner Day 3&quot;,
+                &quot;less packed&quot;, &quot;more food stops&quot; — and the genie edits the
+                itinerary for you. No manual editing.
+              </div>
+            </div>
+          </div>
           <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
             <div style={{ position: 'relative', width: 220, height: 220 }}>
               <div style={{

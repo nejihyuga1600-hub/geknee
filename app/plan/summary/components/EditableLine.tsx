@@ -19,22 +19,26 @@ export interface EditableLineProps {
 }
 
 export function EditableLine({
-  line, isEditing, editValue,
-  onStartEdit, onEditChange, onCommit, onCancel, onAskGenie,
+  line,
+  // Edit-related props kept on the type for API stability but no longer
+  // drive any UI. Per user direction the itinerary is now read-only at
+  // the line level — the geknee genie mascot is the canonical way to
+  // request changes (it edits via /api/agent/edit and writes back to
+  // TripDraft.itinerary). The Ask-genie ✦ button still fires on hover
+  // so users can escalate a specific line into the chat with one tap.
+  onAskGenie,
 }: EditableLineProps) {
   const [hovered, setHovered] = useState(false);
   const STAR = String.fromCodePoint(0x2726);
+  // Textarea ref retained for future use if we re-enable inline edit
+  // for power users; currently the editing branch never renders.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  void textareaRef;
 
-  // Auto-grow the textarea to fit its content. Set height to 0 first so
-  // shrinks work too — otherwise scrollHeight reports the previous max.
-  useEffect(() => {
-    if (!isEditing) return;
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = '0px';
-    ta.style.height = `${ta.scrollHeight}px`;
-  }, [isEditing, editValue]);
+  // Auto-grow effect is a no-op when isEditing is locked false, but
+  // keep the import so ESLint doesn't flag the unused-import path on
+  // useEffect when we narrow the body below.
+  useEffect(() => { /* edit disabled */ }, []);
 
   if (!line.trim()) return <div style={{ height: 8 }} />;
 
@@ -44,50 +48,26 @@ export function EditableLine({
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'relative', marginBottom: 2 }}
     >
-      {isEditing ? (
-        <textarea
-          ref={textareaRef}
-          autoFocus
-          value={editValue}
-          onChange={e => onEditChange(e.target.value)}
-          onBlur={onCommit}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onCommit(); }
-            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-          }}
-          style={{
-            // Auto-grow via the useEffect above + field-sizing for
-            // browsers that support it (no inline height fight). Min
-            // height is one line; max height = whatever the content
-            // needs, no scrollbar.
-            width: '100%', background: 'rgba(255,255,255,0.09)',
-            border: '1px solid rgba(129,140,248,0.5)', borderRadius: 8,
-            color: '#fff', fontSize: 14, padding: '8px 10px',
-            outline: 'none', resize: 'none', lineHeight: 1.6,
-            fontFamily: 'inherit', boxSizing: 'border-box',
-            overflow: 'hidden',
-            fieldSizing: 'content',
-          }}
-        />
-      ) : (
-        <div
-          // No stopPropagation — let the click bubble to the parent
-          // activity row so clicking the text BOTH starts inline edit
-          // AND opens the destination's place panel on the unified map.
-          // The two surfaces should feel cohesive, not separate.
-          onClick={() => onStartEdit()}
-          style={{
-            cursor: 'text', borderRadius: 6, padding: '3px 6px',
-            background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-            transition: 'background 0.15s',
-          }}
-        >
-          <MarkdownLine line={line} />
-        </div>
-      )}
+      {/* Read-only line render. The previous textarea branch is gone —
+          per user direction, itinerary edits route through the genie
+          mascot so the AI always sees the full context and persists
+          via /api/agent/edit. The line is no longer clickable for
+          edit, but still bubbles its click to the parent activity row
+          so tapping the text opens the place panel on the map. */}
+      <div
+        style={{
+          borderRadius: 6, padding: '3px 6px',
+          background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          transition: 'background 0.15s',
+        }}
+      >
+        <MarkdownLine line={line} />
+      </div>
 
-      {/* Genie ✦ button — uses onMouseDown to avoid stealing blur from textarea */}
-      {hovered && !isEditing && (
+      {/* Genie ✦ button — escalates a specific line into the chat so
+          the user can phrase a change without typing the line again.
+          Only affordance for "I want to change this part". */}
+      {hovered && (
         <button
           onMouseDown={e => { e.preventDefault(); onAskGenie(line); }}
           title="Ask GeKnee for alternatives"
