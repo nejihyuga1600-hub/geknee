@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
-import { PhotoToItinerary } from './PhotoToItinerary';
 import SuggestionsSection from '@/app/components/SuggestionsSection';
 import { CHAT_SUGGESTIONS_ENABLED } from '@/lib/suggestions/featureFlag';
 
@@ -48,9 +47,6 @@ export default function ItineraryTabPage() {
   const [tripOwnerUserId, setTripOwnerUserId] = useState<string | null>(null);
   const [tripVoteMode, setTripVoteMode] = useState<'advisory' | 'auto_majority'>('advisory');
 
-  // Day count drives the PhotoToItinerary dropdown. Pulled once on mount.
-  const [dayCount, setDayCount] = useState<number>(0);
-
   // Group chat panel — accessible from itinerary, not only from the globe.
   const [chatOpen, setChatOpen] = useState(false);
   const [tripDestination, setTripDestination] = useState<string>('');
@@ -65,10 +61,7 @@ export default function ItineraryTabPage() {
         if (!r.ok) return;
         const d: { trip?: { startDate?: string | null; endDate?: string | null; nights?: number | null; userId?: string | null; suggestionVoteMode?: string | null; destination?: string | null; location?: string | null } } = await r.json();
         if (cancelled || !d?.trip) return;
-        const { startDate, endDate, nights } = d.trip;
-        if (typeof nights === 'number') {
-          setDayCount(nights + 1);
-        }
+        const { startDate, endDate } = d.trip;
         setTripOwnerUserId(d.trip.userId ?? null);
         setTripVoteMode(d.trip.suggestionVoteMode === 'auto_majority' ? 'auto_majority' : 'advisory');
         setTripDestination(d.trip.destination ?? d.trip.location ?? '');
@@ -98,12 +91,12 @@ export default function ItineraryTabPage() {
 
   return (
     <>
-      {/* Photo → itinerary attacher. Sits above SummaryView so users see it
-          on the same surface that displays the day plan. Only renders once
-          we know dayCount so the day dropdown is meaningful. */}
-      {tripId && dayCount > 0 && (
-        <PhotoToItinerary tripId={tripId} dayCount={dayCount} />
-      )}
+      {/* Photo → itinerary attacher moved INSIDE the map drawer in
+          SummaryView, docked next to the "Drop a pin to update your
+          trip" sync bar. Both controls amend the itinerary from a
+          real-world signal, so they belong together — and removing
+          this from the top of the itinerary tab gives the day content
+          immediate viewport priority. */}
 
       {CHAT_SUGGESTIONS_ENABLED && tripId && currentUserId && (
         <SuggestionsSection

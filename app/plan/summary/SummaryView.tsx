@@ -1612,6 +1612,27 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 />
               )}
             </div>
+
+            {/* Photo / video attach row docked at the bottom of the map
+                drawer, right next to the "Drop a pin to update your trip"
+                sync bar that lives inside UnifiedTripMap. Both surfaces
+                are about "amend my itinerary from a real-world artifact"
+                — keeping them adjacent makes that intent legible. The
+                widget renders only when we have a trip id + itinerary
+                to attach to (pre-generation a photo→activity has nowhere
+                to land). */}
+            {savedTripId && fullItinerary && nights && (
+              <div style={{
+                flexShrink: 0,
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(6, 8, 22, 0.6)',
+              }}>
+                <PhotoToItinerary
+                  tripId={savedTripId}
+                  dayCount={(parseInt(nights, 10) || 0) + 1}
+                />
+              </div>
+            )}
           </aside>
         </>
       )}
