@@ -373,6 +373,44 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
   // the itinerary text stays readable underneath. Desktop ignores this
   // state entirely (map sticky-renders in the right column).
   const [mapDrawerOpen, setMapDrawerOpen] = useState(false);
+
+  // Swipe gesture state — mirrors the TripChatDock pattern. dragStartX
+  // is null when no drag is in progress; otherwise it captures the
+  // initial touch x. dragStartOpen freezes the open/closed state at
+  // gesture start so we can compute the target translation relative
+  // to it. dragDeltaX is signed (positive = swipe right, negative =
+  // swipe left) and feeds the transform.
+  const mapDragStartX = useRef<number | null>(null);
+  const mapDragStartOpen = useRef<boolean>(false);
+  const [mapDragDeltaX, setMapDragDeltaX] = useState(0);
+
+  // Map drawer touch handlers. Attach to (a) the closed-state edge
+  // toggle so a swipe-right pulls the drawer open, and (b) the right-
+  // edge drag handle inside the open drawer so a swipe-left collapses
+  // it. Both call the same handlers so the gesture math stays one path.
+  const onMapTouchStart = (e: React.TouchEvent) => {
+    mapDragStartX.current = e.touches[0].clientX;
+    mapDragStartOpen.current = mapDrawerOpen;
+  };
+  const onMapTouchMove = (e: React.TouchEvent) => {
+    if (mapDragStartX.current === null) return;
+    const dx = e.touches[0].clientX - mapDragStartX.current;
+    // Resist out-of-range drags: when closed, only swipe-right (positive
+    // dx) does anything. When open, only swipe-left (negative dx).
+    if (!mapDragStartOpen.current && dx < 0) { setMapDragDeltaX(0); return; }
+    if (mapDragStartOpen.current && dx > 0) { setMapDragDeltaX(0); return; }
+    setMapDragDeltaX(dx);
+  };
+  const onMapTouchEnd = () => {
+    const dx = mapDragDeltaX;
+    setMapDragDeltaX(0);
+    mapDragStartX.current = null;
+    const wasOpen = mapDragStartOpen.current;
+    // 60 px commit threshold — same magnitude the chat dock uses for
+    // its vertical snap so the gestures feel consistent across the app.
+    if (!wasOpen && dx > 60) { setMapDrawerOpen(true); return; }
+    if (wasOpen && dx < -60) { setMapDrawerOpen(false); return; }
+  };
   const mapControlRef = useRef<{ panTo: (coords: [number, number]) => void; openPlace: (placeId: string, coords: [number, number]) => void } | null>(null);
 
   // Persist pins across refresh, keyed by destination so each trip has its
@@ -1399,16 +1437,13 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             <button
               type="button"
               onClick={() => setMapDrawerOpen(true)}
-              aria-label="Open trip map"
+              onTouchStart={onMapTouchStart}
+              onTouchMove={onMapTouchMove}
+              onTouchEnd={onMapTouchEnd}
+              aria-label="Open trip map (swipe right or tap)"
               style={{
                 position: 'fixed',
                 left: 12,
-                // Anchored at the top under the safe-area inset + nav row
-                // so it sits beside the trip title instead of floating
-                // mid-screen. Was top: 'calc(50svh - 28px)' before — user
-                // feedback: that position obscured the day-pill column
-                // and felt disconnected from where the title/map data
-                // actually lives.
                 top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
                 zIndex: 9450,
                 width: 40, height: 40,
@@ -1419,6 +1454,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 color: '#a78bfa',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
+                touchAction: 'none',
                 WebkitBackdropFilter: 'blur(14px)',
                 backdropFilter: 'blur(14px)',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
@@ -1458,15 +1494,50 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               zIndex: 9470,
               background: '#0a0f1e',
               borderRight: '1px solid rgba(167,139,250,0.25)',
-              boxShadow: mapDrawerOpen ? '12px 0 40px rgba(0,0,0,0.6)' : 'none',
-              transform: mapDrawerOpen ? 'translateX(0)' : 'translateX(-100%)',
-              transition: 'transform 300ms cubic-bezier(0.2, 0.9, 0.3, 1)',
+              boxShadow: (mapDrawerOpen || mapDragDeltaX !== 0) ? '12px 0 40px rgba(0,0,0,0.6)' : 'none',
+              // Live-track the swipe gesture: when a drag is in progress,
+              // blend the base translation with the delta so the drawer
+              // follows the finger. On release the snap-to-position
+              // animation kicks in via the same transition.
+              transform: mapDragStartX.current !== null
+                ? `translateX(calc(${mapDragStartOpen.current ? '0%' : '-100%'} + ${mapDragDeltaX}px))`
+                : (mapDrawerOpen ? 'translateX(0)' : 'translateX(-100%)'),
+              transition: mapDragStartX.current === null
+                ? 'transform 300ms cubic-bezier(0.2, 0.9, 0.3, 1)'
+                : 'none',
               willChange: 'transform',
               display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
               overscrollBehavior: 'contain',
             }}
           >
+            {/* Right-edge swipe handle. Only renders when the drawer is
+                open; tracks horizontal touch so a swipe-left collapses
+                it (mirror of the chat dock's drag-handle pattern). The
+                visual is a thin vertical bar so it reads as "grab me to
+                resize" without competing with the close × button. */}
+            {mapDrawerOpen && (
+              <div
+                onTouchStart={onMapTouchStart}
+                onTouchMove={onMapTouchMove}
+                onTouchEnd={onMapTouchEnd}
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 0, bottom: 0, right: 0,
+                  width: 18,
+                  cursor: 'grab',
+                  touchAction: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 5,
+                }}
+              >
+                <div style={{
+                  width: 4, height: 40, borderRadius: 2,
+                  background: 'rgba(255,255,255,0.32)',
+                }} />
+              </div>
+            )}
             <header style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px',
