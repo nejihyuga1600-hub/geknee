@@ -18,6 +18,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { put } from "@vercel/blob";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { checkMediaQuota } from "@/lib/plan";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -98,6 +99,27 @@ export async function POST(req: Request) {
     return Response.json({ error: "Image file required (videos: submit a frame)" }, { status: 400 });
   }
 
+  // Server-side payload cap (12 MB) — mirrors the client check but
+  // belt-and-suspenders since the client can be bypassed. Anthropic
+  // vision happily accepts up to 5 MB base64 images; this header
+  // gives us a comfortable buffer.
+  if (file.size > 12 * 1024 * 1024) {
+    return Response.json({ error: "Image too large (max 12 MB)." }, { status: 413 });
+  }
+
+  // Monthly quota — caps Anthropic vision spend per user. Returns
+  // resetAt + limit on rate_limit so the client can surface a clean
+  // "you've used N/N this month, resets <date>" message.
+  const quota = await checkMediaQuota(userId);
+  if (!quota.allowed) {
+    return Response.json({
+      error: `You've hit your monthly media analysis limit (${quota.limit}). Resets ${quota.resetAt.slice(0, 10)}.`,
+      code: 'MEDIA_QUOTA_EXCEEDED',
+      resetAt: quota.resetAt,
+      limit: quota.limit,
+    }, { status: 429 });
+  }
+
   // Load trip + day block.
   const trip = await prisma.tripDraft.findUnique({
     where: { id: tripId },
@@ -152,7 +174,15 @@ export async function POST(req: Request) {
   let visionRaw: string;
   try {
     const result = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      // Haiku 4.5 for media analysis — vision quality on place-recognition
+      // matches Sonnet for this constrained "identify the place, emit
+      // structured JSON" task, but at ~5× lower cost. Was Sonnet 4.6
+      // before the guardrail pass. Switching here drops the per-upload
+      // cost from ~$0.045 → ~$0.009, which combined with the monthly
+      // quota in checkMediaQuota gives a hard worst-case ceiling of
+      // ~$0.27/user/month — even at the full free-tier quota (30 uploads)
+      // we stay well inside sustainable territory at 10k MAU.
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 400,
       system: VISION_SYSTEM,
       messages: [{

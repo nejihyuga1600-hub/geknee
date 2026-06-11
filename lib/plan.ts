@@ -83,6 +83,54 @@ export async function checkTripSaveLimit(userId: string): Promise<string | null>
 const FREE_SUGGEST_PER_DAY = 1;   // cost lever: free tier is a taste; heavy use upgrades to Pro
 const PRO_SUGGEST_PER_DAY  = 20;
 
+// Media upload (photo/video → itinerary). Caps Anthropic vision spend per
+// user per month so a single power user can't burn the bill on a vlog
+// upload spree. Both photo and video paths share this counter — videos
+// already get a separate cost guardrail via single-frame extraction +
+// the 60 s / 40 MB client caps (see PhotoToItinerary.extractMidFrame).
+//
+// Sustainability math at 10k MAU:
+//   Free 30 × $0.005 × 10k        = $1.5k worst-case if everyone caps out
+//   Realistic 3/user × $0.005 × 10k = $150/mo — comfortable.
+//   Pro 200 limit is wide on purpose; the Pro fee covers it many times over.
+const FREE_MEDIA_PER_MONTH = 30;
+const PRO_MEDIA_PER_MONTH  = 200;
+const MEDIA_USAGE_TRIP_KEY = '__media__';
+
+/** Check whether a user may upload another photo/video for vision analysis this month. */
+export async function checkMediaQuota(
+  userId: string,
+): Promise<{ allowed: true; remaining: number } | { allowed: false; reason: 'rate_limit'; resetAt: string; limit: number }> {
+  if (await isDevAccount(userId)) return { allowed: true, remaining: PRO_MEDIA_PER_MONTH };
+
+  // YYYY-MM key so a user's quota rolls over on the 1st (UTC).
+  const month = new Date().toISOString().slice(0, 7);
+  const info = await getUserPlan(userId);
+  const limit = info.plan === 'pro' ? PRO_MEDIA_PER_MONTH : FREE_MEDIA_PER_MONTH;
+
+  // Piggyback on ChatSuggestUsage so this ships without a migration —
+  // tripId is a sentinel ('__media__') so it doesn't collide with real
+  // trip ids, and `day` carries the month string instead of a date.
+  const row = await prisma.chatSuggestUsage.upsert({
+    where: { userId_tripId_day: { userId, tripId: MEDIA_USAGE_TRIP_KEY, day: month } },
+    create: { userId, tripId: MEDIA_USAGE_TRIP_KEY, day: month, count: 1 },
+    update: { count: { increment: 1 } },
+  });
+
+  if (row.count > limit) {
+    // Roll back so a denied call doesn't permanently burn quota.
+    await prisma.chatSuggestUsage.update({
+      where: { id: row.id },
+      data: { count: { decrement: 1 } },
+    });
+    const next = new Date();
+    next.setUTCMonth(next.getUTCMonth() + 1, 1);
+    next.setUTCHours(0, 0, 0, 0);
+    return { allowed: false, reason: 'rate_limit', resetAt: next.toISOString(), limit };
+  }
+  return { allowed: true, remaining: Math.max(0, limit - row.count) };
+}
+
 /** Check whether a user may trigger another AI suggestion call for this trip today. */
 export async function checkChatSuggestQuota(
   userId: string,
