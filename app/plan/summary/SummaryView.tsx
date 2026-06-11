@@ -1692,71 +1692,14 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Compact photo attacher — Claude recognizes the place in the
-                photo and slots it into the itinerary as a new activity.
-                Renders in both planning and itinerary modes once an
-                itinerary exists (pre-generation a photo→activity has
-                nowhere to land). Click → modal picker. */}
-            {savedTripId && fullItinerary && nights && (
-              <PhotoToItinerary
-                tripId={savedTripId}
-                dayCount={(parseInt(nights, 10) || 0) + 1}
-                compact
-              />
-            )}
-            {/* Map / Share / Book hidden on planning tab — that view's CTA is the
-                top-right "Generate itinerary →" button below. */}
-            {mainTab !== 'planning' && savedTripId && (
-              <Link
-                href={`/plan/${encodeURIComponent(savedTripId)}/map`}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px', borderRadius: 10,
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid var(--brand-border)',
-                  color: 'var(--brand-ink)', fontSize: 12, fontWeight: 600,
-                  fontFamily: 'inherit', textDecoration: 'none',
-                }}
-              >
-                {String.fromCodePoint(0x2315)} Map
-              </Link>
-            )}
-            {mainTab !== 'planning' && (
-              <button
-                onClick={async () => {
-                  if (typeof navigator !== 'undefined' && navigator.share) {
-                    try { await navigator.share({ title: `Trip to ${location}`, url: window.location.href }); } catch { /* dismissed */ }
-                  } else {
-                    try { await navigator.clipboard.writeText(window.location.href); } catch {}
-                  }
-                }}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px', borderRadius: 10,
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid var(--brand-border)',
-                  color: 'var(--brand-ink)', fontSize: 12, fontWeight: 600,
-                  fontFamily: 'inherit', cursor: 'pointer',
-                }}
-              >
-                {String.fromCodePoint(0x2197)} Share
-              </button>
-            )}
-            {mainTab !== 'planning' && (
-              <button
-                onClick={() => setMainTab(mainTab === 'book' ? 'itinerary' : 'book')}
-                style={{
-                  padding: '7px 14px', borderRadius: 10,
-                  background: mainTab === 'book' ? 'transparent' : 'var(--brand-ink)',
-                  color: mainTab === 'book' ? 'var(--brand-ink)' : 'var(--brand-bg)',
-                  border: `1px solid ${mainTab === 'book' ? 'var(--brand-border)' : 'var(--brand-ink)'}`,
-                  fontSize: 12, fontWeight: 700,
-                  fontFamily: 'inherit', cursor: 'pointer',
-                }}
-              >
-                {mainTab === 'book' ? 'Itinerary' : 'Book'}
-              </button>
-            )}
+            {/* Compact photo attacher, Map link, and Book toggle have all
+                been removed from the header row per user feedback — the
+                Attach a Photo box below + the left-edge map drawer + the
+                tabs strip below the title already cover those affordances,
+                and the duplicates were crowding the planning header. Share
+                moved to the footer of the itinerary content (see end of
+                this file's return). The "Generate itinerary →" CTA stays
+                here on planning since it's the page's primary action. */}
             {mainTab === 'planning' && (
               <button
                 onClick={requestGeneration}
@@ -2899,6 +2842,40 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
         </div>
 
       </div>
+
+      {/* Footer share — moved here from the top action row. Sits below
+          all the itinerary content so the page header reads as title-only
+          while still keeping share within easy reach when the user has
+          finished reviewing their trip. Renders only when an itinerary
+          exists (nothing to share on an empty trip). */}
+      {mainTab !== 'planning' && savedTripId && fullItinerary && (
+        <div style={{
+          display: 'flex', justifyContent: 'center',
+          padding: '24px 16px calc(env(safe-area-inset-bottom, 0px) + 32px)',
+        }}>
+          <button
+            onClick={async () => {
+              track('share_click', { surface: 'itinerary_footer' });
+              if (typeof navigator !== 'undefined' && navigator.share) {
+                try { await navigator.share({ title: `Trip to ${location}`, url: window.location.href }); } catch { /* dismissed */ }
+              } else {
+                try { await navigator.clipboard.writeText(window.location.href); } catch {}
+              }
+            }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '12px 28px', borderRadius: 999,
+              background: 'rgba(167,139,250,0.12)',
+              border: '1px solid rgba(167,139,250,0.45)',
+              color: 'var(--brand-ink)', fontSize: 13, fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              fontFamily: 'inherit', cursor: 'pointer',
+            }}
+          >
+            {String.fromCodePoint(0x2197)} Share this trip
+          </button>
+        </div>
+      )}
 
       {/* In-page genie chat removed during the design pass — the GlobalChat
           mounted in app/layout.tsx provides the floating AI assistant

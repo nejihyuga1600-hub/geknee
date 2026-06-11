@@ -60,18 +60,44 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const pickFile = (f: File) => {
-    if (!f.type.startsWith('image/')) {
-      setError('Only images are supported. For videos, take a still and upload that.');
-      return;
-    }
-    if (f.size > 12 * 1024 * 1024) {
-      setError('Image too large (max 12 MB).');
-      return;
-    }
+  const pickFile = async (f: File) => {
     setError(null);
     setSuccess(null);
-    setFile(f);
+
+    if (f.type.startsWith('image/')) {
+      if (f.size > 12 * 1024 * 1024) {
+        setError('Image too large (max 12 MB).');
+        return;
+      }
+      setFile(f);
+      return;
+    }
+
+    if (f.type.startsWith('video/')) {
+      // Cost-control: instead of sending the raw video to Claude (which
+      // it can't parse) or extracting many frames (which 10× the token
+      // cost), we extract a SINGLE representative frame at the video's
+      // midpoint. The midpoint avoids leading/trailing black frames and
+      // tends to be the most place-revealing shot.
+      //
+      // Hard caps: 60 s duration, 40 MB file. Past those we ask the user
+      // to trim / shorten — otherwise a 5-minute vlog uploads can pay
+      // ~$0.30 per analysis instead of $0.05 even with single-frame.
+      if (f.size > 40 * 1024 * 1024) {
+        setError('Video too large (max 40 MB). Trim and try again.');
+        return;
+      }
+      try {
+        const frame = await extractMidFrame(f, 60);
+        setFile(frame);
+      } catch (e) {
+        console.error('[PhotoToItinerary] video frame extract failed', e);
+        setError(e instanceof Error ? e.message : 'Could not read that video — try a different format.');
+      }
+      return;
+    }
+
+    setError('Pick a photo or video.');
   };
 
   const submit = async () => {
@@ -275,13 +301,16 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
 
   return (
     <section
-      aria-label="Attach a photo to your itinerary"
+      aria-label="Attach a photo or video to your itinerary"
       style={{
-        margin: '14px 16px',
-        padding: 14,
+        // Slimmer container — was 14 / 14, dropped to 8 / 10 per user
+        // feedback that the box ate too much vertical real estate above
+        // the actual itinerary.
+        margin: '10px 16px',
+        padding: '8px 10px',
         background: 'rgba(255,255,255,0.03)',
         border: dragOver ? '2px dashed var(--brand-accent)' : '1px dashed var(--brand-border-hi)',
-        borderRadius: 14,
+        borderRadius: 12,
         transition: 'border-color 180ms ease',
       }}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -294,20 +323,17 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
       }}
     >
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
       }}>
         <PaperclipIcon />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
             fontFamily: 'var(--font-mono-display), monospace',
-            fontSize: 10, letterSpacing: '0.18em',
+            fontSize: 10, letterSpacing: '0.16em',
             color: 'var(--brand-accent)', textTransform: 'uppercase',
-            fontWeight: 700, marginBottom: 2,
+            fontWeight: 700,
           }}>
-            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Attach a photo
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>
-            Drop an image, or pick one. geknee reads it and adds the stop to the day.
+            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Attach photo or video
           </div>
         </div>
 
@@ -328,18 +354,22 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
 
         {!file ? (
           <button onClick={() => inputRef.current?.click()} style={pickBtnStyle}>
-            Pick photo
+            Pick file
           </button>
         ) : (
           <button onClick={submit} disabled={uploading} style={primaryBtnStyle}>
-            {uploading ? 'Reading photo…' : day === 0 ? 'Add to best day' : `Add to Day ${day}`}
+            {uploading ? 'Reading…' : day === 0 ? 'Add to best day' : `Add to Day ${day}`}
           </button>
         )}
 
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          // image/* + video/* lets iOS / Android open the right picker
+          // (Photos or Camera with video mode). Server inspects the file
+          // MIME and frame-extracts client-side before upload (see
+          // pickFile). 60 s cap enforced on the client; cost-control.
+          accept="image/*,video/*"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -440,3 +470,83 @@ const ghostBtnStyle: React.CSSProperties = {
   fontFamily: 'inherit', fontSize: 12,
   cursor: 'pointer',
 };
+
+/**
+ * Extract one representative frame from a video at its midpoint. Returns
+ * a File that masquerades as an image so the existing /api/itinerary/media
+ * pipeline (Claude vision on a single image) just works.
+ *
+ * Why client-side: Vercel serverless functions don't ship ffmpeg, and
+ * doing the extraction in the browser keeps the upload payload tiny
+ * (a single JPEG instead of the raw video), which means cheaper egress
+ * AND keeps Anthropic vision cost predictable per-upload.
+ *
+ * Cost math at scale:
+ *   - 1 mid-frame ≈ 1,500 tokens of vision input on Sonnet 4.6
+ *   - $3 per 1 M input → ~$0.0045 per video analysis
+ *   - 10,000 users × 3 videos/mo = $135/mo. Comfortably sustainable.
+ *   - Multi-frame analysis (8 frames) would 8× to ~$1,080/mo.
+ *
+ * Caps duration at `maxSeconds` (default 60 s) — any longer and the
+ * server refuses; the user gets a clear "trim and try again" error.
+ */
+async function extractMidFrame(video: File, maxSeconds: number): Promise<File> {
+  const url = URL.createObjectURL(video);
+  try {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    v.playsInline = true;
+    v.src = url;
+
+    // Wait for metadata so we know the duration.
+    await new Promise<void>((resolve, reject) => {
+      v.onloadedmetadata = () => resolve();
+      v.onerror = () => reject(new Error('Could not read video metadata'));
+    });
+
+    if (!isFinite(v.duration) || v.duration <= 0) {
+      throw new Error('Video has no duration metadata');
+    }
+    if (v.duration > maxSeconds) {
+      throw new Error(`Video is too long (max ${maxSeconds}s). Trim and try again.`);
+    }
+
+    const targetTime = v.duration / 2;
+
+    // Seek to midpoint. Need both seeked AND a small rAF settle because
+    // Mobile Safari occasionally reports `seeked` before the painted frame
+    // is current.
+    await new Promise<void>((resolve, reject) => {
+      v.onseeked = () => resolve();
+      v.onerror = () => reject(new Error('Seek failed'));
+      v.currentTime = targetTime;
+    });
+    await new Promise(requestAnimationFrame);
+
+    // Downscale to max 1280 on the long edge so the upload + Anthropic
+    // tokenization stay cheap. Anthropic counts tokens by pixel count;
+    // a 4K frame is 4× the cost of a 1080p one with no quality gain
+    // for place-recognition.
+    const MAX_EDGE = 1280;
+    const scale = Math.min(1, MAX_EDGE / Math.max(v.videoWidth, v.videoHeight));
+    const w = Math.round(v.videoWidth * scale);
+    const h = Math.round(v.videoHeight * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable');
+    ctx.drawImage(v, 0, 0, w, h);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => b ? resolve(b) : reject(new Error('Canvas → blob failed')),
+        'image/jpeg',
+        0.85,
+      );
+    });
+    return new File([blob], 'video-frame.jpg', { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
