@@ -1563,8 +1563,13 @@ export default function UnifiedTripMap({
             : 'Itinerary in sync with pins'
           }
           style={{
-            marginTop: 10, width: '100%',
-            padding: '14px 18px', borderRadius: 12,
+            // In-sync state is informational only — shrink the
+            // padding hard so the row reclaims pixels for the map.
+            // Active state (pin changes detected) keeps the larger
+            // tap target since it's now the primary CTA.
+            marginTop: pinChangeCount > 0 ? 10 : 6, width: '100%',
+            padding: pinChangeCount > 0 ? '14px 18px' : '8px 12px',
+            borderRadius: pinChangeCount > 0 ? 12 : 8,
             border: '1px solid',
             borderColor: pinChangeCount > 0 ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.08)',
             background: pinChangeCount > 0
@@ -1581,28 +1586,43 @@ export default function UnifiedTripMap({
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 24, height: 24, borderRadius: '50%',
+              // 24→18 when in-sync so the bullet doesn't dominate the
+              // compact one-line row; active state stays at 24 so the
+              // count badge reads clearly.
+              width: pinChangeCount > 0 ? 24 : 18,
+              height: pinChangeCount > 0 ? 24 : 18,
+              borderRadius: '50%',
               background: pinChangeCount > 0 ? 'var(--brand-accent)' : 'rgba(255,255,255,0.06)',
               color: pinChangeCount > 0 ? 'var(--brand-bg)' : 'rgba(255,255,255,0.45)',
               fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
-              fontSize: 11, fontWeight: 800,
+              fontSize: 10, fontWeight: 800,
             }}>
               {pinChangeCount > 0 ? pinChangeCount : '✓'}
             </span>
             <span style={{ textAlign: 'left' }}>
-              <span style={{
-                display: 'block',
-                fontSize: 11, fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
-                letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 700,
-                color: pinChangeCount > 0 ? 'var(--brand-accent)' : 'rgba(255,255,255,0.4)',
-                marginBottom: 1,
-              }}>
-                {pinChangeCount > 0 ? '§ Pin changes detected' : '§ Itinerary in sync'}
-              </span>
+              {/* Eyebrow only rendered when there are pin changes —
+                  in-sync state collapses to a single line, saving
+                  ~14 px for the map. */}
+              {pinChangeCount > 0 && (
+                <span style={{
+                  display: 'block',
+                  fontSize: 11, fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                  letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 700,
+                  color: 'var(--brand-accent)',
+                  marginBottom: 1,
+                }}>
+                  § Pin changes detected
+                </span>
+              )}
               <span style={{
                 display: 'block',
                 fontFamily: 'var(--font-display), Georgia, serif',
-                fontSize: 15, fontWeight: 400, letterSpacing: '-0.01em',
+                // Same shrink logic as the outer button: in-sync is
+                // informational copy that can sit at 12 px; active
+                // state needs the larger size so it reads as the
+                // primary action.
+                fontSize: pinChangeCount > 0 ? 15 : 12,
+                fontWeight: 400, letterSpacing: '-0.01em',
                 color: pinChangeCount > 0 ? 'var(--brand-ink)' : 'rgba(255,255,255,0.55)',
               }}>
                 {pinChangeCount > 0

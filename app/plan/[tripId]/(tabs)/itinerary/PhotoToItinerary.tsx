@@ -303,15 +303,17 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
     <section
       aria-label="Attach a photo or video to your itinerary"
       style={{
-        // Slimmer container — was 14 / 14, dropped to 8 / 10 per user
-        // feedback that the box ate too much vertical real estate above
-        // the actual itinerary.
-        margin: '10px 16px',
-        padding: '8px 10px',
-        background: 'rgba(255,255,255,0.03)',
-        border: dragOver ? '2px dashed var(--brand-accent)' : '1px dashed var(--brand-border-hi)',
-        borderRadius: 12,
-        transition: 'border-color 180ms ease',
+        // Edge-to-edge inside the map drawer footer — the wrapper in
+        // SummaryView already gives the divider treatment. No outer
+        // margin, slim 6/10 padding, no border (dashed border would
+        // duplicate the drawer divider above and waste pixels the user
+        // wants going to the map).
+        margin: 0,
+        padding: '6px 10px',
+        background: dragOver ? 'rgba(167,139,250,0.08)' : 'transparent',
+        border: 'none',
+        borderRadius: 0,
+        transition: 'background-color 180ms ease',
       }}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
