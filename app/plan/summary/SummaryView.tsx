@@ -1402,25 +1402,29 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               aria-label="Open trip map"
               style={{
                 position: 'fixed',
-                left: 0,
-                top: 'calc(50svh - 28px)',
+                left: 12,
+                // Anchored at the top under the safe-area inset + nav row
+                // so it sits beside the trip title instead of floating
+                // mid-screen. Was top: 'calc(50svh - 28px)' before — user
+                // feedback: that position obscured the day-pill column
+                // and felt disconnected from where the title/map data
+                // actually lives.
+                top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
                 zIndex: 9450,
-                width: 44, height: 56,
+                width: 40, height: 40,
                 padding: 0,
                 background: 'rgba(14, 16, 32, 0.78)',
                 border: '1px solid rgba(167,139,250,0.35)',
-                borderLeft: 'none',
-                borderTopRightRadius: 14,
-                borderBottomRightRadius: 14,
+                borderRadius: 12,
                 color: '#a78bfa',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
                 WebkitBackdropFilter: 'blur(14px)',
                 backdropFilter: 'blur(14px)',
-                boxShadow: '0 12px 36px rgba(0,0,0,0.55)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
               }}
             >
-              <MapIcon size={22} />
+              <MapIcon size={20} />
             </button>
           )}
 
@@ -1674,7 +1678,16 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             Share / Book on the right. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          marginBottom: 24, gap: 12,
+          // 24 → 12 on mobile so the title strip sits closer to the
+          // itinerary card below; the desktop spacing stays as-is so
+          // the hero block keeps its breathing room there.
+          marginBottom: isMobile ? 12 : 24, gap: 12,
+          // Right-side reservation for the map toggle (left) and the
+          // mascot (right) which now both anchor at the top of the
+          // viewport. Without this padding the title text could slide
+          // under the floating buttons.
+          paddingLeft: isMobile ? 52 : 0,
+          paddingRight: isMobile ? 56 : 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
             {/* "← Back to globe" / "← Plan" masthead link removed — the
@@ -1726,8 +1739,12 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid var(--brand-border)',
           borderRadius: 20,
-          padding: isMobile ? '20px 18px' : '32px 32px 28px',
-          marginBottom: 28,
+          // Tighter padding on mobile per user feedback ("more empty
+          // space that can be compressed"). 20→14 vertical, 18→14
+          // horizontal. Desktop padding unchanged so the title card
+          // keeps its hero treatment on wide screens.
+          padding: isMobile ? '14px 14px' : '32px 32px 28px',
+          marginBottom: isMobile ? 16 : 28,
         }}>
           <div style={{
             fontFamily: 'var(--font-mono-display), ui-monospace, monospace',

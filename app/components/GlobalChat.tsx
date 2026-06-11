@@ -337,7 +337,12 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
       <div style={{
         position: 'fixed',
         ...(ctx.page === 'trip'
-          ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 14 }
+          // Dropped below the trip header row so the user can scroll
+          // the "Tokyo · 7 days" title area without the mascot covering
+          // it. Was env(safe-area-inset-top) + 12 — that landed right on
+          // top of the title. +72 gives breathing room for the tabs nav
+          // + title block.
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 72px)', right: 14 }
           : { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)', right: 18 }),
         zIndex: 9500,
         transform: 'translate3d(0,0,0)', willChange: 'transform',
