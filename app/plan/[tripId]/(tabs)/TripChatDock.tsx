@@ -500,7 +500,11 @@ export default function TripChatDock({ tripId, destination }: Props) {
             padding: '10px 14px',
             borderRadius: 999, border: '1px solid rgba(255,255,255,0.16)',
             background: 'rgba(255,255,255,0.08)',
-            color: 'var(--brand-ink, #f1f5f9)', fontSize: 14,
+            // 16 px MIN — iOS Safari auto-zooms any focused input
+            // under 16 px and there's no way to recover inside the
+            // chat sheet (page-level pinch-zoom is also disabled now
+            // per user request). Was 14; bumped to 16.
+            color: 'var(--brand-ink, #f1f5f9)', fontSize: 16,
             fontFamily: 'inherit',
             outline: 'none',
             boxSizing: 'border-box',
