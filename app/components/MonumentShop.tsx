@@ -920,26 +920,38 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       <UnlockCeremony trigger={lastUnlock} originRef={unlockOriginRef} />
       {open && (
     <div style={{
-      // Fullscreen overlay. Earlier iterations docked the sheet to the
-      // bottom 55svh so the globe stayed visible behind, but the user
-      // wanted the full detail screen back — too much content (skin
-      // quests, share, leaderboard) was getting cropped at the bottom.
-      // Globe-zoom-to-monument now happens on tap (see CapacitorGlobe
-      // marker click), so the live preview moment lives BEFORE the
-      // shop opens, not behind it.
+      // Two layouts:
+      //  • Detail view (selected !== null): bottom-half sheet so the globe
+      //    stays visible above and skin Equip/Claim previews live behind.
+      //    pointer-events: none on the wrapper lets globe taps/drags pass
+      //    through; the inner sheet re-enables them with pointer-events: auto.
+      //  • Grid view (selected == null): fullscreen — no skin preview matters
+      //    here, and the collection grid needs the full height to scroll
+      //    through 382 cards without feeling cramped. Dark backdrop returns
+      //    so the chrome reads cleanly. The Close pill and grid header get
+      //    safe-area-inset-top padding (below) so iOS Dynamic Island doesn't
+      //    cover them.
+      // Inner content area (flex:1 + overflowY:auto, line ~1097) handles
+      // overflow in both modes so skin quests / share / leaderboard don't
+      // get cropped at the smaller height.
       position: 'fixed', inset: 0, zIndex: 9000, animation: 'modalFadeIn 0.25s ease-out',
-      display: 'flex', alignItems: 'stretch', justifyContent: 'center',
-      background: 'rgba(2, 4, 12, 0.92)',
+      display: 'flex',
+      alignItems: selected ? 'flex-end' : 'stretch',
+      justifyContent: 'center',
+      background: selected ? 'transparent' : 'rgba(2, 4, 12, 0.92)',
+      pointerEvents: selected ? 'none' : 'auto',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         position: 'relative',
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
         border: '1px solid rgba(167, 139, 250,0.3)',
+        borderBottom: selected ? 'none' : undefined,
+        borderRadius: selected ? '20px 20px 0 0' : undefined,
         width: '100%', maxWidth: 640,
         animation: 'modalSlideUp 0.3s ease-out',
-        // Fullscreen — claim the entire viewport. iOS safe-area insets
-        // handled inside the inner content padding where needed.
-        height: '100svh', maxHeight: '100svh',
+        height: selected ? '50svh' : '100svh',
+        maxHeight: selected ? '50svh' : '100svh',
+        pointerEvents: 'auto',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 -16px 60px rgba(0,0,0,0.6), 0 0 60px rgba(167, 139, 250,0.1)',
         overflow: 'hidden',
@@ -951,7 +963,12 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
           onClick={onClose}
           aria-label="Close collection"
           style={{
-            position: 'absolute', top: 16, right: 16, zIndex: 10,
+            position: 'absolute',
+            // Clear iOS Dynamic Island / status bar when the modal is
+            // fullscreen (grid view). In the detail-view bottom sheet the
+            // pill sits mid-screen and safe-area is 0, so this no-ops.
+            top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+            right: 16, zIndex: 10,
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '7px 14px 7px 12px', borderRadius: 999,
             background: 'rgba(15,23,42,0.55)',
@@ -979,7 +996,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
             is just noise above the quest list and crowds the Close pill.
             Reappears when Back returns to the grid. */}
         {!selected && (
-        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
+        <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 20px) 24px 0', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
               <div style={{
