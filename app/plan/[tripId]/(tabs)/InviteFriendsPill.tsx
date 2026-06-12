@@ -80,9 +80,12 @@ export default function InviteFriendsPill() {
     };
   }, [open]);
 
-  // Autofocus when opening.
+  // Autofocus when opening; blur when closing so iOS dismisses the
+  // keyboard along with the popover (without this the keyboard stays
+  // floating after the user taps outside to close the invite sheet).
   useEffect(() => {
     if (open) inputRef.current?.focus();
+    else inputRef.current?.blur();
   }, [open]);
 
   async function submit() {

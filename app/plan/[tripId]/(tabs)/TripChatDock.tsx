@@ -60,6 +60,11 @@ export default function TripChatDock({ tripId, destination }: Props) {
   const dragStartExpanded = useRef<boolean>(false);
   const [dragDelta, setDragDelta] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // Composer ref so collapse paths can blur() the input — without this, iOS
+  // keeps the keyboard up after the user drag-collapses the sheet (the input
+  // technically still has focus even though the sheet is visually shrunk to
+  // its pill state), leaving the keyboard stranded over the trip page.
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     try { setLastSeen(localStorage.getItem(LAST_SEEN_KEY(tripId))); } catch {}
@@ -126,7 +131,13 @@ export default function TripChatDock({ tripId, destination }: Props) {
     setExpanded(true);
     markRead();
   }, [markRead]);
-  const collapse = useCallback(() => { setExpanded(false); }, []);
+  const collapse = useCallback(() => {
+    setExpanded(false);
+    // Drop the composer's focus so iOS dismisses the keyboard along with
+    // the sheet. Without this the keyboard stays floating above the page
+    // even though the chat is collapsed to its pill.
+    inputRef.current?.blur();
+  }, []);
 
   // Tell the rest of the chrome (notably the AI mascot floating top-right)
   // to step aside while the chat occupies the full screen. The mascot
@@ -488,6 +499,7 @@ export default function TripChatDock({ tripId, destination }: Props) {
         }}
       >
         <input
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => { if (!expanded) expand(); }}
