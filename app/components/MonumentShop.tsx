@@ -1817,9 +1817,17 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                       )}
                     </div>
                     ) : (
+                    // Emoji fallback variant — used for the ~60 monuments
+                    // without a card image yet. Matches the image-card
+                    // 4:5 aspect ratio so grid rows don't leave white
+                    // space below emoji cards adjacent to image cards.
                     <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
+                        position: 'relative',
+                        aspectRatio: '4 / 5',
                         padding: 14, cursor: 'pointer',
+                        display: 'flex', flexDirection: 'column',
+                        justifyContent: 'space-between',
                       }}>
 
                       {/* Glyph circle (replaces raw emoji) */}
