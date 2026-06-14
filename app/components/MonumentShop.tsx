@@ -49,7 +49,10 @@ const S = {
   // Epic
   diamond:      { id: 'diamond',      name: 'Diamond',      color: '#67e8f9', rarity: 'epic' },
   damascus:     { id: 'damascus',     name: 'Damascus',     color: '#64748b', rarity: 'epic' },
-  obsidian:     { id: 'obsidian',     name: 'Obsidian',     color: '#1e1b4b', rarity: 'epic' },
+  // #1e1b4b read as black-on-black against the dark navy sheet — bumped to
+  // indigo-500 so the badge / equip pill stay legible while still feeling
+  // "dark gemstone." Only used for shop UI; 3D model has its own materials.
+  obsidian:     { id: 'obsidian',     name: 'Obsidian',     color: '#6366f1', rarity: 'epic' },
   neon:         { id: 'neon',         name: 'Neon',         color: '#06b6d4', rarity: 'epic' },
   // Legendary
   holographic:  { id: 'holographic',  name: 'Holographic',  color: '#a78bfa', rarity: 'legendary' },
@@ -762,11 +765,22 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
   //   • setSelected() tap  — user opens detail view of a card
   // If you add a new path that mutates skin state, call flyGlobeTo too
   // or the live preview moment behind the bottom-sheet won't fire.
+  //
+  // paddingBottom: when the detail-view bottom-sheet is the layout,
+  // Mapbox would center the target at the geometric viewport mid-point —
+  // which is BEHIND the sheet. Pass ~50svh as padding so the target
+  // resolves in the visible upper half. CapacitorGlobe reads detail.paddingBottom.
   const flyGlobeTo = useCallback((monumentId: string) => {
     const ll = MONUMENT_LATLON[monumentId];
     if (!ll) return;
+    // The sheet is always open when this fires (detail view holds Unlock /
+    // Equip / Mission CTAs; card-tap is what opens it). Half the viewport
+    // is covered; rounding once avoids subpixel jitter across rerenders.
+    const paddingBottom = typeof window !== 'undefined'
+      ? Math.round(window.innerHeight * 0.5)
+      : 0;
     window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
-      detail: { lat: ll.lat, lon: ll.lon, zoom: 12 },
+      detail: { lat: ll.lat, lon: ll.lon, zoom: 12, paddingBottom },
     }));
   }, []);
 
@@ -1120,10 +1134,15 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
         )}
 
         {/* ── Body ────────────────────────────────────────────────────────── */}
-        {/* Top padding bumps up when the home-chrome is hidden so the Back
-            button doesn't sit directly under the absolute-positioned Close
-            pill (top: 12). 56px clears the pill + 8px breathing room. */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: selected ? '56px 24px 24px' : '16px 24px 24px' }}>
+        {/* In detail view, the Back button sits on the same horizontal row
+            as the absolute-positioned Close pill (top: 12) — Back left,
+            Close right. Padding-top:14 puts Back's text baseline right at
+            the pill's centerline. Padding-right:80 clears the pill width so
+            the title doesn't slide under it. */}
+        <div style={{
+          flex: 1, overflowY: 'auto',
+          padding: selected ? '14px 80px 24px 24px' : '16px 24px 24px',
+        }}>
 
           {pendingMission && (
             <div style={{

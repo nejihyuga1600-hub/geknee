@@ -106,17 +106,27 @@ export default function CapacitorGlobe() {
     // Mapbox globe react to the same user action. Zoom 3 keeps the globe
     // shape visible while focusing the chosen lat/lon at screen centre.
     const onFlyTo = (e: Event) => {
-      const detail = (e as CustomEvent<{ lat: number; lon: number; zoom?: number }>).detail;
+      const detail = (e as CustomEvent<{
+        lat: number; lon: number; zoom?: number; paddingBottom?: number;
+      }>).detail;
       if (!detail || typeof detail.lat !== "number" || typeof detail.lon !== "number") return;
       // Optional zoom from the caller: collection unlock asks for ~12
       // (city level so the user can see the monument standing in its
       // actual neighborhood). Search-box default stays at 3 (continent).
       const zoom = typeof detail.zoom === "number" ? detail.zoom : 3;
+      // paddingBottom: MonumentShop fires this with ~50svh because the
+      // detail-view bottom-sheet covers the lower half of the viewport.
+      // Without padding the target lands BEHIND the sheet at geometric
+      // viewport center. With padding Mapbox treats the visible upper
+      // half as the centering region, so the monument shows up centered
+      // in the slice the user actually sees.
+      const paddingBottom = typeof detail.paddingBottom === "number" ? detail.paddingBottom : 0;
       map.flyTo({
         center: [detail.lon, detail.lat],
         zoom,
         duration: 2200,
         essential: true,
+        padding: { top: 0, right: 0, bottom: paddingBottom, left: 0 },
       });
     };
     window.addEventListener("geknee:globe-fly-to", onFlyTo);
