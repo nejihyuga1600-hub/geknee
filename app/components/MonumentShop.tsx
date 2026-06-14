@@ -1725,6 +1725,14 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                     // Full-bleed art variant — used when public/monument-cards/{id}.jpg
                     // exists. The 4:5 portrait image is the card; name/location/rarity
                     // sit over a bottom gradient. Locked items desaturate + dim.
+                    //
+                    // CRITICAL: Use <img loading="lazy" decoding="async"> NOT CSS
+                    // backgroundImage. With 321+ cards, eager-loading every image
+                    // OOMs WKWebView — decoded bitmaps blow past iOS Safari's
+                    // memory budget while the WebGL globe is still resident in
+                    // memory behind the modal. Native lazy-load + async decode
+                    // keeps off-screen cards as cold URL references until they
+                    // scroll near the viewport.
                     <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
                         position: 'relative',
@@ -1732,11 +1740,20 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         cursor: 'pointer',
                         borderRadius: 13,
                         overflow: 'hidden',
-                        backgroundImage: `url(/monument-cards/${item.id}.jpg)`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        filter: unlocked ? 'none' : 'grayscale(0.8) brightness(0.55)',
+                        background: 'rgba(255,255,255,0.04)',
                       }}>
+                      <img
+                        src={`/monument-cards/${item.id}.jpg`}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        style={{
+                          position: 'absolute', inset: 0,
+                          width: '100%', height: '100%',
+                          objectFit: 'cover',
+                          filter: unlocked ? 'none' : 'grayscale(0.8) brightness(0.55)',
+                        }}
+                      />
                       {/* Bottom gradient + text overlay */}
                       <div style={{
                         position: 'absolute', left: 0, right: 0, bottom: 0,
