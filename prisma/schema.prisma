@@ -515,3 +515,19 @@ model TripItemVote {
   @@unique([tripId, userId, itemKey])
   @@index([tripId, itemKey])
 }
+
+// ── App-launch waitlist ───────────────────────────────────────────────────────
+// Captures interest for the iOS app before the App Store listing is live.
+// Surfaced via /waitlist, linked from every IG reel caption. `source` lets us
+// attribute signups (e.g. "ig-quest-eiffel", "site-hero") without baking
+// reel ids into URLs.
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String?
+  city      String?
+  createdAt DateTime @default(now())
+
+  @@index([source])
+  @@index([createdAt])
+}

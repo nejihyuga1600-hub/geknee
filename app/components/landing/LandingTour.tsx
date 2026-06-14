@@ -10,6 +10,7 @@ import { PhoneFrame } from './PhoneFrame';
 import {
   PhoneGet, PhonePlan, PhoneTrip, PhoneCollect, PhoneCircle,
 } from './PhoneContent';
+import WaitlistCta from './WaitlistCta';
 
 const PAPER = '#f5f1e8';
 const INK = '#0a0a1f';
@@ -142,7 +143,7 @@ export default function LandingTour() {
         phone={<PhoneFrame tint="lavender"><PhoneGet /></PhoneFrame>}
         cta={
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <a href="#" style={{
+            <WaitlistCta platform="ios" style={{
               padding: '14px 22px', background: PAPER, color: INK,
               fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -151,8 +152,8 @@ export default function LandingTour() {
               boxShadow: `4px 4px 0 ${ACCENT}`,
             }}>
               Get on App Store
-            </a>
-            <a href="#" style={{
+            </WaitlistCta>
+            <WaitlistCta platform="android" style={{
               padding: '14px 22px', background: 'transparent', color: PAPER,
               fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -160,7 +161,7 @@ export default function LandingTour() {
               border: `2px solid ${PAPER}`,
             }}>
               Get on Google Play
-            </a>
+            </WaitlistCta>
             <Link href="/plan" style={{
               padding: '14px 22px', background: 'transparent', color: ACCENT2,
               fontFamily: 'inherit', fontSize: 13, fontWeight: 700,

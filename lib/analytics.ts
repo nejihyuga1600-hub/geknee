@@ -54,7 +54,19 @@ export type AnalyticsEvent =
   // funnel analysis works without us hand-rolling a per-page event
   // type. New screens MUST call useScreen('<name>') (see memory
   // rule: screen-needs-analytics).
-  | 'screen_view';
+  | 'screen_view'
+  // iOS / Android waitlist funnel. cta_click fires from landing
+  // surfaces (Get on App Store / Google Play) with `{platform}`.
+  // submit_attempt fires the instant the form posts so we can
+  // measure form-abandon between visit and intent. signup fires on a
+  // new row, already_member on dup; both carry `{source}` so we can
+  // attribute by reel/landing/etc. failed covers validation + network
+  // errors so we can spot a broken pipe in real time.
+  | 'waitlist_cta_click'
+  | 'waitlist_submit_attempt'
+  | 'waitlist_signup'
+  | 'waitlist_already_member'
+  | 'waitlist_signup_failed';
 
 let initialized = false;
 

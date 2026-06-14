@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import StepPillNav from './components/StepPillNav';
 import LandingTour from './components/landing/LandingTour';
+import WaitlistCta from './components/landing/WaitlistCta';
 import Link from 'next/link';
 
 // ─── Landing · Passport-zine concept ─────────────────────────────────────────
@@ -189,6 +190,16 @@ export default async function Home() {
             }}>
               Start collecting {String.fromCodePoint(0x2192)}
             </Link>
+            <WaitlistCta platform="ios" href="/waitlist?src=landing-hero" style={{
+              padding: '16px 24px', background: ACCENT, color: INK,
+              fontSize: 14, fontWeight: 700, letterSpacing: '0.04em',
+              textTransform: 'uppercase', textDecoration: 'none',
+              border: `2px solid ${INK}`,
+              transform: 'rotate(0.5deg)',
+              fontFamily: 'inherit',
+            }}>
+              iOS · join waitlist
+            </WaitlistCta>
             <Link href="#how" style={{
               padding: '16px 24px', background: 'transparent', color: INK,
               fontSize: 14, fontWeight: 600, letterSpacing: '0.04em',
