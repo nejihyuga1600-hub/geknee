@@ -753,6 +753,23 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
 
   useEffect(() => { if (open) { load(); setSelected(null); setMsg(''); setLastUnlock(null); } }, [open, load]);
 
+  // Spin both globes (web Three.js + Capacitor Mapbox) to a monument.
+  // City-level zoom so the user lands in the actual neighborhood, not a
+  // continental dot. EVERY skin-state-changing path must call this:
+  //   • unlock()           — first-time monument unlock
+  //   • completeMission()  — skin unlocked via quest verification
+  //   • onEquipSkin        — user equips an already-owned skin
+  //   • setSelected() tap  — user opens detail view of a card
+  // If you add a new path that mutates skin state, call flyGlobeTo too
+  // or the live preview moment behind the bottom-sheet won't fire.
+  const flyGlobeTo = useCallback((monumentId: string) => {
+    const ll = MONUMENT_LATLON[monumentId];
+    if (!ll) return;
+    window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
+      detail: { lat: ll.lat, lon: ll.lon, zoom: 12 },
+    }));
+  }, []);
+
   // Pre-select a monument when the shop opens via globe tap. Lands the user
   // straight on the detail view (quests, proof photos, skin chooser) instead
   // of the general grid — even for locked monuments, where the detail shows
@@ -791,20 +808,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       if (collected.length === 0) track('first_unlock', { mk: item.id, via: 'unlock' });
       await load();
       window.dispatchEvent(new Event('geknee:monuments-updated'));
-      // Spin the globe to the newly-unlocked monument so the user sees
-      // the unlock land in its real location. Both globes (web Three.js
-      // + Capacitor Mapbox) listen for this event — same channel as the
-      // search box's "fly to destination" flow.
-      const ll = MONUMENT_LATLON[item.id];
-      if (ll) {
-        // City-level zoom so the user sees the monument standing in
-        // its actual neighborhood, not a continental dot. Both globes
-        // accept an optional zoom in the event detail (default 3 for
-        // the search-box fly which wants a continent-scale framing).
-        window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
-          detail: { lat: ll.lat, lon: ll.lon, zoom: 12 },
-        }));
-      }
+      flyGlobeTo(item.id);
       // Auto-close the modal sooner now (T+0.8s) so the user lands on
       // the globe just as the camera arrives at the monument and the
       // UnlockCeremony orb explodes.
@@ -870,6 +874,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       if (res.ok) {
         setMsg(`${ms.skin.name} skin unlocked!`);
         setLastUnlock({ mk: item.id, name: item.name, skin: ms.skin.id });
+        flyGlobeTo(item.id);
         // Push the unlock to the global share-toast bridge with the proof
         // photo URL the API just persisted to Blob (data.mission.photoUrl).
         // The toast wins the race against Lm's later bridge-flip detection
@@ -964,10 +969,17 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
           aria-label="Close collection"
           style={{
             position: 'absolute',
-            // Clear iOS Dynamic Island / status bar when the modal is
-            // fullscreen (grid view). In the detail-view bottom sheet the
-            // pill sits mid-screen and safe-area is 0, so this no-ops.
-            top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+            // Two anchor points:
+            //  • Grid view (fullscreen) — clear iOS Dynamic Island with
+            //    env(safe-area-inset-top).
+            //  • Detail view (bottom-half sheet) — env() returns the
+            //    VIEWPORT's safe-area regardless of where the element
+            //    is mounted, so it shoves the pill 50px into the share
+            //    card. Force a flat 12px instead so the pill sits at
+            //    the top of the sheet and content scrolls under it
+            //    cleanly. (Previously it appeared to "move with the
+            //    scroll wheel" because share/quest cards slid past it.)
+            top: selected ? 12 : 'calc(env(safe-area-inset-top, 0px) + 16px)',
             right: 16, zIndex: 10,
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '7px 14px 7px 12px', borderRadius: 999,
@@ -1283,6 +1295,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                     // (web Three.js Lm cache + Capacitor Mapbox layer)
                     // so the new skin appears without a page refresh.
                     window.dispatchEvent(new Event('geknee:monuments-updated'));
+                    flyGlobeTo(it.id);
                   }
                 } finally { setLoading(false); }
               }}
@@ -1361,7 +1374,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         opacity: unlocked ? 1 : 0.7,
                         transition: 'opacity 150ms ease',
                       }}>
-                    <div onClick={() => setSelected(item)}
+                    <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
                         padding: 14, cursor: 'pointer',
                       }}>
