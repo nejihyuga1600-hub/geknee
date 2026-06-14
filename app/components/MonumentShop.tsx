@@ -455,6 +455,19 @@ const RARITY_COLOR: Record<Rarity, string> = {
   common: '#34d399', rare: '#818cf8', epic: '#f472b6', legendary: '#f59e0b',
 };
 
+// Monument ids that have a hand-curated card image at /monument-cards/{id}.jpg.
+// Cards in this set render as full-bleed art with a name/rarity overlay; cards
+// NOT in the set fall back to the emoji + glyph circle. Add an entry once a
+// new card image lands in public/monument-cards/. Path convention is id-cased.
+const MONUMENT_CARD_IMAGES = new Set<string>([
+  'eiffelTower',
+  'colosseum',
+  'tajMahal',
+  'greatWall',
+  'statueLiberty',
+  'sagradaFamilia',
+]);
+
 type CollectedItem = { monumentId: string; skin: string; active?: boolean };
 type MissionItem   = { missionId: string; photoUrl?: string | null };
 
@@ -1393,6 +1406,85 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         opacity: unlocked ? 1 : 0.7,
                         transition: 'opacity 150ms ease',
                       }}>
+                    {MONUMENT_CARD_IMAGES.has(item.id) ? (
+                    // Full-bleed art variant — used when public/monument-cards/{id}.jpg
+                    // exists. The 4:5 portrait image is the card; name/location/rarity
+                    // sit over a bottom gradient. Locked items desaturate + dim.
+                    <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
+                      style={{
+                        position: 'relative',
+                        aspectRatio: '4 / 5',
+                        cursor: 'pointer',
+                        borderRadius: 13,
+                        overflow: 'hidden',
+                        backgroundImage: `url(/monument-cards/${item.id}.jpg)`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        filter: unlocked ? 'none' : 'grayscale(0.8) brightness(0.55)',
+                      }}>
+                      {/* Bottom gradient + text overlay */}
+                      <div style={{
+                        position: 'absolute', left: 0, right: 0, bottom: 0,
+                        padding: '40px 14px 12px',
+                        background: 'linear-gradient(to top, rgba(2,4,12,0.92) 25%, rgba(2,4,12,0.55) 65%, rgba(2,4,12,0) 100%)',
+                      }}>
+                        <div style={{
+                          fontSize: 14, fontWeight: 500,
+                          fontFamily: 'var(--font-display, Georgia, serif)',
+                          color: '#f2f2f8',
+                          letterSpacing: '-0.01em',
+                          marginBottom: 2,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                        }}>
+                          {item.name}
+                        </div>
+                        <div style={{
+                          fontSize: 10, color: '#c8c8d8',
+                          letterSpacing: '0.08em', textTransform: 'uppercase',
+                          marginBottom: 8,
+                          textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                        }}>
+                          {unlocked ? item.location : `${item.location} · Visit to unlock`}
+                        </div>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700,
+                            letterSpacing: '0.14em', textTransform: 'uppercase',
+                            color: rColor,
+                            textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                          }}>
+                            {item.rarity}
+                          </span>
+                          <span style={{
+                            fontSize: 10, color: '#e8e8f8',
+                            fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                          }}>
+                            {skinsEarned}/{item.missions.length}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Top-right marker — unlocked check or READY/VISIT */}
+                      {!unlocked && (
+                        <div style={{
+                          position: 'absolute', top: 10, right: 12,
+                          padding: '3px 8px', borderRadius: 999,
+                          fontSize: 9, color: '#f2f2f8',
+                          letterSpacing: '0.1em', fontWeight: 700,
+                          background: 'rgba(2,4,12,0.65)',
+                          border: `1px solid ${eligible ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.18)'}`,
+                          WebkitBackdropFilter: 'blur(8px)',
+                          backdropFilter: 'blur(8px)',
+                        }}>
+                          {eligible ? '⌕ READY' : '⌕ VISIT'}
+                        </div>
+                      )}
+                    </div>
+                    ) : (
                     <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
                         padding: 14, cursor: 'pointer',
@@ -1464,6 +1556,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         </div>
                       )}
                     </div>
+                    )}
                     </MagicCard>
                   );
                   // AnimatedGlowCard removed — the rotating conic-gradient
