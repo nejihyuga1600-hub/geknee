@@ -368,11 +368,10 @@ export default function CapacitorGlobe() {
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
           obj.position.sub(center);
           obj.position.y += size.y / 2; // anchor at base
-          // 50px — user dialed monuments back down 50% from the previous
-          // 100 (which felt too dominant at globe zoom). Tap-target div
-          // below scales in step (144 → 72) so touch padding stays
-          // comfortable around the smaller sprite.
-          const DISPLAY_PX = 50;
+          // 63px — user bumped +25% from 50 (2026-06-14) so monuments
+          // read clearly on smaller iPhones. Tap target below scales in
+          // step (72 → 90) so touch padding stays proportional.
+          const DISPLAY_PX = 63;
           obj.scale.setScalar(DISPLAY_PX / maxDim);
           wrapper.add(obj);
           // Wrapper rotation is set every frame in updatePositions() to
@@ -448,7 +447,14 @@ export default function CapacitorGlobe() {
           const ny = Math.cos(lat) * Math.sin(lon);
           const nz = Math.sin(lat);
           const dot = nx * cx + ny * cy + nz * cz;
-          if (dot < 0.05) { e.wrapper.visible = false; continue; }
+          // Threshold was 0.05 (= 87° from camera-facing point) which let
+          // borderline back-hemisphere monuments through. Their map.project()
+          // returns screen coords *outside* the visible globe disc but still
+          // inside the canvas, so the bounds check below passes and they
+          // render as ghosts floating in space below the globe. 0.2 (= 78°)
+          // hides them while keeping every monument that's actually visible
+          // on the disc rim.
+          if (dot < 0.2) { e.wrapper.visible = false; continue; }
 
           const pt = map.project([e.latlon.lon, e.latlon.lat]);
           if (pt.x < -100 || pt.x > w + 100 || pt.y < -100 || pt.y > h + 100) {
@@ -540,7 +546,7 @@ export default function CapacitorGlobe() {
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        el.style.cssText = "width:72px;height:72px;background:transparent;cursor:pointer;";
+        el.style.cssText = "width:90px;height:90px;background:transparent;cursor:pointer;";
         el.addEventListener("click", () => {
           // Fly the globe IN to the tapped monument so the user sees
           // the live skin preview at street/landmark level before the

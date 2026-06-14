@@ -1736,7 +1736,14 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                     <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
                         position: 'relative',
-                        aspectRatio: '4 / 5',
+                        // 4:5 portrait via the padding-bottom hack. CSS
+                        // `aspectRatio` is finicky on older iOS Safari +
+                        // CSS Grid auto-row sizing — the container can
+                        // collapse short and leave the absolutely-positioned
+                        // img clipped, showing the card background through
+                        // the bottom. padding-bottom forces explicit box
+                        // height in every layout pass.
+                        paddingBottom: '125%',
                         cursor: 'pointer',
                         borderRadius: 13,
                         overflow: 'hidden',
@@ -1751,6 +1758,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                           position: 'absolute', inset: 0,
                           width: '100%', height: '100%',
                           objectFit: 'cover',
+                          display: 'block',
                           filter: unlocked ? 'none' : 'grayscale(0.8) brightness(0.55)',
                         }}
                       />
@@ -1819,13 +1827,19 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                     ) : (
                     // Emoji fallback variant — used for the ~60 monuments
                     // without a card image yet. Matches the image-card
-                    // 4:5 aspect ratio so grid rows don't leave white
-                    // space below emoji cards adjacent to image cards.
+                    // 4:5 aspect ratio (via padding-bottom hack for the
+                    // same iOS Safari reliability reason as the image
+                    // branch above) so grid rows don't leave white space
+                    // below emoji cards adjacent to image cards.
                     <div onClick={() => { setSelected(item); flyGlobeTo(item.id); }}
                       style={{
                         position: 'relative',
-                        aspectRatio: '4 / 5',
-                        padding: 14, cursor: 'pointer',
+                        paddingBottom: '125%',
+                        cursor: 'pointer',
+                      }}>
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        padding: 14,
                         display: 'flex', flexDirection: 'column',
                         justifyContent: 'space-between',
                       }}>
@@ -1895,6 +1909,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                           {eligible ? '⌕ READY' : '⌕ VISIT'}
                         </div>
                       )}
+                      </div>
                     </div>
                     )}
                     </MagicCard>
