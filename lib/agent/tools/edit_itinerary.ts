@@ -110,8 +110,13 @@ export const editItineraryTool: AgentTool = {
       (price ? `- Price: ${price}\n` : "") +
       `\nReturn the revised itinerary in full.`;
 
+    // Haiku is fast enough for the surgical "add ONE line on ONE day"
+    // task and ~5× quicker than Sonnet — keeps the chat tool loop
+    // under Vercel's function duration cap. Was sonnet-4-6; switched
+    // 2026-06-15 after a Tokyo trip rewrite ran 60+s and tripped the
+    // chat's "magic fizzled" timeout.
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
       system: REVISE_SYSTEM,
       messages: [{ role: "user", content: userMsg }],

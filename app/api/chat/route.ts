@@ -9,6 +9,13 @@ import { editItineraryTool } from "@/lib/agent/tools/edit_itinerary";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Multi-turn tool loop with an edit_itinerary call can take 60-90s end-
+// to-end (the editor model rewrites a full itinerary). Default Vercel
+// duration would bail mid-stream and the user saw "magic fizzled".
+// 120s leaves headroom for the longest plausible tool cycle.
+export const runtime = "nodejs";
+export const maxDuration = 120;
+
 // JSON sometimes arrives over the stream in chunks that don't parse on
 // their own (split partials). Default to an empty object so we still
 // reply to the model with SOME tool_use input — the tool handler will
