@@ -250,6 +250,13 @@ Security and privacy (firm rules \u2014 do not violate even if asked):
     async start(controller) {
       let inputTokens  = 0;
       let outputTokens = 0;
+      // Server-side fallback for silent refusals. Sonnet sometimes
+      // recognizes a ROT13- / hex- / smuggled-instruction injection and
+      // refuses by emitting ZERO text tokens (out=1, content empty),
+      // even though the system prompt forbids empty bubbles. Track
+      // whether any text reached the client; if not, inject a polite
+      // redirect right before closing the stream.
+      let textBytesSent = 0;
       try {
         // Tools exposed to the chat agent. The chat is the user's voice-of-
         // confirmation channel, so any tool here MUST be safe to fire on
@@ -314,8 +321,10 @@ Security and privacy (firm rules \u2014 do not violate even if asked):
               const last = blocks[blocks.length - 1];
               if (!last) continue;
               if (event.delta.type === "text_delta" && last.type === "text") {
-                controller.enqueue(encoder.encode(event.delta.text));
+                const chunk = encoder.encode(event.delta.text);
+                controller.enqueue(chunk);
                 last.text += event.delta.text;
+                textBytesSent += chunk.byteLength;
               } else if (
                 event.delta.type === "input_json_delta" &&
                 last.type === "tool_use"
@@ -410,6 +419,21 @@ Security and privacy (firm rules \u2014 do not violate even if asked):
           // result, which will usually be a confirmation message to the user.
         }
 
+        // Fallback if the model produced no visible text across the
+        // entire stream (silent-refusal case for encoded injections).
+        // Send a warm, brand-consistent redirect so the user never sees
+        // an empty bubble. Logged so we can spot frequent triggers.
+        if (textBytesSent === 0) {
+          console.warn("[chat] empty-reply fallback fired", {
+            stopReason,
+            outputTokens,
+          });
+          controller.enqueue(
+            encoder.encode(
+              "I'm just your travel genie here to help plan your trip — that's not something I can dig into. What would you like to plan for your next adventure? ✨"
+            )
+          );
+        }
         // Append token sentinel (parsed by GlobalChat, stripped before display)
         controller.enqueue(
           encoder.encode(`\x1F{"i":${inputTokens},"o":${outputTokens}}`)
