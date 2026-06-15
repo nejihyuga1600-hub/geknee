@@ -361,18 +361,22 @@ export default function CapacitorGlobe() {
             loader.load(url, (gltf) => {
           const obj = gltf.scene;
           // Normalize the GLB to a unit cube centered at origin, then scale
-          // to display size in pixels. Y-up GLB stands upright in orthographic.
+          // by base footprint so every monument's coin-ring diameter is
+          // identical on screen. Y-up GLB stands upright in orthographic.
           const bbox = new THREE.Box3().setFromObject(obj);
           const size = new THREE.Vector3(); bbox.getSize(size);
           const center = new THREE.Vector3(); bbox.getCenter(center);
-          const maxDim = Math.max(size.x, size.y, size.z) || 1;
           obj.position.sub(center);
           obj.position.y += size.y / 2; // anchor at base
-          // 63px — user bumped +25% from 50 (2026-06-14) so monuments
-          // read clearly on smaller iPhones. Tap target below scales in
-          // step (72 → 90) so touch padding stays proportional.
+          // 63px — coin-ring footprint. Was scaling by max(x,y,z) which
+          // shrunk tall thin monuments (Eiffel, Statue of Liberty) so
+          // their bases ended up a fraction of a cubic monument's base
+          // (Taj Mahal, Colosseum). Switch to max(x,z) — the floor
+          // footprint — so every coin ring is the same size; tower
+          // monuments are allowed to extend upward naturally instead.
           const DISPLAY_PX = 63;
-          obj.scale.setScalar(DISPLAY_PX / maxDim);
+          const baseDim = Math.max(size.x, size.z) || 1;
+          obj.scale.setScalar(DISPLAY_PX / baseDim);
           wrapper.add(obj);
           // Wrapper rotation is set every frame in updatePositions() to
           // keep each monument laminated to the globe surface — radial Z
