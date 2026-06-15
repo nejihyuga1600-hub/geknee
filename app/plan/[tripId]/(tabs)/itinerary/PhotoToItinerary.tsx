@@ -335,7 +335,7 @@ export function PhotoToItinerary({ tripId, dayCount, initialDay, onAdded, compac
             color: 'var(--brand-accent)', textTransform: 'uppercase',
             fontWeight: 700,
           }}>
-            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Attach photo or video
+            <Sparkle size={10} style={{ verticalAlign: '-1px', marginRight: 4 }} /> Analyze photo or videos to add pin
           </div>
         </div>
 

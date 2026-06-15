@@ -1159,13 +1159,17 @@ export default function UnifiedTripMap({
                 );
               }}
               style={{
-                position: 'absolute', top: 56, right: 8, zIndex: 40,
+                // Full-width search row below the day chips. Previously
+                // sat at right:8 with maxWidth:320 which collided with
+                // the chat genie bubble in the top-right corner — the
+                // user couldn't read the placeholder. Now spans the full
+                // width so the placeholder + input are always legible.
+                position: 'absolute', top: 56, left: 8, right: 8, zIndex: 40,
                 display: 'flex', gap: 6,
                 background: 'rgba(13,17,23,0.92)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 10, padding: 4,
                 backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-                maxWidth: 'min(320px, calc(100% - 16px))',
               }}
             >
               <input
@@ -1205,6 +1209,8 @@ export default function UnifiedTripMap({
                 aria-label="Search results"
                 style={{
                   position: 'absolute',
+                  // Search results sit just under the full-width search
+                  // bar at top:56 — bar height ~40px + 8px gap = 104.
                   top: 104, right: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
                   maxHeight: 'calc(100% - 128px)',
@@ -1304,8 +1310,11 @@ export default function UnifiedTripMap({
               onClick={toggleRecs}
               aria-expanded={recsOpen}
               style={{
-                // Find recs button — second row (below the day chips).
-                position: 'absolute', top: 56, left: 8, zIndex: 40,
+                // Find recs button — third row (below day chips + search bar).
+                // Search bar took over the top:56 row so it could span full
+                // width; this drops to top:108 so it's still one tap away
+                // without competing for space.
+                position: 'absolute', top: 108, left: 8, zIndex: 40,
                 padding: '8px 12px',
                 background: recsOpen
                   ? 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.85))'
@@ -1330,7 +1339,7 @@ export default function UnifiedTripMap({
                 aria-label="Curated recommendations"
                 style={{
                   position: 'absolute',
-                  top: 104, left: 8, zIndex: 40,
+                  top: 156, left: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
                   maxHeight: 'calc(100% - 128px)',
                   overflowY: 'auto',
@@ -1461,7 +1470,9 @@ export default function UnifiedTripMap({
             aria-label="Filter map by day"
             style={{
               position: 'absolute',
-              left: 8, right: 8,
+              // left:48 clears the floating Close × that lives at left:8
+              // (width 32) — leaves 8px breathing room between them.
+              left: 48, right: 8,
               top: 8,
               zIndex: 35,
               display: 'flex', flexWrap: 'nowrap', gap: 6,

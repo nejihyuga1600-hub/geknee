@@ -1557,42 +1557,35 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 }} />
               </div>
             )}
-            <header style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              // Tighter padding: top inset + 4 (was +12), bottom 6 (was 12)
-              // so the safe-area band ends where the map begins. Saves
-              // ~12 px vertical for the map area.
-              padding: 'calc(env(safe-area-inset-top, 0px) + 4px) 12px 6px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              gap: 8,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MapIcon size={14} />
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)',
-                  fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
-                }}>Trip Map</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMapDrawerOpen(false)}
-                aria-label="Close map"
-                style={{
-                  width: 26, height: 26, borderRadius: 999,
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: '#cbd5e1', cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 0, fontFamily: 'inherit',
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </header>
+            {/* No "Trip Map" title strip — every pixel of vertical space
+                goes to the map. The close × floats over the top-left
+                corner of the map instead. Lives above day-chips zIndex
+                so it stays tappable even when chips wrap to overlap it. */}
+            <button
+              type="button"
+              onClick={() => setMapDrawerOpen(false)}
+              aria-label="Close map"
+              style={{
+                position: 'absolute',
+                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                left: 8,
+                zIndex: 45,
+                width: 32, height: 32, borderRadius: 999,
+                background: 'rgba(13,17,23,0.85)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                color: '#e2e8f0', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0, fontFamily: 'inherit',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               {mapDrawerOpen && (savedTripId || location) && (
                 <UnifiedTripMap
