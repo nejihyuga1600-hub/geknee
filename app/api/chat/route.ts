@@ -424,10 +424,7 @@ Security and privacy (firm rules \u2014 do not violate even if asked):
         // Send a warm, brand-consistent redirect so the user never sees
         // an empty bubble. Logged so we can spot frequent triggers.
         if (textBytesSent === 0) {
-          console.warn("[chat] empty-reply fallback fired", {
-            stopReason,
-            outputTokens,
-          });
+          console.warn("[chat] empty-reply fallback fired", { outputTokens });
           controller.enqueue(
             encoder.encode(
               "I'm just your travel genie here to help plan your trip — that's not something I can dig into. What would you like to plan for your next adventure? ✨"
