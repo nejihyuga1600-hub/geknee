@@ -13,6 +13,7 @@ import { findPlacesTool } from './tools/find_places';
 import { recallUserContextTool } from './tools/recall_user_context';
 import { flightSearchTool } from './tools/flight_search';
 import { currencyConvertTool } from './tools/currency_convert';
+import { editItineraryTool } from './tools/edit_itinerary';
 
 export interface ToolContext {
   userId: string;
@@ -47,6 +48,7 @@ export function getAgentTools(): AgentTool[] {
     flightSearchTool,
     currencyConvertTool,
     recallUserContextTool,
+    editItineraryTool,
     echoTool,
   ];
 }

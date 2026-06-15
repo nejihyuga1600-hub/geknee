@@ -5,8 +5,18 @@ import { addTokenUsage } from "@/lib/tokenTracking";
 import { prisma } from "@/lib/prisma";
 import { getTripAccess } from "@/lib/tripAccess";
 import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
+import { editItineraryTool } from "@/lib/agent/tools/edit_itinerary";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// JSON sometimes arrives over the stream in chunks that don't parse on
+// their own (split partials). Default to an empty object so we still
+// reply to the model with SOME tool_use input — the tool handler will
+// surface a clear error if the shape is missing required fields.
+function safeParse(s: string): unknown {
+  if (!s.trim()) return {};
+  try { return JSON.parse(s); } catch { return {}; }
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -209,7 +219,12 @@ Guidelines:
 - If on the preferences page, help them pick travel style, purpose, or budget
 - If on the dates page, suggest best times to visit based on weather/events
 - If on the booking page, give practical advice on flights, hotels, and activities
-- Occasionally use a touch of genie personality (\u2728) but stay practical`;
+- Occasionally use a touch of genie personality (\u2728) but stay practical
+
+Editing the itinerary:
+- When the wanderer is on a trip page (a tripId is in this conversation's scope) you CAN edit their itinerary directly with the edit_itinerary tool. Do not tell them you can't \u2014 you can.
+- Pattern: suggest something concrete in your reply, then ASK if they want it added. If they confirm (any clear "yes" / "go for it" / "do it"), call edit_itinerary in the next turn with kind, name, district, and a meta string like "Day 2 \u00b7 10:00 AM \u00b7 ~1.5 hrs". The change persists immediately and the trip view will reflect it on next reload.
+- Never invent a tripId \u2014 if no trip is in scope, the tool will return an error and you should fall back to telling them where to add it manually.`;
 
   // Filter out empty assistant placeholders before sending to API
   const validMessages = body.messages.filter((m) => m.content.trim() !== "");
@@ -220,25 +235,144 @@ Guidelines:
       let inputTokens  = 0;
       let outputTokens = 0;
       try {
-        const stream = await client.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 512,
-          stream: true,
-          system,
-          messages: validMessages,
-        });
+        // Tools exposed to the chat agent. The chat is the user's voice-of-
+        // confirmation channel, so any tool here MUST be safe to fire on
+        // "yes" — i.e. the model is expected to confirm with the user BEFORE
+        // calling it, and the tool itself does the right thing if context
+        // is missing (returns an error blob the model surfaces back).
+        const toolDefs = [
+          {
+            name: editItineraryTool.name,
+            description: editItineraryTool.description,
+            input_schema: editItineraryTool.input_schema,
+          },
+        ];
 
-        for await (const event of stream as AsyncIterable<MessageStreamEvent>) {
-          if (event.type === "message_start") {
-            inputTokens = event.message.usage.input_tokens;
-          } else if (event.type === "message_delta" && event.usage) {
-            outputTokens = event.usage.output_tokens;
-          } else if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            controller.enqueue(encoder.encode(event.delta.text));
+        // Multi-turn tool-use loop: stream the assistant's reply; if it
+        // stops to call a tool, execute the tool, append the result, and
+        // stream the next turn. Continues until the model emits a turn
+        // that ends in plain text (no tool_use).
+        const userId = (session.user as { id: string }).id;
+        // Cap iterations so a malformed prompt can't burn budget calling
+        // tools in a loop. Chat tools are simple — 1-2 cycles is normal.
+        const MAX_TOOL_CYCLES = 4;
+        const messagesForApi: Anthropic.MessageParam[] = validMessages.map(
+          (m) => ({ role: m.role, content: m.content }),
+        );
+
+        let cycle = 0;
+        while (cycle < MAX_TOOL_CYCLES) {
+          cycle++;
+          const stream = await client.messages.create({
+            model: "claude-sonnet-4-6",
+            max_tokens: 1024,
+            stream: true,
+            system,
+            messages: messagesForApi,
+            tools: toolDefs,
+          });
+
+          // Assemble assistant content blocks as the stream arrives so we
+          // can replay them back to the model as `assistant` content when
+          // a tool_use is followed by a tool_result.
+          const blocks: Array<
+            | { type: "text"; text: string }
+            | { type: "tool_use"; id: string; name: string; partialJson: string }
+          > = [];
+          let stopReason: string | null = null;
+
+          for await (const event of stream as AsyncIterable<MessageStreamEvent>) {
+            if (event.type === "message_start") {
+              inputTokens += event.message.usage.input_tokens;
+            } else if (event.type === "message_delta") {
+              if (event.usage) outputTokens += event.usage.output_tokens;
+              if (event.delta.stop_reason) stopReason = event.delta.stop_reason;
+            } else if (event.type === "content_block_start") {
+              const cb = event.content_block;
+              if (cb.type === "text") {
+                blocks.push({ type: "text", text: "" });
+              } else if (cb.type === "tool_use") {
+                blocks.push({ type: "tool_use", id: cb.id, name: cb.name, partialJson: "" });
+              }
+            } else if (event.type === "content_block_delta") {
+              const last = blocks[blocks.length - 1];
+              if (!last) continue;
+              if (event.delta.type === "text_delta" && last.type === "text") {
+                controller.enqueue(encoder.encode(event.delta.text));
+                last.text += event.delta.text;
+              } else if (
+                event.delta.type === "input_json_delta" &&
+                last.type === "tool_use"
+              ) {
+                last.partialJson += event.delta.partial_json;
+              }
+            }
           }
+
+          if (stopReason !== "tool_use") break;
+
+          // Replay the assistant turn (text + tool_use blocks) back into
+          // the conversation so the model sees what it just said.
+          messagesForApi.push({
+            role: "assistant",
+            content: blocks.map((b) =>
+              b.type === "text"
+                ? { type: "text" as const, text: b.text }
+                : {
+                    type: "tool_use" as const,
+                    id: b.id,
+                    name: b.name,
+                    input: safeParse(b.partialJson),
+                  },
+            ),
+          });
+
+          // Execute each tool_use the model emitted and bundle the
+          // results into a single user turn (the Anthropic API expects
+          // ALL tool_result blocks for a tool_use turn together).
+          const toolResults: Array<{
+            type: "tool_result";
+            tool_use_id: string;
+            content: string;
+            is_error?: boolean;
+          }> = [];
+          for (const b of blocks) {
+            if (b.type !== "tool_use") continue;
+            const input = safeParse(b.partialJson);
+            let resultContent: string;
+            let isError = false;
+            try {
+              if (b.name === editItineraryTool.name) {
+                const r = await editItineraryTool.handler(
+                  input as Record<string, unknown>,
+                  { userId, tripId: body.tripId ?? undefined },
+                );
+                resultContent = JSON.stringify(r);
+                if (
+                  r &&
+                  typeof r === "object" &&
+                  "error" in (r as Record<string, unknown>)
+                ) {
+                  isError = true;
+                }
+              } else {
+                resultContent = `Unknown tool: ${b.name}`;
+                isError = true;
+              }
+            } catch (e) {
+              resultContent = e instanceof Error ? e.message : String(e);
+              isError = true;
+            }
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: b.id,
+              content: resultContent,
+              ...(isError ? { is_error: true } : {}),
+            });
+          }
+          messagesForApi.push({ role: "user", content: toolResults });
+          // Loop: next iteration streams the model's reply to the tool
+          // result, which will usually be a confirmation message to the user.
         }
 
         // Append token sentinel (parsed by GlobalChat, stripped before display)
