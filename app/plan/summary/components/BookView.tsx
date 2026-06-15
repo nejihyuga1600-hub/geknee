@@ -382,10 +382,37 @@ interface Activity {
 // rendered the same Park Hyatt Kyoto cards regardless of destination —
 // the user reported the bug for a Taj Mahal trip.
 
+export interface EmailHotelConfirmation {
+  hotelName: string;
+  city: string;
+  checkinAt: string;
+  checkoutAt: string;
+  bookingRef: string | null;
+  totalDisplay: string | null;
+}
+export interface EmailConfirmations {
+  flightDetectedAt: string | null;
+  hotels: EmailHotelConfirmation[];
+}
+
 export default function BookView(props: BookTabProps) {
   const [tab, setTab] = useState<Tab>('stays');
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [flight, setFlight] = useState<Flight | null>(null);
+  // Gmail-parsed booking confirmations for this trip. Hydrated on mount
+  // from /api/email/gmail/confirmations and refreshed by ScanInboxPill
+  // after a successful scan. Drives the "✓ BOOKED · ref" badges on the
+  // matching hotel + flight cards.
+  const [emailConfirmations, setEmailConfirmations] = useState<EmailConfirmations | null>(null);
+  useEffect(() => {
+    if (!props.tripId) return;
+    let cancelled = false;
+    fetch(`/api/email/gmail/confirmations?tripId=${encodeURIComponent(props.tripId)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (!cancelled && d) setEmailConfirmations(d as EmailConfirmations); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [props.tripId]);
   const [flightOptions, setFlightOptions] = useState<FlightOption[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -550,10 +577,18 @@ export default function BookView(props: BookTabProps) {
           </div>
         </div>
         <div style={{
-          fontFamily: MONO, fontSize: 11, letterSpacing: '0.18em',
-          color: 'var(--brand-ink-dim)', fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          justifyContent: 'flex-end',
         }}>
-          {headerCurrency}{totalSpent.toLocaleString()} · {totalBookings} OF 5 BOOKED
+          <div style={{
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.18em',
+            color: 'var(--brand-ink-dim)', fontWeight: 700,
+          }}>
+            {headerCurrency}{totalSpent.toLocaleString()} · {totalBookings} OF 5 BOOKED
+          </div>
+          {props.tripId && (
+            <ScanInboxPill tripId={props.tripId} onConfirmationsChange={setEmailConfirmations} />
+          )}
         </div>
       </div>
 
@@ -624,7 +659,7 @@ export default function BookView(props: BookTabProps) {
           Couldn&apos;t load booking suggestions ({loadError}). Try again in a moment.
         </div>
       )}
-      {!loading && !loadError && tab === 'stays'      && <StaysSection hotels={hotels} location={props.location} startDate={props.startDate} endDate={props.endDate} nights={props.nights} tripId={props.tripId} onItineraryAdjusted={props.onItineraryAdjusted} />}
+      {!loading && !loadError && tab === 'stays'      && <StaysSection hotels={hotels} location={props.location} startDate={props.startDate} endDate={props.endDate} nights={props.nights} tripId={props.tripId} onItineraryAdjusted={props.onItineraryAdjusted} emailHotels={emailConfirmations?.hotels ?? []} />}
       {!loading && !loadError && tab === 'flights' && (
         flightOptions.length > 0
           ? <FlightOptionsSection options={flightOptions} startDate={props.startDate} endDate={props.endDate} homeAirport={homeAirport} onChangeHome={changeHomeAirport} tripId={props.tripId} />
@@ -652,10 +687,11 @@ type SortDir = 'asc' | 'desc';
 // the active chip flips direction.
 const DEFAULT_DIR: Record<SortKey, SortDir> = { price: 'asc', rating: 'desc' };
 
-function StaysSection({ hotels, location, startDate, endDate, nights, tripId, onItineraryAdjusted }: {
+function StaysSection({ hotels, location, startDate, endDate, nights, tripId, onItineraryAdjusted, emailHotels }: {
   hotels: Hotel[]; location: string; startDate: string; endDate: string; nights: string;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
+  emailHotels: EmailHotelConfirmation[];
 }) {
   const datesLabel = startDate && endDate
     ? `APR ${new Date(startDate).getDate()}–${new Date(endDate).getDate()}`
@@ -718,7 +754,7 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
       }}>
         {sortedHotels.map((h, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} guests={guests} rooms={rooms} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} guests={guests} rooms={rooms} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} emailConfirmation={emailHotels.find(eh => eh.hotelName.toLowerCase().includes(h.name.toLowerCase()) || h.name.toLowerCase().includes(eh.hotelName.toLowerCase())) ?? null} />
             {tripId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
                 <VoteButtons tripId={tripId} itemKey={`hotel:${h.name}`} kind="booking" label={`Hotel: ${h.name}`} compact />
@@ -728,6 +764,91 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
         ))}
       </div>
     </section>
+  );
+}
+
+// Triggers /api/email/gmail/scan to pull booking confirmations from
+// the user's inbox, then re-fetches /api/email/gmail/confirmations so
+// the matched hotel/flight cards light up with their refs immediately.
+// 412 = gmail.readonly scope missing → tells the user to re-sign-in.
+function ScanInboxPill({ tripId, onConfirmationsChange }: {
+  tripId: string;
+  onConfirmationsChange: (c: EmailConfirmations) => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'scanning' | 'done' | 'error' | 'needs_auth'>('idle');
+  const [summary, setSummary] = useState<string>('');
+
+  async function scan() {
+    if (status === 'scanning') return;
+    setStatus('scanning'); setSummary('');
+    track('book_intent', { kind: 'inbox-scan', tripId });
+    try {
+      const r = await fetch('/api/email/gmail/scan', { method: 'POST' });
+      if (r.status === 412) {
+        setStatus('needs_auth');
+        setSummary('Sign in with Google again to grant inbox read access.');
+        return;
+      }
+      if (!r.ok) {
+        setStatus('error');
+        setSummary('Scan failed. Try again later.');
+        return;
+      }
+      const d = await r.json() as { new?: number; deduped?: number };
+      setStatus('done');
+      const newCount = d.new ?? 0;
+      const dedupCount = d.deduped ?? 0;
+      setSummary(
+        newCount > 0
+          ? `Found ${newCount} new booking${newCount === 1 ? '' : 's'}.`
+          : dedupCount > 0
+            ? 'No new bookings since last scan.'
+            : 'No booking emails in the last 30 days.',
+      );
+      // Refresh the parsed confirmations so any new hotel match lights
+      // up the badge on its card without a page reload.
+      const refresh = await fetch(`/api/email/gmail/confirmations?tripId=${encodeURIComponent(tripId)}`);
+      if (refresh.ok) onConfirmationsChange(await refresh.json() as EmailConfirmations);
+    } catch {
+      setStatus('error');
+      setSummary('Network error. Try again.');
+    }
+  }
+
+  const label =
+    status === 'scanning' ? 'Scanning inbox…' :
+    status === 'needs_auth' ? 'Connect Gmail' :
+    'Scan inbox';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        type="button"
+        onClick={scan}
+        disabled={status === 'scanning'}
+        style={{
+          padding: '6px 12px', borderRadius: 999,
+          background: status === 'scanning'
+            ? 'rgba(167,139,250,0.10)'
+            : 'rgba(167,139,250,0.16)',
+          border: '1px solid var(--brand-border-hi)',
+          color: 'var(--brand-accent)',
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em',
+          textTransform: 'uppercase', fontWeight: 700,
+          cursor: status === 'scanning' ? 'wait' : 'pointer',
+        }}
+      >
+        ✦ {label}
+      </button>
+      {summary && status !== 'idle' && status !== 'scanning' && (
+        <div style={{
+          fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em',
+          color: status === 'error' || status === 'needs_auth'
+            ? 'var(--brand-warn, #f59e0b)'
+            : 'var(--brand-ink-dim)',
+        }}>{summary}</div>
+      )}
+    </div>
   );
 }
 
@@ -807,12 +928,13 @@ const TIER_COLOR: Record<Hotel['tier'], string> = {
 // session doesn't re-hit /api/place-images. Keyed on "<name>||<city>".
 const galleryCache = new Map<string, string[]>();
 
-function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tripId, onItineraryAdjusted }: {
+function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tripId, onItineraryAdjusted, emailConfirmation = null }: {
   hotel: Hotel; city: string; startDate?: string; endDate?: string;
   guests?: number;
   rooms?: number;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
+  emailConfirmation?: EmailHotelConfirmation | null;
 }) {
   // Slot-in to itinerary state. fromItinerary cards already match
   // something in the plan so the button hides; everything else can
@@ -1032,7 +1154,7 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
             border: '1px solid var(--brand-gold, #fbbf24)', fontWeight: 700,
             pointerEvents: 'none',
           }}>★ FROM ITINERARY</div>
-        ) : hotel.booked ? (
+        ) : hotel.booked || emailConfirmation ? (
           <div style={{
             position: 'absolute', top: 12, right: 12,
             fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
@@ -1041,7 +1163,11 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
             color: 'var(--brand-accent-2)',
             border: '1px solid var(--brand-accent-2)', fontWeight: 700,
             pointerEvents: 'none',
-          }}>{String.fromCodePoint(0x2713)} BOOKED</div>
+            maxWidth: 'calc(100% - 24px)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {String.fromCodePoint(0x2713)} BOOKED{emailConfirmation?.bookingRef ? ` · ${emailConfirmation.bookingRef}` : ''}
+          </div>
         ) : null}
 
         {/* Slideshow controls — rendered only when there's >1 image. */}

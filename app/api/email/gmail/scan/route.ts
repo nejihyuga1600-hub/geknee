@@ -21,6 +21,7 @@ import {
   extractMessageBody,
 } from "@/lib/gmail-client";
 import { extractFlight, matchFlightToTrip } from "@/lib/flight-extractor";
+import { extractHotel, matchHotelToTrip } from "@/lib/hotel-extractor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -133,12 +134,54 @@ export async function POST() {
             });
           }
         } else {
-          // Not a flight (hotel-only, etc.) or low confidence. Mark parsed
-          // so we don't retry, but keep flight columns null.
-          await prisma.inboundMessage.update({
-            where: { id: inbound.id },
-            data: { parsedAt: new Date(), status: "skipped", reason: "not-a-flight" },
-          });
+          // Not a flight — try the hotel extractor before giving up.
+          // Hotel data is persisted as JSON in the `reason` text column
+          // (rather than dedicated columns) so we don't need a Prisma
+          // migration to land this. A follow-up should promote the most
+          // common fields to proper columns once usage is validated.
+          const hotel = await extractHotel(body);
+          if (hotel) {
+            const trips = await prisma.tripDraft.findMany({
+              where: { userId },
+              select: { id: true, location: true, startDate: true, endDate: true },
+            });
+            const matchedTripId = matchHotelToTrip(hotel, trips);
+            await prisma.inboundMessage.update({
+              where: { id: inbound.id },
+              data: {
+                parsedAt: new Date(),
+                status: "extracted",
+                reason: JSON.stringify({
+                  type: "hotel",
+                  hotelName: hotel.hotelName,
+                  city: hotel.city,
+                  checkinAt: hotel.checkinAt,
+                  checkoutAt: hotel.checkoutAt,
+                  bookingRef: hotel.bookingRef,
+                  totalDisplay: hotel.totalDisplay,
+                  confidence: hotel.confidence,
+                  matchedTripId,
+                }),
+              },
+            });
+            // Flag the trip as having a hotel booking — reuses the
+            // existing flightBookingDetectedAt pattern. (We deliberately
+            // don't introduce a new column tonight; a future migration
+            // can split flight + hotel detection if both can coexist on
+            // the same trip.)
+            if (matchedTripId) {
+              await prisma.tripDraft.update({
+                where: { id: matchedTripId },
+                data: { flightBookingDetectedAt: new Date() },
+              });
+            }
+          } else {
+            // Neither flight nor hotel. Mark parsed so we don't retry.
+            await prisma.inboundMessage.update({
+              where: { id: inbound.id },
+              data: { parsedAt: new Date(), status: "skipped", reason: "not-a-known-booking" },
+            });
+          }
         }
       } catch (parseErr) {
         console.error("[email/gmail/scan] flight extraction failed:", parseErr);
