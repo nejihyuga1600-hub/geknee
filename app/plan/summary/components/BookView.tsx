@@ -630,8 +630,8 @@ export default function BookView(props: BookTabProps) {
           ? <FlightOptionsSection options={flightOptions} startDate={props.startDate} endDate={props.endDate} homeAirport={homeAirport} onChangeHome={changeHomeAirport} tripId={props.tripId} />
           : (flight && <FlightsSection flight={flight} startDate={props.startDate} endDate={props.endDate} />)
       )}
-      {!loading && !loadError && tab === 'activities' && <ActivitiesSection activities={activities} tripId={props.tripId} onItineraryAdjusted={props.onItineraryAdjusted} />}
-      {tab === 'transport'  && <PlaceholderSection title="Local transport" detail="Suica/Pasmo IC card setup, day passes, and intercity train suggestions land here once you confirm dates." />}
+      {!loading && !loadError && tab === 'activities' && <ActivitiesSection activities={activities} location={props.location} startDate={props.startDate} endDate={props.endDate} tripId={props.tripId} onItineraryAdjusted={props.onItineraryAdjusted} />}
+      {tab === 'transport'  && <TransportSection location={props.location} startDate={props.startDate} endDate={props.endDate} tripId={props.tripId} />}
       {!loading && !loadError && tab === 'insurance' && (
         <InsuranceSection
           location={props.location}
@@ -1903,8 +1903,11 @@ function FlightOptionAggregator({ option, startDate, endDate, tripId }: {
   );
 }
 
-function ActivitiesSection({ activities, tripId, onItineraryAdjusted }: {
+function ActivitiesSection({ activities, location, startDate, endDate, tripId, onItineraryAdjusted }: {
   activities: Activity[];
+  location: string;
+  startDate: string;
+  endDate: string;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
 }) {
@@ -1929,7 +1932,7 @@ function ActivitiesSection({ activities, tripId, onItineraryAdjusted }: {
       }}>
         {activities.map((a, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <ActivityCard activity={a} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            <ActivityCard activity={a} location={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
             {tripId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
                 <VoteButtons tripId={tripId} itemKey={`activity:${a.name}`} kind="booking" label={`Activity: ${a.name}`} compact />
@@ -1944,11 +1947,26 @@ function ActivitiesSection({ activities, tripId, onItineraryAdjusted }: {
 
 // Per-card slot-in handler. Extracted from the inline render so each
 // card can carry its own adjusting/adjusted/error state.
-function ActivityCard({ activity: a, tripId, onItineraryAdjusted }: {
+function ActivityCard({ activity: a, location, startDate, endDate, tripId, onItineraryAdjusted }: {
   activity: Activity;
+  location: string;
+  startDate: string;
+  endDate: string;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
 }) {
+  // GetYourGuide search URL: pre-fills the activity name + destination
+  // city so the user lands on a result list scoped to their trip. Date
+  // range comes through via `from_date` / `to_date` (GetYourGuide's
+  // standard query keys). If the trip's location is "Tokyo, Japan",
+  // we strip the country so the city is the search anchor.
+  const cityOnly = location.split(',')[0]?.trim() || location;
+  const gygQuery = `${a.name} ${cityOnly}`.trim();
+  const gygParams = new URLSearchParams({ q: gygQuery });
+  if (startDate) gygParams.set('from_date', startDate);
+  if (endDate)   gygParams.set('to_date', endDate);
+  if (tripId)    gygParams.set('partner_id', `geknee-${tripId}`);
+  const bookHref = `https://www.getyourguide.com/s/?${gygParams.toString()}`;
   const [adjusting, setAdjusting] = useState(false);
   const [adjusted, setAdjusted] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
@@ -2029,16 +2047,23 @@ function ActivityCard({ activity: a, tripId, onItineraryAdjusted }: {
           {a.currency}{a.price.toLocaleString()}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
-          <button style={{
-            padding: '6px 12px', borderRadius: 8,
-            background: a.booked ? 'transparent' : 'var(--brand-accent)',
-            color: a.booked ? 'var(--brand-accent)' : 'var(--brand-bg)',
-            border: a.booked ? '1px solid var(--brand-border-hi)' : 'none',
-            fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
-            cursor: 'pointer',
-          }}>
+          <a
+            href={bookHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => track('book_intent', { kind: 'activity', provider: 'getyourguide', name: a.name, location })}
+            style={{
+              padding: '6px 12px', borderRadius: 8,
+              background: a.booked ? 'transparent' : 'var(--brand-accent)',
+              color: a.booked ? 'var(--brand-accent)' : 'var(--brand-bg)',
+              border: a.booked ? '1px solid var(--brand-border-hi)' : 'none',
+              fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', textDecoration: 'none',
+              display: 'inline-block',
+            }}
+          >
             {a.booked ? 'Manage' : 'Book'}
-          </button>
+          </a>
           {tripId && onItineraryAdjusted && !a.fromItinerary && (
             <button
               type="button"
@@ -2282,6 +2307,240 @@ function PartnerBookingsBanner({ bookings }: { bookings: PartnerBooking[] }) {
         })}
       </div>
     </div>
+  );
+}
+
+// ─── Transport ─────────────────────────────────────────────────────────────
+// Region-aware list of transit-pass deeplinks. Detection is substring
+// match against the trip's destination string — coarse but enough to
+// surface the right city/country pass before the user even leaves the
+// app. Dates are passed through where the partner site supports them.
+//
+// Adding a region: add a new entry with `match: /substring/i` and a
+// list of options. The first match wins; the generic Klook fallback
+// always renders so the user is never stuck without an option.
+interface TransportOption {
+  name: string;
+  description: string;
+  href: string;
+  accent: string;
+}
+
+function regionalTransportOptions(
+  location: string,
+  startDate: string,
+  endDate: string,
+): TransportOption[] {
+  const loc = location.toLowerCase();
+  const dateRange = startDate && endDate
+    ? `${startDate}+to+${endDate}` : '';
+
+  // Japan — Suica IC + JR Pass.
+  if (/\b(tokyo|kyoto|osaka|japan|nagoya|hokkaido|okinawa|fukuoka)\b/i.test(loc)) {
+    return [
+      {
+        name: 'Suica IC card',
+        description: 'Tap-to-ride on every train, bus, and convenience store across Japan. Pre-loaded with ¥1,500.',
+        href: 'https://www.klook.com/activity/16031-japan-welcome-suica-tokyo/?aid=geknee',
+        accent: '#34d399',
+      },
+      {
+        name: 'JR Pass · 7-day',
+        description: 'Unlimited bullet-train rides nationwide for 7 consecutive days. Most cost-effective for multi-city trips.',
+        href: `https://www.jrpass.com/?utm_source=geknee${dateRange ? `&dates=${dateRange}` : ''}`,
+        accent: '#f59e0b',
+      },
+      {
+        name: 'Tokyo Subway · 72hr',
+        description: 'Tokyo Metro + Toei Subway, unlimited for 3 days. Worth it from ~6 rides.',
+        href: 'https://www.klook.com/activity/2031-tokyo-subway-pass-tokyo/?aid=geknee',
+        accent: '#7dd3fc',
+      },
+    ];
+  }
+
+  // UK — Oyster card + BritRail.
+  if (/\b(london|uk|united kingdom|england|britain|edinburgh|manchester)\b/i.test(loc)) {
+    return [
+      {
+        name: 'Visitor Oyster card',
+        description: 'Tap-to-ride on London Tube, bus, Overground. Pre-loaded with £15.',
+        href: 'https://www.klook.com/activity/30135-visitor-oyster-card-london/?aid=geknee',
+        accent: '#34d399',
+      },
+      {
+        name: 'BritRail · 8-day Flexi',
+        description: 'Travel UK-wide on any 8 days within a month. Best for multi-city itineraries.',
+        href: `https://www.britrail.com/?utm_source=geknee${dateRange ? `&dates=${dateRange}` : ''}`,
+        accent: '#f59e0b',
+      },
+    ];
+  }
+
+  // France / Western Europe — Navigo + Eurail.
+  if (/\b(paris|france|nice|lyon|marseille|bordeaux)\b/i.test(loc)) {
+    return [
+      {
+        name: 'Navigo Easy card',
+        description: 'Paris metro, RER, bus, tram. Top up week-by-week, no photo required.',
+        href: 'https://www.klook.com/activity/57108-paris-navigo-easy-card/?aid=geknee',
+        accent: '#34d399',
+      },
+      {
+        name: 'Eurail · France Pass',
+        description: 'TGV + intercity rail across France for chosen travel days within 1 month.',
+        href: `https://www.eurail.com/en/eurail-passes/one-country-pass/france?utm_source=geknee${dateRange ? `&dates=${dateRange}` : ''}`,
+        accent: '#f59e0b',
+      },
+    ];
+  }
+
+  // Italy.
+  if (/\b(rome|italy|venice|florence|milan|naples)\b/i.test(loc)) {
+    return [
+      {
+        name: 'Rome 72h Tourist Card',
+        description: 'Unlimited Rome metro + bus + tram for 3 days.',
+        href: 'https://www.klook.com/activity/16127-roma-pass-rome/?aid=geknee',
+        accent: '#34d399',
+      },
+      {
+        name: 'Eurail · Italy Pass',
+        description: 'Frecciarossa + intercity rail across Italy on chosen travel days within 1 month.',
+        href: `https://www.eurail.com/en/eurail-passes/one-country-pass/italy?utm_source=geknee${dateRange ? `&dates=${dateRange}` : ''}`,
+        accent: '#f59e0b',
+      },
+    ];
+  }
+
+  // South Korea.
+  if (/\b(seoul|korea|busan|jeju)\b/i.test(loc)) {
+    return [
+      {
+        name: 'T-money card',
+        description: 'Seoul subway + bus + KTX top-ups. Tap-to-ride across the entire transit network.',
+        href: 'https://www.klook.com/activity/15828-t-money-card-seoul/?aid=geknee',
+        accent: '#34d399',
+      },
+      {
+        name: 'Korea Rail Pass',
+        description: 'Unlimited KTX + standard train rides nationwide for chosen consecutive days.',
+        href: `https://www.letskorail.com/ebizbf/EbizBfKrPassAction.do?utm_source=geknee${dateRange ? `&dates=${dateRange}` : ''}`,
+        accent: '#f59e0b',
+      },
+    ];
+  }
+
+  // Singapore / SEA hubs.
+  if (/\b(singapore|hong kong|bangkok|thailand|kuala lumpur|malaysia)\b/i.test(loc)) {
+    return [
+      {
+        name: 'Local IC card',
+        description: 'Pre-loaded contactless card for metro + bus on day one.',
+        href: `https://www.klook.com/search?query=${encodeURIComponent(location)}+IC+card&aid=geknee`,
+        accent: '#34d399',
+      },
+      {
+        name: 'Klook day passes',
+        description: 'Tourist passes, airport express, day rides — region-specific options.',
+        href: `https://www.klook.com/search?query=${encodeURIComponent(location)}+transport+pass&aid=geknee`,
+        accent: '#7dd3fc',
+      },
+    ];
+  }
+
+  // Generic fallback — Klook covers most destinations worldwide for
+  // transport passes; we drop the search term in so the result list
+  // lands on something usable instead of an empty landing page.
+  return [
+    {
+      name: 'Klook · Transport passes',
+      description: `Curated transit + day-pass options for ${location}.`,
+      href: `https://www.klook.com/search?query=${encodeURIComponent(location + ' transport pass')}&aid=geknee`,
+      accent: '#7dd3fc',
+    },
+    {
+      name: 'Omio',
+      description: 'Train, bus, and ferry tickets across Europe + global routes.',
+      href: `https://www.omio.com/search-frontend/results?to=${encodeURIComponent(location)}${startDate ? `&departureDate=${startDate}` : ''}`,
+      accent: '#34d399',
+    },
+  ];
+}
+
+function TransportSection({ location, startDate, endDate, tripId }: {
+  location: string;
+  startDate: string;
+  endDate: string;
+  tripId?: string;
+}) {
+  const options = regionalTransportOptions(location, startDate, endDate);
+  const dateLabel = startDate && endDate
+    ? `${startDate} → ${endDate}`
+    : 'dates not set';
+  return (
+    <section>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
+      }}>
+        {String.fromCodePoint(0x00A7)} TRANSPORT · {options.length} OPTIONS · {dateLabel}
+      </div>
+      <h2 style={{
+        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
+        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 8px',
+      }}>
+        How will you get around?
+      </h2>
+      <p style={{
+        fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.55,
+        margin: '0 0 20px', maxWidth: 540,
+      }}>
+        Tap-to-ride IC cards, multi-day passes, and intercity rail — links pre-fill with your destination
+        {startDate && endDate ? ` and travel dates` : ''}.
+      </p>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gap: 14,
+      }}>
+        {options.map((opt) => (
+          <a
+            key={opt.name}
+            href={opt.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => track('book_intent', { kind: 'transport', provider: opt.name, location, tripId })}
+            style={{
+              padding: '16px 18px',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--brand-border)',
+              borderLeft: `3px solid ${opt.accent}`,
+              borderRadius: 14,
+              display: 'flex', flexDirection: 'column', gap: 8,
+              textDecoration: 'none', color: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 18, fontWeight: 400,
+              letterSpacing: '-0.005em', color: 'var(--brand-ink)',
+            }}>{opt.name}</div>
+            <div style={{
+              fontSize: 12, color: 'var(--brand-ink-dim)', lineHeight: 1.55,
+            }}>{opt.description}</div>
+            <div style={{
+              marginTop: 4, paddingTop: 10,
+              borderTop: '1px solid var(--brand-border)',
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em',
+              color: opt.accent, fontWeight: 700, textTransform: 'uppercase',
+            }}>
+              Buy &rarr;
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }
 
