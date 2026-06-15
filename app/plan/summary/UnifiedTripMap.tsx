@@ -1164,7 +1164,9 @@ export default function UnifiedTripMap({
                 // the chat genie bubble in the top-right corner — the
                 // user couldn't read the placeholder. Now spans the full
                 // width so the placeholder + input are always legible.
-                position: 'absolute', top: 56, left: 8, right: 8, zIndex: 40,
+                position: 'absolute',
+                top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+                left: 8, right: 8, zIndex: 40,
                 display: 'flex', gap: 6,
                 background: 'rgba(13,17,23,0.92)',
                 border: '1px solid rgba(255,255,255,0.12)',
@@ -1210,8 +1212,9 @@ export default function UnifiedTripMap({
                 style={{
                   position: 'absolute',
                   // Search results sit just under the full-width search
-                  // bar at top:56 — bar height ~40px + 8px gap = 104.
-                  top: 104, right: 8, zIndex: 40,
+                  // bar at top:safe+56 — bar height ~40px + 8px gap.
+                  top: 'calc(env(safe-area-inset-top, 0px) + 104px)',
+                  right: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
                   maxHeight: 'calc(100% - 128px)',
                   overflowY: 'auto',
@@ -1303,7 +1306,12 @@ export default function UnifiedTripMap({
             )}
           </>
         )}
-        {recsEnabled && (
+        {/* Find recs lives in the genie chat now as a "TRY ASKING" suggestion
+            chip — moved out of the map per user feedback (the FAB was eating
+            map space and the genie already has find_places + geocode tools
+            to surface recommendations conversationally). Set this back to
+            `recsEnabled` if we ever want the inline panel back. */}
+        {false && recsEnabled && (
           <>
             <button
               type="button"
@@ -1473,7 +1481,10 @@ export default function UnifiedTripMap({
               // left:48 clears the floating Close × that lives at left:8
               // (width 32) — leaves 8px breathing room between them.
               left: 48, right: 8,
-              top: 8,
+              // Push below the iPhone Dynamic Island / notch. Without
+              // safe-area inset the chips lived at y=8 and the camera
+              // pill overlapped them.
+              top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
               zIndex: 35,
               display: 'flex', flexWrap: 'nowrap', gap: 6,
               padding: 6,

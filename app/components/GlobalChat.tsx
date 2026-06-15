@@ -418,7 +418,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {messages.length === 0 && (() => {
                 const examples: Record<string, string[]> = {
-                  trip:    ['What did the group decide about Day 2?', 'Suggest a swap for the dinner on Day 3', 'Who has not voted yet?'],
+                  trip:    ['✦ Find recommendations near my trip', 'Suggest a swap for the dinner on Day 3', 'What did the group decide about Day 2?'],
                   globe:   ['Best places for beaches', 'Hidden gems in Asia', 'Where to go with kids?'],
                   style:   ['What travel style suits a foodie?', 'Difference between budget and backpacker?', 'Best style for solo travel?'],
                   dates:   ['Best month to visit Tokyo', 'When is cherry blossom season in Japan?', 'Avoid monsoon in Southeast Asia?'],
