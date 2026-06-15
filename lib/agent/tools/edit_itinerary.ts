@@ -9,6 +9,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
+import { checkItineraryEditQuota } from "@/lib/plan";
 import type { AgentTool } from "../tools";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -78,6 +79,25 @@ export const editItineraryTool: AgentTool = {
       };
     }
 
+    // Plan-tier quota. Free = 3 edits/trip/day, Pro = 30. Burn first
+    // and roll back inside checkItineraryEditQuota so concurrent calls
+    // can't race past the limit.
+    const quota = await checkItineraryEditQuota(ctx.userId, ctx.tripId);
+    if (!quota.allowed) {
+      const resetIso = quota.resetAt.slice(0, 10);
+      const upgradeHint =
+        quota.plan === "free"
+          ? " Upgrade to Pro for 10× more itinerary edits per trip per day."
+          : "";
+      return {
+        error: `Daily itinerary-edit limit reached (${quota.limit}/day on the ${quota.plan} plan). Resets ${resetIso}.${upgradeHint}`,
+        rateLimited: true,
+        plan: quota.plan,
+        limit: quota.limit,
+        resetAt: quota.resetAt,
+      };
+    }
+
     const { kind, name, district, meta, price } = input as unknown as EditInput;
 
     const userMsg =
@@ -120,6 +140,7 @@ export const editItineraryTool: AgentTool = {
       kind,
       name,
       day: dayMatch,
+      editsRemainingToday: quota.remaining,
       message: `Added ${name} to ${dayMatch ?? "the itinerary"}.`,
     };
   },

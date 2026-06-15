@@ -131,6 +131,47 @@ export async function checkMediaQuota(
   return { allowed: true, remaining: Math.max(0, limit - row.count) };
 }
 
+// Itinerary edits via the chat genie's edit_itinerary tool. Free is
+// generous enough to feel useful (a tap or two of refinement) but tight
+// enough to nudge heavy editors to Pro. Each edit is a single Sonnet
+// revision call (~$0.01-0.02) so the headroom is wide.
+const FREE_ITINERARY_EDIT_PER_DAY = 3;
+const PRO_ITINERARY_EDIT_PER_DAY  = 30;
+
+/** Check whether the chat genie may run another edit_itinerary on this trip today. */
+export async function checkItineraryEditQuota(
+  userId: string,
+  tripId: string,
+): Promise<{ allowed: true; remaining: number } | { allowed: false; reason: 'rate_limit'; resetAt: string; limit: number; plan: 'free' | 'pro' }> {
+  if (await isDevAccount(userId)) return { allowed: true, remaining: PRO_ITINERARY_EDIT_PER_DAY };
+
+  // `edit:` prefix on the day key so itinerary-edit rows don't collide
+  // with checkChatSuggestQuota rows in the shared ChatSuggestUsage table.
+  // Avoids a Prisma migration — same trick as the `__media__` tripId
+  // sentinel above.
+  const day = `edit:${new Date().toISOString().slice(0, 10)}`;
+  const info = await getUserPlan(userId);
+  const limit = info.plan === 'pro' ? PRO_ITINERARY_EDIT_PER_DAY : FREE_ITINERARY_EDIT_PER_DAY;
+
+  const row = await prisma.chatSuggestUsage.upsert({
+    where: { userId_tripId_day: { userId, tripId, day } },
+    create: { userId, tripId, day, count: 1 },
+    update: { count: { increment: 1 } },
+  });
+
+  if (row.count > limit) {
+    await prisma.chatSuggestUsage.update({
+      where: { id: row.id },
+      data: { count: { decrement: 1 } },
+    });
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
+    return { allowed: false, reason: 'rate_limit', resetAt: tomorrow.toISOString(), limit, plan: info.plan };
+  }
+  return { allowed: true, remaining: Math.max(0, limit - row.count) };
+}
+
 /** Check whether a user may trigger another AI suggestion call for this trip today. */
 export async function checkChatSuggestQuota(
   userId: string,
