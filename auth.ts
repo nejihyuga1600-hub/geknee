@@ -84,7 +84,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // present the chooser even with cached cookies.
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+          scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
           access_type: 'offline',
           prompt: 'select_account',
           authuser: '-1',

@@ -798,22 +798,23 @@ function ScanInboxPill({ tripId, onConfirmationsChange }: {
         return { ok: true, needsAuth: false, data: await r.json() as ScanResult };
       } catch { return { ok: false, needsAuth: false }; }
     }
-    const [gmail, outlook] = await Promise.all([
+    const [gmail, outlook, gcal] = await Promise.all([
       callOne('/api/email/gmail/scan'),
       callOne('/api/email/outlook/scan'),
+      callOne('/api/email/gcal/scan'),
     ]);
-    if (gmail.needsAuth && outlook.needsAuth) {
+    if (gmail.needsAuth && outlook.needsAuth && gcal.needsAuth) {
       setStatus('needs_auth');
-      setSummary('Sign in with Google or Microsoft to grant inbox read access.');
+      setSummary('Sign in with Google or Microsoft to grant inbox/calendar read access.');
       return;
     }
-    if (!gmail.ok && !outlook.ok) {
+    if (!gmail.ok && !outlook.ok && !gcal.ok) {
       setStatus('error');
       setSummary('Scan failed. Try again later.');
       return;
     }
-    const newCount = (gmail.data?.new ?? 0) + (outlook.data?.new ?? 0);
-    const dedupCount = (gmail.data?.deduped ?? 0) + (outlook.data?.deduped ?? 0);
+    const newCount = (gmail.data?.new ?? 0) + (outlook.data?.new ?? 0) + (gcal.data?.new ?? 0);
+    const dedupCount = (gmail.data?.deduped ?? 0) + (outlook.data?.deduped ?? 0) + (gcal.data?.deduped ?? 0);
     setStatus('done');
     setSummary(
       newCount > 0
