@@ -587,7 +587,10 @@ export default function BookView(props: BookTabProps) {
             {headerCurrency}{totalSpent.toLocaleString()} · {totalBookings} OF 5 BOOKED
           </div>
           {props.tripId && (
-            <ScanInboxPill tripId={props.tripId} onConfirmationsChange={setEmailConfirmations} />
+            <>
+              <ScanInboxPill tripId={props.tripId} onConfirmationsChange={setEmailConfirmations} />
+              <ManualPasteButton tripId={props.tripId} onConfirmationsChange={setEmailConfirmations} />
+            </>
           )}
         </div>
       </div>
@@ -782,37 +785,45 @@ function ScanInboxPill({ tripId, onConfirmationsChange }: {
     if (status === 'scanning') return;
     setStatus('scanning'); setSummary('');
     track('book_intent', { kind: 'inbox-scan', tripId });
-    try {
-      const r = await fetch('/api/email/gmail/scan', { method: 'POST' });
-      if (r.status === 412) {
-        setStatus('needs_auth');
-        setSummary('Sign in with Google again to grant inbox read access.');
-        return;
-      }
-      if (!r.ok) {
-        setStatus('error');
-        setSummary('Scan failed. Try again later.');
-        return;
-      }
-      const d = await r.json() as { new?: number; deduped?: number };
-      setStatus('done');
-      const newCount = d.new ?? 0;
-      const dedupCount = d.deduped ?? 0;
-      setSummary(
-        newCount > 0
-          ? `Found ${newCount} new booking${newCount === 1 ? '' : 's'}.`
-          : dedupCount > 0
-            ? 'No new bookings since last scan.'
-            : 'No booking emails in the last 30 days.',
-      );
-      // Refresh the parsed confirmations so any new hotel match lights
-      // up the badge on its card without a page reload.
-      const refresh = await fetch(`/api/email/gmail/confirmations?tripId=${encodeURIComponent(tripId)}`);
-      if (refresh.ok) onConfirmationsChange(await refresh.json() as EmailConfirmations);
-    } catch {
-      setStatus('error');
-      setSummary('Network error. Try again.');
+    // Scan both Gmail AND Outlook so the user doesn't have to know
+    // which mailbox holds their confirmation. Each returns 412 when
+    // the corresponding OAuth scope isn't connected — we tolerate
+    // that and only flag "needs auth" if BOTH are disconnected.
+    type ScanResult = { new?: number; deduped?: number };
+    async function callOne(url: string): Promise<{ ok: boolean; needsAuth: boolean; data?: ScanResult }> {
+      try {
+        const r = await fetch(url, { method: 'POST' });
+        if (r.status === 412) return { ok: false, needsAuth: true };
+        if (!r.ok) return { ok: false, needsAuth: false };
+        return { ok: true, needsAuth: false, data: await r.json() as ScanResult };
+      } catch { return { ok: false, needsAuth: false }; }
     }
+    const [gmail, outlook] = await Promise.all([
+      callOne('/api/email/gmail/scan'),
+      callOne('/api/email/outlook/scan'),
+    ]);
+    if (gmail.needsAuth && outlook.needsAuth) {
+      setStatus('needs_auth');
+      setSummary('Sign in with Google or Microsoft to grant inbox read access.');
+      return;
+    }
+    if (!gmail.ok && !outlook.ok) {
+      setStatus('error');
+      setSummary('Scan failed. Try again later.');
+      return;
+    }
+    const newCount = (gmail.data?.new ?? 0) + (outlook.data?.new ?? 0);
+    const dedupCount = (gmail.data?.deduped ?? 0) + (outlook.data?.deduped ?? 0);
+    setStatus('done');
+    setSummary(
+      newCount > 0
+        ? `Found ${newCount} new booking${newCount === 1 ? '' : 's'}.`
+        : dedupCount > 0
+          ? 'No new bookings since last scan.'
+          : 'No booking emails in the last 30 days.',
+    );
+    const refresh = await fetch(`/api/email/gmail/confirmations?tripId=${encodeURIComponent(tripId)}`);
+    if (refresh.ok) onConfirmationsChange(await refresh.json() as EmailConfirmations);
   }
 
   const label =
@@ -849,6 +860,230 @@ function ScanInboxPill({ tripId, onConfirmationsChange }: {
         }}>{summary}</div>
       )}
     </div>
+  );
+}
+
+// Opens a sheet for the user to paste a confirmation email's text OR
+// drop a screenshot of one. Sends to /api/booking/manual-paste which
+// runs the same extractors as the Gmail/Outlook scan. Refreshes the
+// confirmations endpoint on success so badges light up immediately.
+function ManualPasteButton({ tripId, onConfirmationsChange }: {
+  tripId: string;
+  onConfirmationsChange: (c: EmailConfirmations) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<string>('');
+
+  function close() {
+    setOpen(false);
+    setText(''); setImageFile(null); setResult(''); setSubmitting(false);
+  }
+
+  async function submit() {
+    if (submitting) return;
+    setSubmitting(true); setResult('');
+    track('book_intent', { kind: 'manual-paste', tripId, mode: imageFile ? 'image' : 'text' });
+    try {
+      let body: Record<string, unknown>;
+      if (imageFile) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(imageFile);
+        });
+        body = { kind: 'image', imageBase64: base64, mimeType: imageFile.type, tripId };
+      } else if (text.trim().length >= 50) {
+        body = { kind: 'text', text, tripId };
+      } else {
+        setResult('Paste at least a few lines of the confirmation, or upload an image.');
+        setSubmitting(false);
+        return;
+      }
+      const r = await fetch('/api/booking/manual-paste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json() as { ok?: boolean; kind?: string; deduped?: boolean; matchedTripId?: string | null; error?: string };
+      if (!r.ok) {
+        setResult(data.error ?? 'Failed to parse.');
+      } else if (data.deduped) {
+        setResult('Already added — same confirmation as before.');
+      } else if (data.kind === 'unknown') {
+        setResult('Could not detect a flight or hotel in that text. Try a different paste.');
+      } else {
+        setResult(
+          data.matchedTripId
+            ? `✓ Matched a ${data.kind} to this trip — badge updated.`
+            : `Parsed a ${data.kind}, but it didn't match this trip's city + dates.`,
+        );
+        const refresh = await fetch(`/api/email/gmail/confirmations?tripId=${encodeURIComponent(tripId)}`);
+        if (refresh.ok) onConfirmationsChange(await refresh.json() as EmailConfirmations);
+      }
+    } catch {
+      setResult('Network error.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          padding: '6px 12px', borderRadius: 999,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid var(--brand-border)',
+          color: 'var(--brand-ink-dim)',
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em',
+          textTransform: 'uppercase', fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        ✦ Paste confirmation
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Paste a booking confirmation"
+          onClick={close}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9500,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0a0a1f',
+              border: '1px solid var(--brand-border-hi)',
+              borderRadius: 16,
+              padding: 20,
+              width: 'min(560px, 100%)',
+              maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column', gap: 14,
+              overflow: 'auto',
+            }}
+          >
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 22, fontWeight: 400,
+              color: 'var(--brand-ink)',
+            }}>
+              Add a booking
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--brand-ink-dim)', lineHeight: 1.55, margin: 0 }}>
+              Paste a confirmation email or drop a screenshot. I&apos;ll pull out the hotel / flight / dates and match it to this trip.
+            </p>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Paste the body of your booking confirmation email here…"
+              rows={8}
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--brand-border)',
+                borderRadius: 10,
+                color: 'var(--brand-ink)',
+                fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5,
+                padding: 12, resize: 'vertical',
+                minHeight: 140,
+              }}
+            />
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            }}>
+              <label style={{
+                padding: '7px 12px', borderRadius: 8,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--brand-border)',
+                color: 'var(--brand-ink-dim)',
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em',
+                textTransform: 'uppercase', fontWeight: 700,
+                cursor: 'pointer',
+              }}>
+                {imageFile ? `📷 ${imageFile.name}` : '📷 Or upload a screenshot'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {imageFile && (
+                <button
+                  type="button"
+                  onClick={() => setImageFile(null)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 999,
+                    background: 'transparent',
+                    border: '1px solid var(--brand-border)',
+                    color: 'var(--brand-ink-dim)',
+                    fontFamily: 'inherit', fontSize: 11, cursor: 'pointer',
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            {result && (
+              <div style={{
+                padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(167,139,250,0.10)',
+                border: '1px solid var(--brand-border-hi)',
+                color: 'var(--brand-ink)',
+                fontSize: 12, lineHeight: 1.5,
+              }}>{result}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={close}
+                style={{
+                  padding: '8px 14px', borderRadius: 8,
+                  background: 'transparent',
+                  border: '1px solid var(--brand-border)',
+                  color: 'var(--brand-ink-dim)',
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting || (text.trim().length < 50 && !imageFile)}
+                style={{
+                  padding: '8px 14px', borderRadius: 8,
+                  background: 'var(--brand-accent)',
+                  border: 'none',
+                  color: 'var(--brand-bg)',
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+                  cursor: submitting ? 'wait' : 'pointer',
+                  opacity: (text.trim().length < 50 && !imageFile) ? 0.4 : 1,
+                }}
+              >
+                {submitting ? 'Parsing…' : 'Add booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

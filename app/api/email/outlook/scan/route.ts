@@ -10,7 +10,32 @@ import { prisma } from "@/lib/prisma";
 import {
   getOutlookAccessToken,
   listBookingConfirmations,
+  fetchOutlookMessage,
 } from "@/lib/outlook-client";
+import { extractFlight, matchFlightToTrip } from "@/lib/flight-extractor";
+import { extractHotel, matchHotelToTrip } from "@/lib/hotel-extractor";
+
+// Strip HTML tags + collapse whitespace so the extractor sees readable
+// plain text. Matches Gmail's extractMessageBody behavior — Microsoft
+// Graph returns body.content as HTML by default for most senders.
+function bodyFromOutlook(msg: { body?: { content?: string; contentType?: "text" | "html" }; bodyPreview?: string }): string {
+  const raw = msg.body?.content ?? msg.bodyPreview ?? "";
+  if (!raw) return "";
+  if (msg.body?.contentType === "html") {
+    return raw
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return raw.replace(/\s+/g, " ").trim();
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -70,10 +95,93 @@ export async function POST() {
         continue;
       }
 
-      await prisma.inboundMessage.create({
+      const inbound = await prisma.inboundMessage.create({
         data: { messageId, userId, status: "received" },
       });
       newCount += 1;
+
+      // ── Extraction (parallel to gmail scan). Best-effort: failures
+      // leave parsedAt null so a future retry can pick it up. ────────
+      try {
+        const full = await fetchOutlookMessage(accessToken, msg.id);
+        if (!full) {
+          await prisma.inboundMessage.update({
+            where: { id: inbound.id },
+            data: { parsedAt: new Date(), status: "skipped", reason: "outlook-fetch-failed" },
+          });
+          continue;
+        }
+        const body = bodyFromOutlook(full);
+        const flight = await extractFlight(body);
+        if (flight) {
+          const arrives = new Date(flight.arrivesAt);
+          const returns = flight.returnsAt ? new Date(flight.returnsAt) : null;
+          await prisma.inboundMessage.update({
+            where: { id: inbound.id },
+            data: {
+              flightDest: flight.destinationIata ?? flight.destinationCity,
+              flightDestCity: flight.destinationCity,
+              flightArrivesAt: isNaN(arrives.getTime()) ? null : arrives,
+              flightReturnsAt: returns && !isNaN(returns.getTime()) ? returns : null,
+              parsedAt: new Date(),
+              status: "extracted",
+            },
+          });
+          const trips = await prisma.tripDraft.findMany({
+            where: { userId },
+            select: { id: true, location: true, startDate: true },
+          });
+          const matchedTripId = matchFlightToTrip(flight, trips);
+          if (matchedTripId) {
+            await prisma.tripDraft.update({
+              where: { id: matchedTripId },
+              data: { flightBookingDetectedAt: new Date() },
+            });
+          }
+        } else {
+          const hotel = await extractHotel(body);
+          if (hotel) {
+            const trips = await prisma.tripDraft.findMany({
+              where: { userId },
+              select: { id: true, location: true, startDate: true, endDate: true },
+            });
+            const matchedTripId = matchHotelToTrip(hotel, trips);
+            await prisma.inboundMessage.update({
+              where: { id: inbound.id },
+              data: {
+                parsedAt: new Date(),
+                status: "extracted",
+                reason: JSON.stringify({
+                  type: "hotel",
+                  hotelName: hotel.hotelName,
+                  city: hotel.city,
+                  checkinAt: hotel.checkinAt,
+                  checkoutAt: hotel.checkoutAt,
+                  bookingRef: hotel.bookingRef,
+                  totalDisplay: hotel.totalDisplay,
+                  confidence: hotel.confidence,
+                  matchedTripId,
+                  source: "outlook",
+                }),
+              },
+            });
+            if (matchedTripId) {
+              await prisma.tripDraft.update({
+                where: { id: matchedTripId },
+                data: { flightBookingDetectedAt: new Date() },
+              });
+            }
+          } else {
+            await prisma.inboundMessage.update({
+              where: { id: inbound.id },
+              data: { parsedAt: new Date(), status: "skipped", reason: "not-a-known-booking" },
+            });
+          }
+        }
+      } catch (parseErr) {
+        console.error("[email/outlook/scan] extraction failed:", parseErr);
+        // Leave parsedAt null — eligible for retry.
+      }
     } catch (err) {
       console.error("[email/outlook/scan] per-message error:", err);
       errorCount += 1;
