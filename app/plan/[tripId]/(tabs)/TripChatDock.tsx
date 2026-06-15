@@ -233,10 +233,11 @@ export default function TripChatDock({ tripId, destination }: Props) {
   // - Collapsed base: hide all but SHEET_PEEK_HEIGHT
   // dragDelta is signed: negative drags reduce translateY (sheet rises),
   // positive drags increase it (sheet falls).
-  // Hide all but SHEET_PEEK_HEIGHT when collapsed. Updated to match the
-  // new 86svh sheet height so the math doesn't drift after the bottom-
-  // flush + breathing-room redesign.
-  const collapsedTranslate = `calc(86svh - ${SHEET_PEEK_HEIGHT}px)`;
+  // Hide all but SHEET_PEEK_HEIGHT when collapsed. Dock now spans from
+  // safe-area + 8 px to the viewport bottom (~92svh on a notched iPhone),
+  // so translate by that span minus the peek to leave only SHEET_PEEK_HEIGHT
+  // visible. Was 86svh under the old safe-area + 56 top.
+  const collapsedTranslate = `calc(92svh - ${SHEET_PEEK_HEIGHT}px)`;
   const transformValue = dragStartY.current !== null
     ? `translate3d(0, calc(${dragStartExpanded.current ? '0px' : collapsedTranslate} + ${dragDelta}px), 0)`
     : `translate3d(0, ${expanded ? '0px' : collapsedTranslate}, 0)`;
@@ -264,16 +265,15 @@ export default function TripChatDock({ tripId, destination }: Props) {
         // sheet shrinks to fit the available viewport instead of being
         // pushed off the top of the screen when the keyboard rises.
         bottom: keyboardOffset,
-        // Floor the top against the device safe area so the chat
-        // header never slips under the Dynamic Island / camera notch
-        // when the keyboard opens and the sheet stretches. max() picks
-        // whichever is LOWER on the screen (= further from top): the
-        // 14svh breathing-room rule OR safe-area + ~56 px of buffer
-        // (matches the trip-tabs sticky nav minHeight). Without this
-        // floor the user saw the "Trip chat / Drag down to collapse"
-        // row sitting right under the iPhone 17 Pro front-camera
-        // island.
-        top: 'max(14svh, calc(env(safe-area-inset-top, 0px) + 56px))',
+        // Floor the top right against the device safe area (+8 px so
+        // the chat header doesn't kiss the Dynamic Island). Was
+        // max(14svh, safe + 56) which kept the chat header at ~120 px
+        // from the top — right inside the left-edge map drawer tab's
+        // range (safe + 72 .. safe + 120), so the tab visually covered
+        // the chat header and any left-side teammate avatars. Sliding
+        // the chat up to safe + 8 puts the header ABOVE the map tab
+        // entirely, so the profile area is no longer blocked.
+        top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
         zIndex: 9400,
         display: 'flex', flexDirection: 'column',
         transform: transformValue,
