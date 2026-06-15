@@ -1080,7 +1080,12 @@ export default function UnifiedTripMap({
         zIndex: 5,
         marginBottom: fillHeight ? 0 : 18,
         display: 'flex',
-        flexDirection: 'column',
+        // column-reverse so the "Confirm and regenerate" action bar
+        // renders at the TOP of the itinerary drawer (user feedback —
+        // it lived at the bottom and was easy to miss). Order of the
+        // children in the JSX is preserved (map first, button second);
+        // flex visually flips them so the button is on top.
+        flexDirection: 'column-reverse',
         height: fillHeight ? '100%' : 'auto',
         minHeight: 0,
       }}
@@ -1478,9 +1483,8 @@ export default function UnifiedTripMap({
             aria-label="Filter map by day"
             style={{
               position: 'absolute',
-              // left:48 clears the floating Close × that lives at left:8
-              // (width 32) — leaves 8px breathing room between them.
-              left: 48, right: 8,
+              // The floating close × is gone — reclaim the left edge.
+              left: 8, right: 8,
               // Push below the iPhone Dynamic Island / notch. Without
               // safe-area inset the chips lived at y=8 and the camera
               // pill overlapped them.
