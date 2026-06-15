@@ -662,6 +662,14 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
     : 'YOUR DATES';
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  // Guests / rooms control. Flows into:
+  //   - Booking.com deeplink (group_adults, no_rooms)
+  //   - "Stays for N" header label
+  //   - "Avg per night" price math on each card (split N rooms)
+  // Default 2 + 1 matches the previous hardcoded value so existing
+  // sessions don't see prices jump on first render.
+  const [guests, setGuests] = useState(2);
+  const [rooms,  setRooms]  = useState(1);
   function toggleSort(k: SortKey) {
     if (sortKey === k) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -686,9 +694,11 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
           fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
           color: 'var(--brand-ink-mute)', fontWeight: 700,
         }}>
-          {String.fromCodePoint(0x00A7)} {(location || 'STAYS').toUpperCase()} · {nights || '–'} NIGHT{nights === '1' ? '' : 'S'} · {datesLabel}
+          {String.fromCodePoint(0x00A7)} {(location || 'STAYS').toUpperCase()} · {nights || '–'} NIGHT{nights === '1' ? '' : 'S'} · {datesLabel} · {guests} GUEST{guests === 1 ? '' : 'S'} · {rooms} ROOM{rooms === 1 ? '' : 'S'}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <StepperChip label="Guests" value={guests} min={1} max={8} onChange={setGuests} />
+          <StepperChip label="Rooms"  value={rooms}  min={1} max={4} onChange={setRooms} />
           <SortChip label="Price"  active={sortKey === 'price'}  dir={sortDir} onClick={() => toggleSort('price')} />
           <SortChip label="Rating" active={sortKey === 'rating'} dir={sortDir} onClick={() => toggleSort('rating')} />
         </div>
@@ -708,7 +718,7 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
       }}>
         {sortedHotels.map((h, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} guests={guests} rooms={rooms} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
             {tripId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
                 <VoteButtons tripId={tripId} itemKey={`hotel:${h.name}`} kind="booking" label={`Hotel: ${h.name}`} compact />
@@ -718,6 +728,48 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
         ))}
       </div>
     </section>
+  );
+}
+
+// Inline pill stepper: "Guests 2 - +". Used for Guests + Rooms so the
+// user can dial in occupancy without leaving the Stays page. Value
+// flows through to the Booking.com deeplink (group_adults / no_rooms).
+function StepperChip({ label, value, min, max, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (next: number) => void;
+}) {
+  const dec = () => onChange(Math.max(min, value - 1));
+  const inc = () => onChange(Math.min(max, value + 1));
+  const tone = value > min
+    ? { bg: 'rgba(167,139,250,0.16)', border: 'var(--brand-border-hi)', ink: 'var(--brand-accent)' }
+    : { bg: 'rgba(255,255,255,0.04)', border: 'var(--brand-border)', ink: 'var(--brand-ink-dim)' };
+  const btnStyle = {
+    width: 22, height: 22, borderRadius: 999, padding: 0,
+    background: 'transparent',
+    border: 'none',
+    color: tone.ink,
+    cursor: 'pointer',
+    fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+    lineHeight: 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  } as const;
+  return (
+    <div style={{
+      padding: '3px 4px 3px 12px', borderRadius: 999,
+      background: tone.bg,
+      border: `1px solid ${tone.border}`,
+      color: tone.ink,
+      fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
+      <span>{label}</span>
+      <button type="button" aria-label={`Decrease ${label}`} onClick={dec} disabled={value <= min} style={{ ...btnStyle, opacity: value <= min ? 0.35 : 1 }}>−</button>
+      <span style={{ minWidth: 12, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <button type="button" aria-label={`Increase ${label}`} onClick={inc} disabled={value >= max} style={{ ...btnStyle, opacity: value >= max ? 0.35 : 1 }}>+</button>
+    </div>
   );
 }
 
@@ -755,8 +807,10 @@ const TIER_COLOR: Record<Hotel['tier'], string> = {
 // session doesn't re-hit /api/place-images. Keyed on "<name>||<city>".
 const galleryCache = new Map<string, string[]>();
 
-function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjusted }: {
+function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tripId, onItineraryAdjusted }: {
   hotel: Hotel; city: string; startDate?: string; endDate?: string;
+  guests?: number;
+  rooms?: number;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
 }) {
@@ -803,8 +857,8 @@ function HotelCard({ hotel, city, startDate, endDate, tripId, onItineraryAdjuste
   const bookingHref = (() => {
     const params = new URLSearchParams({
       ss: `${hotel.name}, ${city}`,
-      group_adults: '2',
-      no_rooms: '1',
+      group_adults: String(guests),
+      no_rooms: String(rooms),
     });
     if (startDate) params.set('checkin', startDate);
     if (endDate)   params.set('checkout', endDate);
