@@ -77,6 +77,7 @@ model User {
   completedMissions      CompletedMission[]
   tokenUsage             DailyTokenUsage[]
   pushTokens             PushToken[]
+  bookingRequests        BookingRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -530,4 +531,59 @@ model WaitlistEntry {
 
   @@index([source])
   @@index([createdAt])
+}
+
+// ── Concierge booking requests ──────────────────────────────────────────────
+// User taps "Request to book" on a hotel / flight / activity → a row lands
+// here with status=pending. Admin (or future browser-automation agent)
+// works the queue: marks `booked` with the OTA confirmation code (sends
+// the user a success email) or `failed` with a reason. Stripe charges
+// happen via the user's saved PaymentMethod at booking time (off_session
+// charge against the stripeCustomerId we already store on User). We never
+// store raw card data — paymentMethodId is the Stripe `pm_…` reference.
+//
+// kind enum (string, kept loose so we can add `transport` etc. later
+// without a migration): hotel | flight | activity
+//
+// status enum: pending | approved | booked | failed | cancelled
+//   pending   → submitted, in queue
+//   approved  → admin reviewed + queued the actual OTA booking
+//   booked    → OTA confirmation received, user emailed
+//   failed    → could not book (sold out, price changed, etc.); refund
+//               handled out-of-band
+//   cancelled → user cancelled before booking
+model BookingRequest {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId            String?
+  kind              String
+  title             String
+  // Free-form JSON payload captured from the source (room id, flight
+  // segments, activity option id, dates, guests, pax breakdown). The
+  // concierge needs this to actually replicate the booking on the OTA.
+  payload           Json
+  status            String   @default("pending")
+  // Cents — Int because we never mutate this fractionally and Prisma's
+  // Decimal is overkill for currency presentation.
+  estimatedCents    Int?
+  finalCents        Int?
+  currency          String   @default("USD")
+  paymentMethodId   String?   // Stripe pm_… selected at request time
+  stripePaymentId   String?   // PaymentIntent / Charge id once executed
+  otaProvider       String?   // e.g. "booking.com", "duffel", "getyourguide"
+  otaConfirmation   String?   // confirmation code returned by the OTA
+  failureReason     String?
+  conciergeUserId   String?   // admin who took ownership of the request
+  conciergeNotes    String?
+  // Lifecycle timestamps — distinguish "user submitted" from "admin saw"
+  // from "actually booked" so we can compute SLAs later.
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  approvedAt        DateTime?
+  bookedAt          DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([tripId])
 }
