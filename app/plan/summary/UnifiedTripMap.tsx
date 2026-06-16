@@ -1178,7 +1178,10 @@ export default function UnifiedTripMap({
                 // user couldn't read the placeholder. Now spans the full
                 // width so the placeholder + input are always legible.
                 position: 'absolute',
-                top: 'calc(env(safe-area-inset-top, 0px) + 50px)',
+                // Chips strip top:safe-area+0 with ~40px height → search
+                // bar sits at safe-area+44 (4px gap) so the two rows read
+                // as one stacked control cluster anchored to the notch.
+                top: 'calc(env(safe-area-inset-top, 0px) + 44px)',
                 left: 8, right: 8, zIndex: 40,
                 display: 'flex', gap: 6,
                 background: 'rgba(13,17,23,0.92)',
@@ -1291,7 +1294,7 @@ export default function UnifiedTripMap({
                 role="status"
                 style={{
                   position: 'absolute',
-                  top: 'calc(env(safe-area-inset-top, 0px) + 104px)',
+                  top: 'calc(env(safe-area-inset-top, 0px) + 92px)',
                   left: 8, right: 8, zIndex: 41,
                   padding: '8px 12px',
                   background: 'rgba(13,17,23,0.96)',
@@ -1313,7 +1316,7 @@ export default function UnifiedTripMap({
                   position: 'absolute',
                   // Search results sit just under the full-width search
                   // bar at top:safe+56 — bar height ~40px + 8px gap.
-                  top: 'calc(env(safe-area-inset-top, 0px) + 104px)',
+                  top: 'calc(env(safe-area-inset-top, 0px) + 92px)',
                   right: 8, zIndex: 40,
                   width: 'min(340px, calc(100% - 16px))',
                   maxHeight: 'calc(100% - 128px)',
@@ -1580,9 +1583,11 @@ export default function UnifiedTripMap({
               position: 'absolute',
               // The floating close × is gone — reclaim the left edge.
               left: 8, right: 8,
-              // Sit right under the Dynamic Island (safe-area covers
-              // its height already; +4 is just visual breathing room).
-              top: 'calc(env(safe-area-inset-top, 0px) + 4px)',
+              // Flush with the Dynamic Island — env(safe-area-inset-top)
+              // already accounts for the island's height; no extra px
+              // means the chips read as "anchored to the camera notch"
+              // instead of floating below it.
+              top: 'env(safe-area-inset-top, 0px)',
               zIndex: 35,
               display: 'flex', flexWrap: 'nowrap', gap: 6,
               padding: 6,
@@ -1673,11 +1678,16 @@ export default function UnifiedTripMap({
           the user one obvious place to "confirm changes → regenerate
           itinerary". The AI handles day-assignment for new pins not
           dropped under an active day filter. */}
-      {onRegenerate && (
+      {/* Drop-a-pin / regenerate CTA only renders when there are pending
+          pin changes. The idle "Drop a pin to update your trip" copy was
+          eating ~50 px at the top of the drawer for no real CTA — user
+          feedback was that it pushed the map down without earning the
+          space. When changes ARE pending, the active regen state still
+          appears (now as the ONLY state of this control). */}
+      {onRegenerate && pinChangeCount > 0 && (
         <button
           type="button"
-          onClick={pinChangeCount > 0 ? onRegenerate : undefined}
-          disabled={pinChangeCount === 0}
+          onClick={onRegenerate}
           aria-label={pinChangeCount > 0
             ? `Regenerate itinerary — ${pinChangeCount} pin change${pinChangeCount === 1 ? '' : 's'} pending`
             : 'Itinerary in sync with pins'
