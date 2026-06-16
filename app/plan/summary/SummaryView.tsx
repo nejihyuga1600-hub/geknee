@@ -1919,7 +1919,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
                 <span style={{ flex: 1, minWidth: 0 }}>
                   {list} missing from the itinerary body (you'll see the chip strip skip them on the map). Regenerate to refill.
                 </span>
-                {mainTab === 'planning' && (
+                {requestGeneration && (
                   <button
                     onClick={requestGeneration}
                     style={{
