@@ -1835,8 +1835,15 @@ function PlacePanelOverlay(props: {
   return (
     <div
       style={{
-        position: 'absolute', top: 8, left: 8, bottom: 8,
-        width: 320, maxWidth: 'calc(100% - 16px)',
+        position: 'absolute',
+        // Sit flush below the iPhone Dynamic Island (4 px breathing room
+        // so the panel border doesn't visually merge with the notch).
+        // Bottom anchor + left anchor unchanged; width shrunk so the
+        // map peeks through on the right edge and the genie chat bubble
+        // stays unobstructed.
+        top: 'calc(env(safe-area-inset-top, 0px) + 4px)',
+        left: 8, bottom: 8,
+        width: 300, maxWidth: 'calc(100% - 72px)',
         background: '#0d1117',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 12,
@@ -1848,12 +1855,36 @@ function PlacePanelOverlay(props: {
         color: '#e2e8f0',
       }}
     >
-      {/* Hero image + close + photo nav */}
-      <div style={{ position: 'relative', height: 200, background: '#000', flexShrink: 0 }}>
+      {/* Hero image + close + photo nav + swipe-to-navigate. Horizontal
+          swipe ≥ 40 px advances / retreats one photo; vertical-dominant
+          drags are ignored so the parent panel keeps its own scroll. */}
+      <div
+        style={{ position: 'relative', height: 200, background: '#000', flexShrink: 0, touchAction: 'pan-y' }}
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          (e.currentTarget as HTMLDivElement & { _swipeStart?: { x: number; y: number } })._swipeStart = { x: t.clientX, y: t.clientY };
+        }}
+        onTouchEnd={(e) => {
+          const el = e.currentTarget as HTMLDivElement & { _swipeStart?: { x: number; y: number } };
+          const start = el._swipeStart;
+          if (!start || photos.length <= 1) return;
+          const t = e.changedTouches[0];
+          const dx = t.clientX - start.x;
+          const dy = t.clientY - start.y;
+          // Horizontal swipes only — abs(dx) must beat abs(dy) AND clear
+          // the 40 px floor so accidental thumb wobble doesn't flip.
+          if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+            if (dx < 0) setActivePhoto((p) => (p + 1) % photos.length);
+            else        setActivePhoto((p) => (p - 1 + photos.length) % photos.length);
+          }
+          el._swipeStart = undefined;
+        }}
+      >
         {photos.length > 0 ? (
           <img
             src={photos[photoIdx]} alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            draggable={false}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', userSelect: 'none', WebkitUserSelect: 'none' }}
           />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>
