@@ -100,53 +100,102 @@ export const editItineraryTool: AgentTool = {
 
     const { kind, name, district, meta, price } = input as unknown as EditInput;
 
-    const userMsg =
-      `Existing itinerary for ${trip.location ?? "this trip"}:\n\n` +
-      trip.itinerary +
-      `\n\n---\n\nAdd this ${kind} with the smallest possible edit:\n` +
+    // ── PERF: send only the affected day to Haiku, not the whole trip ────
+    // Pre-optimization: rewriting a full 7-day itinerary ran 30-40s of the
+    // 52s end-to-end happy-multi test. Output tokens dominated (Haiku
+    // re-emits the ~3000-char doc). Slice to the single "## Day N" section
+    // when meta gives us the day, splice the revised section back in.
+    //
+    // Fallback: when meta has no day hint OR the day header isn't found,
+    // send the whole itinerary as before — correctness wins over speed.
+    const dayHint = meta?.match(/Day\s*(\d+)/i)?.[1] ?? null;
+    const slice = dayHint ? extractDaySection(trip.itinerary, parseInt(dayHint, 10)) : null;
+
+    const editsPrompt =
+      `Add this ${kind} with the smallest possible edit:\n` +
       `- Name: ${name}\n` +
       (district ? `- District: ${district}\n` : "") +
       (meta ? `- When: ${meta}\n` : "") +
-      (price ? `- Price: ${price}\n` : "") +
-      `\nReturn the revised itinerary in full.`;
+      (price ? `- Price: ${price}\n` : "");
 
-    // Haiku is fast enough for the surgical "add ONE line on ONE day"
-    // task and ~5× quicker than Sonnet — keeps the chat tool loop
-    // under Vercel's function duration cap. Was sonnet-4-6; switched
-    // 2026-06-15 after a Tokyo trip rewrite ran 60+s and tripped the
-    // chat's "magic fizzled" timeout.
-    const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      system: REVISE_SYSTEM,
-      messages: [{ role: "user", content: userMsg }],
-    });
-
-    const revised = resp.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .replace(/^\s*```(?:markdown|md)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-
-    if (!revised) {
-      return { error: "The reviser model returned an empty response." };
+    let revisedFull: string;
+    if (slice) {
+      const userMsg =
+        `Existing Day ${dayHint} section of the ${trip.location ?? "trip"} itinerary:\n\n` +
+        slice.text +
+        `\n\n---\n\n${editsPrompt}\nReturn the revised Day section only (preserve the leading ## Day heading).`;
+      const resp = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        // Cache the system prompt — same across every itinerary edit, hits
+        // 10% input rate after first call within the 5-minute TTL window.
+        system: [{ type: "text", text: REVISE_SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: userMsg }],
+      });
+      const revisedSection = extractText(resp).trim();
+      if (!revisedSection) {
+        return { error: "The reviser model returned an empty response." };
+      }
+      revisedFull =
+        trip.itinerary.slice(0, slice.start) + revisedSection + trip.itinerary.slice(slice.end);
+    } else {
+      // Whole-itinerary path (no day hint or header miss).
+      const userMsg =
+        `Existing itinerary for ${trip.location ?? "this trip"}:\n\n` +
+        trip.itinerary +
+        `\n\n---\n\n${editsPrompt}\nReturn the revised itinerary in full.`;
+      const resp = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 4096,
+        system: [{ type: "text", text: REVISE_SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: userMsg }],
+      });
+      revisedFull = extractText(resp).trim();
+      if (!revisedFull) {
+        return { error: "The reviser model returned an empty response." };
+      }
     }
 
     await prisma.tripDraft.update({
       where: { id: ctx.tripId },
-      data: { itinerary: revised, itineraryUpdatedAt: new Date() },
+      data: { itinerary: revisedFull, itineraryUpdatedAt: new Date() },
     });
 
-    const dayMatch = meta?.match(/Day\s*\d+/i)?.[0] ?? null;
+    const dayLabel = dayHint ? `Day ${dayHint}` : null;
     return {
       ok: true,
       kind,
       name,
-      day: dayMatch,
+      day: dayLabel,
       editsRemainingToday: quota.remaining,
-      message: `Added ${name} to ${dayMatch ?? "the itinerary"}.`,
+      message: `Added ${name} to ${dayLabel ?? "the itinerary"}.`,
     };
   },
 };
+
+function extractText(resp: Anthropic.Message): string {
+  return resp.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .replace(/^\s*```(?:markdown|md)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "");
+}
+
+// Find the `## Day N` section. Returns the section text plus [start, end)
+// offsets so the caller can splice the revised section back into the
+// original. Returns null if the header isn't found. The end-anchor is the
+// next `##` heading (Day N+1, Budget, Tips, etc.) or end of doc.
+function extractDaySection(
+  itinerary: string,
+  day: number,
+): { text: string; start: number; end: number } | null {
+  const re = new RegExp(`^##\\s*Day\\s*${day}\\b`, "im");
+  const match = re.exec(itinerary);
+  if (!match) return null;
+  const start = match.index;
+  const after = itinerary.slice(start + match[0].length);
+  const nextHeader = /\n##\s+/.exec(after);
+  const end = nextHeader ? start + match[0].length + nextHeader.index + 1 : itinerary.length;
+  return { text: itinerary.slice(start, end), start, end };
+}
