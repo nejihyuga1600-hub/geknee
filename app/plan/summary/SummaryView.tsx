@@ -1872,6 +1872,73 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             ) : null;
           })()}
 
+          {/* Missing-day-section detector. A real failure mode of partial
+              edit_itinerary calls is dropping entire `## Day N:` sections
+              — the budget table still lists every day but the body
+              markdown skips them, so the map shows the chip strip
+              jumping (e.g. Day 1 → Day 4) and the user can't pin
+              anything to the missing days. Warn explicitly and offer
+              the regenerate path. Reads sections + nights from the
+              already-loaded trip state, no new fetch. */}
+          {(() => {
+            const presentDays = sections
+              .map((s) => extractDayNumber(s.heading))
+              .filter((n): n is number => typeof n === 'number');
+            if (presentDays.length === 0) return null;
+            const nightsNum = parseInt(nights, 10);
+            const expectedMax = Math.max(
+              Number.isFinite(nightsNum) ? nightsNum + 1 : 0,
+              ...presentDays,
+            );
+            const present = new Set(presentDays);
+            const missing: number[] = [];
+            for (let d = 1; d <= expectedMax; d++) if (!present.has(d)) missing.push(d);
+            if (missing.length === 0) return null;
+            const list = missing.length === 1
+              ? `Day ${missing[0]} is`
+              : `Days ${missing.slice(0, -1).join(', ')} & ${missing.slice(-1)} are`;
+            return (
+              <div
+                role="status"
+                style={{
+                  marginTop: 18,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: 'rgba(251, 191, 36, 0.10)',
+                  border: '1px solid rgba(251, 191, 36, 0.45)',
+                  color: '#fde68a',
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>⚠ Heads up:</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {list} missing from the itinerary body (you'll see the chip strip skip them on the map). Regenerate to refill.
+                </span>
+                {mainTab === 'planning' && (
+                  <button
+                    onClick={requestGeneration}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8,
+                      background: 'rgba(251, 191, 36, 0.18)',
+                      color: '#fde68a',
+                      border: '1px solid rgba(251, 191, 36, 0.55)',
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                      textTransform: 'uppercase', cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Regenerate
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Legacy weather toggle + privacy/invite row hidden during the
               design pass. The top-bar Share button now covers invite, and
               weather defaults to the user's locale unit (US-timezone clients
