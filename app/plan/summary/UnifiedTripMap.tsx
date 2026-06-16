@@ -1623,16 +1623,10 @@ export default function UnifiedTripMap({
                 >
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 6 }} />
                   Day {d} ({count})
-                  {weatherData?.forecast[d - 1] && (
-                    <span style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3, opacity: 0.85 }}>
-                      {weatherData.forecast[d - 1].iconUrl && (
-                        <img src={weatherData.forecast[d - 1].iconUrl!} alt="" width={14} height={14} style={{ display: 'block' }} />
-                      )}
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
-                        {weatherData.forecast[d - 1].highC != null ? Math.round(weatherData.forecast[d - 1].highC!) : '--'}°/{weatherData.forecast[d - 1].lowC != null ? Math.round(weatherData.forecast[d - 1].lowC!) : '--'}°
-                      </span>
-                    </span>
-                  )}
+                  {/* Per-day high/low badge removed from the chips —
+                      it now lives in the WeatherBar at the top of the
+                      main itinerary page header, where the user is
+                      already looking when they pick a day to plan. */}
                 </button>
               );
             })}

@@ -1847,6 +1847,31 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             ))}
           </div>
 
+          {/* Per-day weather strip lives inside the trip header now (was
+              below the section list). Same merge: walk every stop, pull
+              the city's forecast, dedupe by date, sort. Day chips on the
+              map no longer carry inline temps — users see one canonical
+              forecast right at the top of the itinerary page. */}
+          {(() => {
+            const merged: DayWeather[] = [];
+            const seen = new Set<string>();
+            for (const stop of allStops) {
+              const days = weatherByCity.get(stop.city);
+              if (!days) continue;
+              for (const d of days) {
+                if (seen.has(d.date)) continue;
+                seen.add(d.date);
+                merged.push(d);
+              }
+            }
+            merged.sort((a, b) => a.date.localeCompare(b.date));
+            return merged.length > 0 ? (
+              <div style={{ marginTop: 18 }}>
+                <WeatherBar days={merged} unit={weatherUnit} />
+              </div>
+            ) : null;
+          })()}
+
           {/* Legacy weather toggle + privacy/invite row hidden during the
               design pass. The top-bar Share button now covers invite, and
               weather defaults to the user's locale unit (US-timezone clients
@@ -2555,28 +2580,10 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
           </div>
         )}
 
-        {/* Trip-wide weather strip — once at the top, replacing the
-            per-day WeatherBar that used to live inside each SectionCard.
-            Aggregates days across all stops, dedupes by date, sorts. */}
-        {(() => {
-          const merged: DayWeather[] = [];
-          const seen = new Set<string>();
-          for (const stop of allStops) {
-            const days = weatherByCity.get(stop.city);
-            if (!days) continue;
-            for (const d of days) {
-              if (seen.has(d.date)) continue;
-              seen.add(d.date);
-              merged.push(d);
-            }
-          }
-          merged.sort((a, b) => a.date.localeCompare(b.date));
-          return merged.length > 0 ? (
-            <div style={{ marginBottom: 22 }}>
-              <WeatherBar days={merged} unit={weatherUnit} />
-            </div>
-          ) : null;
-        })()}
+        {/* Trip-wide weather strip moved INTO the trip-header card above
+            (right under the destination + metadata row). Single canonical
+            forecast at the top — the day-filter chips on the map no
+            longer carry inline temperatures either. */}
 
         {/* Committed sections — shown as interactive SectionCards as soon as each day is complete */}
         {!error && sections.length > 0 && (
