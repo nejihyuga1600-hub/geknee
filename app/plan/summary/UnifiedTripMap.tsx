@@ -749,14 +749,24 @@ export default function UnifiedTripMap({
       return n.length === 0 || GENERIC_REJECTS.has(n);
     };
 
-    async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
-      const cacheKey = `geo:${query}`;
+    async function geocode(
+      query: string,
+      bias?: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } },
+    ): Promise<{ lat: number; lng: number } | null> {
+      const biasSuffix = bias
+        ? `|${bias.sw.lat.toFixed(3)},${bias.sw.lng.toFixed(3)}|${bias.ne.lat.toFixed(3)},${bias.ne.lng.toFixed(3)}`
+        : '';
+      const cacheKey = `geo:${query}${biasSuffix}`;
       try {
         const hit = sessionStorage.getItem(cacheKey);
         if (hit) return JSON.parse(hit) as { lat: number; lng: number };
       } catch { /* sessionStorage unavailable */ }
       try {
-        const r = await fetch(`/api/geocode?address=${encodeURIComponent(query)}`);
+        let url = `/api/geocode?address=${encodeURIComponent(query)}`;
+        if (bias) {
+          url += `&swLat=${bias.sw.lat}&swLng=${bias.sw.lng}&neLat=${bias.ne.lat}&neLng=${bias.ne.lng}`;
+        }
+        const r = await fetch(url);
         if (r.ok) {
           const c = (await r.json()) as { lat: number; lng: number } | null;
           if (c) {
@@ -768,18 +778,35 @@ export default function UnifiedTripMap({
       return null;
     }
 
-    // Build a per-pin attempt list. Raw queries first so specific
-    // landmarks ("Taj Mahal East Gate") resolve to their actual city
-    // instead of being forced into the trip's primary city via a
-    // ", New Delhi" suffix that Google can't reconcile.
+    // Haversine — kilometres between two lat/lng points. Used by the
+    // pass-3 day-outlier check so we can express the rejection rule in
+    // km ("> 50 km from day centroid") instead of fragile deg-deltas.
+    function distKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+      const R = 6371;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLng = (b.lng - a.lng) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180;
+      const lat2 = b.lat * Math.PI / 180;
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    }
+
+    // Build a per-pin attempt list. SUFFIXED queries first so single-
+    // city trips don't get caught by ambiguous local names — e.g. a
+    // Reykjavik itinerary asking for "Sandholt Bakery" was matching a
+    // farm called "Sandholt" in N Iceland (both inside the ±3° bbox)
+    // because raw was tried first. Suffixing with ", Reykjavik" makes
+    // Google pick the bakery. The raw forms still run as fallback for
+    // landmarks whose canonical name resolves outside the primary
+    // city (e.g. "Taj Mahal East Gate" on a Delhi-anchored trip).
     function attemptsFor(c: string): string[] {
       const stripped = c.replace(/\([^)]*\)/g, '').trim();
       const out: string[] = [];
       const push = (q: string) => { if (q && !out.includes(q)) out.push(q); };
-      push(c);                          // raw
+      push(`${stripped}, ${location}`); // suffixed + stripped (most specific)
+      push(`${c}, ${location}`);        // suffixed raw
       push(stripped);                   // raw, parens stripped
-      push(`${c}, ${location}`);        // suffixed (legacy)
-      push(`${stripped}, ${location}`); // suffixed + stripped
+      push(c);                          // raw (last resort)
       return out;
     }
 
@@ -844,6 +871,53 @@ export default function UnifiedTripMap({
             }),
           )
         : firstPass;
+      if (cancelled) return;
+
+      // ── Pass 3 — per-day outlier rejection ────────────────────────────
+      // After raw + dynamic-bbox resolution, some pins still mis-resolve
+      // because the bbox is country-sized (±3° around the anchor city
+      // covers all of e.g. Iceland), so an ambiguous name like
+      // "Sögusetrið" (a Reykjavik Saga museum AND a smaller N-Iceland
+      // place) can land in the wrong half of the country and still pass
+      // the bbox check.
+      //
+      // For each day with ≥3 resolved pins we compute the centroid + the
+      // median distance to it. Any pin > 50 km from the centroid AND
+      // > 3× the median is treated as a mis-resolution. We retry the
+      // geocode with a 0.4° bbox centred on the day centroid (Google's
+      // `bounds=` parameter biases — doesn't restrict — toward that
+      // viewport, so the correct local match wins over the distant
+      // homonym). Replace if the new result lands closer to centroid.
+      for (const [dayNumber] of new Map(resolved.filter(p => p.resolved).map(p => [p.dayNumber, true]))) {
+        const dayPins = resolved.filter(p => p.dayNumber === dayNumber && p.resolved);
+        if (dayPins.length < 3) continue;
+        const cLat = dayPins.reduce((s, p) => s + p.resolved!.lat, 0) / dayPins.length;
+        const cLng = dayPins.reduce((s, p) => s + p.resolved!.lng, 0) / dayPins.length;
+        const centroid = { lat: cLat, lng: cLng };
+        const dists = dayPins.map(p => distKm(centroid, p.resolved!));
+        const sorted = [...dists].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        const bias = {
+          sw: { lat: cLat - 0.2, lng: cLng - 0.2 },
+          ne: { lat: cLat + 0.2, lng: cLng + 0.2 },
+        };
+        await Promise.all(dayPins.map(async (p, i) => {
+          if (dists[i] <= 50 || dists[i] <= median * 3) return;
+          // Suspect — retry every candidate with bias.
+          for (const c of p.candidates) {
+            if (isGeneric(c)) continue;
+            for (const q of attemptsFor(c)) {
+              const hit = await geocode(q, bias);
+              if (!hit) continue;
+              const newDist = distKm(centroid, hit);
+              if (newDist < dists[i] && newDist < 50) {
+                p.resolved = hit;
+                return;
+              }
+            }
+          }
+        }));
+      }
       if (cancelled) return;
 
       const bounds = new window.google!.maps!.LatLngBounds();
