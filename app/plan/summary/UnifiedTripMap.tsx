@@ -380,6 +380,14 @@ export default function UnifiedTripMap({
   const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  // Paperclip-icon upload — replaces the old "Analyze photo or videos
+  // to add pin" bar that lived below the map. Picking a file POSTs to
+  // /api/itinerary/media (same endpoint PhotoToItinerary used) and lets
+  // the vision model slot the place into the itinerary. Day=0 → server
+  // picks the best slot ("Any day" behaviour).
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
   // Results dropdown — when the query returns multiple matches we
   // surface a list instead of opening the first match. Cleared on
   // selection, escape, or empty query.
@@ -1179,6 +1187,74 @@ export default function UnifiedTripMap({
                 backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
               }}
             >
+              {/* Paperclip — opens the file picker. Same flow as the
+                  retired ANALYZE PHOTO bar: vision model picks the day,
+                  /api/itinerary/media slots the activity in. Hidden
+                  input is triggered programmatically. */}
+              <button
+                type="button"
+                aria-label="Analyze photo or video to add a pin"
+                title="Analyze photo or video"
+                disabled={!tripId || uploadingMedia}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  flex: '0 0 auto',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 6, padding: 0,
+                  background: 'transparent', border: 'none',
+                  color: uploadingMedia ? 'rgba(167,139,250,0.55)' : 'rgba(167,139,250,0.95)',
+                  cursor: !tripId || uploadingMedia ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {uploadingMedia ? (
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+                    <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round">
+                      <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite" />
+                    </path>
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  // Reset value so the same file can be re-picked.
+                  if (e.target) e.target.value = '';
+                  if (!f || !tripId) return;
+                  setUploadingMedia(true);
+                  setUploadToast('Analyzing…');
+                  try {
+                    const form = new FormData();
+                    form.set('tripId', tripId);
+                    form.set('day', '0'); // "Any day" — server picks via vision
+                    form.set('file', f);
+                    const res = await fetch('/api/itinerary/media', { method: 'POST', body: form });
+                    if (!res.ok) {
+                      const j = await res.json().catch(() => null);
+                      throw new Error(j?.error ?? `HTTP ${res.status}`);
+                    }
+                    const j = await res.json() as { addedActivity?: { name: string; time: string } };
+                    setUploadToast(j.addedActivity ? `Added ${j.addedActivity.name} (${j.addedActivity.time})` : 'Added to itinerary');
+                    window.dispatchEvent(new CustomEvent('geknee:itinerary-updated'));
+                  } catch (err) {
+                    console.error('[trip-map] media upload failed', err);
+                    setUploadToast(err instanceof Error ? err.message : 'Upload failed');
+                  } finally {
+                    setUploadingMedia(false);
+                    // Auto-dismiss the toast after 4s so it doesn't sit forever.
+                    setTimeout(() => setUploadToast(null), 4000);
+                  }
+                }}
+              />
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1210,6 +1286,25 @@ export default function UnifiedTripMap({
                 }}
               >{searching ? '…' : 'Search'}</button>
             </form>
+            {uploadToast && (
+              <div
+                role="status"
+                style={{
+                  position: 'absolute',
+                  top: 'calc(env(safe-area-inset-top, 0px) + 104px)',
+                  left: 8, right: 8, zIndex: 41,
+                  padding: '8px 12px',
+                  background: 'rgba(13,17,23,0.96)',
+                  border: '1px solid rgba(167,139,250,0.45)',
+                  borderRadius: 10, color: '#e2e8f0',
+                  fontSize: 12, fontFamily: 'inherit',
+                  textAlign: 'center',
+                  backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                }}
+              >
+                {uploadToast}
+              </div>
+            )}
             {searchResults.length > 0 && (
               <div
                 role="listbox"
