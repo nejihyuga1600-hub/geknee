@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import { KeyboardResize } from '@capacitor/keyboard';
 
 // Capacitor wraps the live web app at https://geknee.com inside a native
 // shell (iOS WKWebView / Android WebView) and exposes JS bridges to native
@@ -96,6 +97,14 @@ const config: CapacitorConfig = {
       // Match the dark globe/planning chrome.
       style: 'DARK',
       backgroundColor: '#0a0a1f',
+    },
+    Keyboard: {
+      // Don't resize the WebView when the on-screen keyboard appears.
+      // User feedback (2026-06-16): typing in the trip-map search shifts
+      // the entire map up. `none` keeps the viewport static so only the
+      // focused element scrolls into view if the OS does that itself.
+      resize: KeyboardResize.None,
+      resizeOnFullScreen: false,
     },
   },
 };

@@ -1170,7 +1170,7 @@ export default function UnifiedTripMap({
                 // user couldn't read the placeholder. Now spans the full
                 // width so the placeholder + input are always legible.
                 position: 'absolute',
-                top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+                top: 'calc(env(safe-area-inset-top, 0px) + 50px)',
                 left: 8, right: 8, zIndex: 40,
                 display: 'flex', gap: 6,
                 background: 'rgba(13,17,23,0.92)',
@@ -1485,10 +1485,9 @@ export default function UnifiedTripMap({
               position: 'absolute',
               // The floating close × is gone — reclaim the left edge.
               left: 8, right: 8,
-              // Push below the iPhone Dynamic Island / notch. Without
-              // safe-area inset the chips lived at y=8 and the camera
-              // pill overlapped them.
-              top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+              // Sit right under the Dynamic Island (safe-area covers
+              // its height already; +4 is just visual breathing room).
+              top: 'calc(env(safe-area-inset-top, 0px) + 4px)',
               zIndex: 35,
               display: 'flex', flexWrap: 'nowrap', gap: 6,
               padding: 6,

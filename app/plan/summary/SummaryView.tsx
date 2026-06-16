@@ -23,7 +23,8 @@ import {
 import { extractPlace, fetchPlaceImage, imgCache } from './lib/places';
 import { RecPanel } from './RecPanel';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
-import { PhotoToItinerary } from '@/app/plan/[tripId]/(tabs)/itinerary/PhotoToItinerary';
+// PhotoToItinerary removed from the trip-map drawer — to be folded into
+// the search-bar as a paperclip icon in a follow-up.
 import { MarkdownLine, renderInline } from './components/MarkdownLine';
 import { WeatherBar, type DayWeather } from './components/WeatherBar';
 import { DayImages } from './components/DayImages';
@@ -1509,7 +1510,7 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
             style={{
               position: 'fixed',
               top: 0, bottom: 0, left: 0,
-              width: '88vw', maxWidth: 480,
+              width: '94vw', maxWidth: 560,
               zIndex: 9470,
               background: '#0a0f1e',
               borderRight: '1px solid rgba(167,139,250,0.25)',
@@ -1585,26 +1586,9 @@ For places marked "on Day N", insert them at a sensible time slot on that day. F
               )}
             </div>
 
-            {/* Photo / video attach row docked at the bottom of the map
-                drawer, right next to the "Drop a pin to update your trip"
-                sync bar that lives inside UnifiedTripMap. Both surfaces
-                are about "amend my itinerary from a real-world artifact"
-                — keeping them adjacent makes that intent legible. The
-                widget renders only when we have a trip id + itinerary
-                to attach to (pre-generation a photo→activity has nowhere
-                to land). */}
-            {savedTripId && fullItinerary && nights && (
-              <div style={{
-                flexShrink: 0,
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(6, 8, 22, 0.6)',
-              }}>
-                <PhotoToItinerary
-                  tripId={savedTripId}
-                  dayCount={(parseInt(nights, 10) || 0) + 1}
-                />
-              </div>
-            )}
+            {/* Photo/video attach used to live here as a full bottom row.
+                Folded into the search bar as a paperclip icon (see
+                UnifiedTripMap.tsx) — same trigger, less chrome. */}
           </aside>
         </>
       )}
