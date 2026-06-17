@@ -9,10 +9,11 @@ where to look for fast onboarding.
 ## Currently deployed
 
 - **Branch**: `main`
-- **Latest commit**: `fa500a5` — banner: drop stale mainTab='planning' check that broke build
+- **Latest commit**: `52dba98` — booking concierge: phase A (card-on-file) + phase B (queue + admin)
 - **Vercel project**: `geknee-travel-ai` (auto-deploys on push to `main`; ~2 min build; iOS Capacitor shell loads `https://www.geknee.com` directly so web pushes ship to both surfaces).
 - **DB**: prod Neon `ep-ancient-feather-anklmwye-pooler.c-6.us-east-1.aws.neon.tech/neondb` (single endpoint — same in `.env` + `.env.local`; any `prisma db push` hits prod).
-- **Latest migration applied**: `20260614204100_add_waitlist` (recorded in `_prisma_migrations`; build script is `prisma generate && next build` — does NOT run `migrate deploy`, so migrations must be applied manually via `prisma db execute` + `prisma migrate resolve --applied`).
+- **Latest migration applied**: `20260616215826_add_booking_request` (recorded in `_prisma_migrations`; build script is `prisma generate && next build` — does NOT run `migrate deploy`, so migrations must be applied manually via `prisma db execute` + `prisma migrate resolve --applied`).
+- **⚠ Vercel env issue**: `STRIPE_SECRET_KEY` (Production) is **expired** (`sk_live_…dPga`). Phase-A `/api/payments/*` endpoints 500 until rotated. Stripe Dashboard → Developers → API keys → Roll → paste new value into Vercel env → redeploy. Phase-B endpoints + admin queue work without this.
 
 Apple side reference (unchanged from prior handoff):
 - ASC App ID: `6774831965`
@@ -25,6 +26,33 @@ Apple side reference (unchanged from prior handoff):
 ---
 
 ## Major work shipped (most recent → older)
+
+### Booking concierge — Phase A + B (`52dba98`)
+End-to-end "we book on your behalf" foundation. User asked for: card on file once, they pick, we book, they handle airport / hotel check-in.
+
+**Phase A — Stripe card-on-file**
+- `lib/stripe/customer.ts` — shared `getOrCreateStripeCustomer()` helper (extracted from `app/api/stripe/checkout/route.ts`'s inline pattern; both subscription + setup-intent flows now use the same Customer per user).
+- `POST /api/payments/setup-intent` — `usage: 'off_session'` so future concierge charges run without re-prompting (SCA/3DS handled at setup time).
+- `GET /api/payments/payment-methods` — lists saved cards, shape-down to `{id, brand, last4, expMonth, expYear}` (never ship raw PaymentMethod).
+- `DELETE /api/payments/payment-methods/[id]` — ownership-checked detach (Stripe doesn't enforce ownership itself; we verify `pm.customer === user.stripeCustomerId`).
+- `/settings/payment` page — Stripe Elements card form + saved-cards list + remove button, passport-zine palette.
+
+**Phase B — Concierge queue**
+- `BookingRequest` Prisma model (kind ∈ {hotel, flight, activity}, JSON payload, status state machine pending → approved → booked|failed|cancelled, estimated + final cents, currency, paymentMethodId reference, OTA provider + confirmation, concierge user id + notes, lifecycle timestamps). Migration applied to prod (`20260616215826_add_booking_request`).
+- `POST /api/bookings/request` — user submits. Validates kind, requires `paymentMethodId`, returns `{ok, id, queuePosition}` computed in the same transaction so a burst doesn't all report #1.
+- `GET /api/concierge/mine` — user's own requests + per-row queue position (single global-pending query, position lookup map — no N round-trips).
+- `GET /api/concierge/queue` — admin-only (`isAdminEmail`), FIFO; includes user email + stripeCustomerId for cross-referencing the Stripe dashboard.
+- `POST /api/concierge/requests/[id]/complete` — admin marks `booked` with `{otaConfirmation, finalCents?, stripePaymentId?, conciergeNotes?}`. Sends Resend confirmation email (soft-fail).
+- `POST /api/concierge/requests/[id]/fail` — admin marks `failed` with `{failureReason, conciergeNotes?}`. Sends Resend "could not book" email.
+- `/admin/concierge` admin page — pending/booked/failed tabs, per-row Booked + Fail action buttons, payload preview, user identification.
+
+**UX contract** (per user spec): user sees an honest `you're #N in queue` state on submit, NOT a fake instant-success. The "done" email lands when admin (or future browser-automation agent) flips the row to `booked`. Off-session charge against the saved PaymentMethod must happen BEFORE the complete endpoint is hit so we never persist `booked` without a payment trail — admin runs the charge manually in Stripe dashboard for v1, pastes `pi_…` id into the complete payload.
+
+**Live-verified** (with Stripe key working):
+- `/settings/payment` → 200
+- `POST /api/bookings/request` happy path → returns `{ok, id, queuePosition: 1}` ✓
+- `GET /api/concierge/mine` lists with queue position ✓
+- `POST /api/payments/setup-intent` blocked on expired `STRIPE_SECRET_KEY` — code is correct, ops fix only.
 
 ### Trip map / itinerary UI
 - **Missing-day banner** (`fa500a5`, `70fe9c8`) — amber banner inside the trip-header card lists day sections that are missing from the markdown body (real failure mode of partial `edit_itinerary` calls). Computes from `sections` + `nights`, no extra fetch. Regenerate button wired to existing `requestGeneration`.
@@ -72,6 +100,9 @@ Apple side reference (unchanged from prior handoff):
 ## Pending / next session priorities
 
 ### P0 — flagged but not yet implemented
+- **Rotate `STRIPE_SECRET_KEY` on Vercel (Production).** Live key is expired (`sk_live_…dPga`). Phase-A `/api/payments/*` endpoints 500 until done. Stripe Dashboard → Developers → API keys → Roll → paste new value into Vercel env → redeploy. Owner: user.
+- **Wire the user-facing "Request to book" buttons.** Phase-B queue + admin + email all work, but no entry-point yet — the existing `/booking` page's hotel/activity/transport cards still link out to OTAs. Need a `<RequestToBookButton kind={...} title={...} payload={...} paymentMethodId={...}/>` that POSTs to `/api/bookings/request` and shows the queue position. ~2 hours.
+- **Charge orchestration helper.** v1 has admins manually create a PaymentIntent in the Stripe dashboard before flipping a row to `booked` and pasting the `pi_…` id. Should be a button on the admin page that runs `stripe.paymentIntents.create({ amount, customer, payment_method, off_session: true, confirm: true })` against the queued row. ~1 day once Stripe key is rotated.
 - **Re-cut existing 2026-06-14 reels in the 3-act format.** Only `iceland-3act` was built as a demo. The other 9 concepts have `hook` only; re-author each with `body` + `cta_text` and run the builder.
 - **Source explicit audio IDs for the unpaired reels** — 10 of the 14 currently say "pull a trending audio at upload"; only `prove-3-of-47` (Wings), `spreadsheet-trauma` (SPEND DAT SAX), `tokyo-day-1-check` (Life Feels So Good), `spin-the-globe` (cinematic-travel trending) have specific IDs. Higgsfield virality predictor + IG audio library can rank candidates.
 - **Cleanup duplicate 2026-06-06 quest reels** (5 reels) — same hooks as 2026-06-08, both render in the preview viewer.
@@ -95,6 +126,8 @@ Apple side reference (unchanged from prior handoff):
 | Chat handler | `app/api/chat/route.ts`. Streaming tool loop, error-tier surfacing, empty-reply fallback, security prompt at lines ~225-245. |
 | Itinerary editor tool | `lib/agent/tools/edit_itinerary.ts`. Slice-to-day path + extractDaySection helper at the bottom. |
 | Waitlist | `app/waitlist/{page.tsx, WaitlistForm.tsx}` + `app/api/waitlist/route.ts` + `app/components/landing/WaitlistCta.tsx`. |
+| Stripe card-on-file | `lib/stripe/customer.ts` + `app/api/payments/setup-intent/route.ts` + `app/api/payments/payment-methods/{route.ts, [id]/route.ts}` + `app/settings/payment/{page.tsx, PaymentMethodsClient.tsx}`. |
+| Concierge queue | `app/api/bookings/request/route.ts` (user submits) + `app/api/concierge/{mine,queue}/route.ts` + `app/api/concierge/requests/[id]/{complete,fail}/route.ts` + `app/admin/concierge/{page.tsx, ConciergeQueue.tsx}`. Schema: `BookingRequest` in `prisma/schema.prisma`. |
 | Reel builder | `bin/build-remix-reel.py` (variety reels), `bin/build-monument-quest-reel.py` (quest-format reels), `bin/reoverlay-reels.py` (one-shot re-burn). |
 | Preview station | `bin/build-preview-html.py` → `ad-assets/instagram/preview.html`. Layout markers (`max-width: 420/540px`, `minmax(0, 1fr)`, `width: 64px; height: 90px`) live in the generator's CSS strings — re-edit there, not the output. |
 | Test harnesses | `bin/test-chat-scenarios.mjs` (14 baseline), `bin/test-chat-adversarial.mjs` (15 jailbreak). Both need `bin/extract-chrome-cookie.py` running against Chrome with a live geknee session. |
