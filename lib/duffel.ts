@@ -33,6 +33,22 @@ export interface DuffelSearchInput {
   adults?: number;
 }
 
+export interface FlightSegment {
+  from: string;
+  to: string;
+  departAt: string;
+  arriveAt: string;
+  durationMin: number;
+  flightNumber: string;
+}
+
+export interface FlightSlice {
+  origin: string;
+  destination: string;
+  segments: FlightSegment[];
+  totalDurationMin: number;
+}
+
 export interface FlightOffer {
   id: string;
   totalAmount: string;
@@ -40,14 +56,7 @@ export interface FlightOffer {
   cabin: DuffelCabin;
   carrier: string;
   carrierName: string;
-  segments: Array<{
-    from: string;
-    to: string;
-    departAt: string;
-    arriveAt: string;
-    durationMin: number;
-    flightNumber: string;
-  }>;
+  slices: FlightSlice[];
   expiresAt: string;
 }
 
@@ -116,16 +125,22 @@ type RawOffer = {
 
 function normalizeOffer(raw: unknown): FlightOffer {
   const o = raw as RawOffer;
-  const segments = o.slices.flatMap((s) =>
-    s.segments.map((seg) => ({
+  const slices: FlightSlice[] = o.slices.map((s) => {
+    const segments = s.segments.map((seg) => ({
       from: seg.origin.iata_code,
       to: seg.destination.iata_code,
       departAt: seg.departing_at,
       arriveAt: seg.arriving_at,
       durationMin: parseIsoDurationToMinutes(seg.duration),
       flightNumber: seg.marketing_carrier_flight_number,
-    })),
-  );
+    }));
+    return {
+      origin: segments[0]?.from ?? "",
+      destination: segments[segments.length - 1]?.to ?? "",
+      segments,
+      totalDurationMin: segments.reduce((sum, x) => sum + x.durationMin, 0),
+    };
+  });
   const cabin = (o.passengers?.[0]?.cabin_class ?? "economy") as DuffelCabin;
   return {
     id: o.id,
@@ -134,7 +149,7 @@ function normalizeOffer(raw: unknown): FlightOffer {
     cabin,
     carrier: o.owner.iata_code ?? "??",
     carrierName: o.owner.name,
-    segments,
+    slices,
     expiresAt: o.expires_at,
   };
 }

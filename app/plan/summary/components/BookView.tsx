@@ -1936,13 +1936,18 @@ interface DuffelOfferLite {
   cabin: LiveCabin;
   carrier: string;
   carrierName: string;
-  segments: Array<{
-    from: string;
-    to: string;
-    departAt: string;
-    arriveAt: string;
-    durationMin: number;
-    flightNumber: string;
+  slices: Array<{
+    origin: string;
+    destination: string;
+    segments: Array<{
+      from: string;
+      to: string;
+      departAt: string;
+      arriveAt: string;
+      durationMin: number;
+      flightNumber: string;
+    }>;
+    totalDurationMin: number;
   }>;
 }
 
@@ -2041,29 +2046,63 @@ function FlightLiveOffers({ origin, destination, departDate, returnDate, tripId 
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {offers.slice(0, 6).map(o => {
-          const out = o.segments[0];
-          const ret = o.segments[o.segments.length - 1];
-          const stops = Math.max(0, o.segments.length / 2 - 1);
+        {offers.slice(0, 6).map((o, idx) => {
+          const outbound = o.slices[0];
+          const inbound = o.slices[1];
+          const outboundStops = Math.max(0, (outbound?.segments.length ?? 1) - 1);
+          const isCheapest = idx === 0; // offers come pre-sorted cheapest-first from Duffel
           return (
             <div
               key={o.id}
               style={{
                 padding: '12px 14px', borderRadius: 12,
                 background: 'rgba(255,255,255,0.03)',
-                border: '1px solid var(--brand-border)',
+                border: `1px solid ${isCheapest ? '#fbbf2466' : 'var(--brand-border)'}`,
                 display: 'grid',
                 gridTemplateColumns: '1fr auto',
                 alignItems: 'center', gap: 12,
+                position: 'relative',
               }}
             >
+              {isCheapest && (
+                <span style={{
+                  position: 'absolute', top: -8, left: 12,
+                  padding: '2px 8px', borderRadius: 999,
+                  background: '#fbbf24', color: '#0a0a1f',
+                  fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>Best price</span>
+              )}
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)' }}>
-                  {o.carrierName} · {o.carrier}{out?.flightNumber ? ` ${out.flightNumber}` : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)' }}>
+                    {o.carrierName}
+                  </span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 600, letterSpacing: '0.08em',
+                    textTransform: 'uppercase', color: 'var(--brand-ink-dim)',
+                    padding: '2px 6px', borderRadius: 4,
+                    background: 'rgba(255,255,255,0.05)',
+                  }}>{o.cabin.replace('_', ' ')}</span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 3 }}>
-                  {out?.from} → {ret?.to ?? out?.to} · {stops === 0 ? 'Direct' : `${stops} stop${stops > 1 ? 's' : ''}`} · {formatDuration(o.segments.reduce((s, x) => s + x.durationMin, 0))}
+                  {outbound && (
+                    <>
+                      {outbound.origin} → {outbound.destination} ·{' '}
+                      {outboundStops === 0 ? 'Direct' : `${outboundStops} stop${outboundStops > 1 ? 's' : ''}`}
+                      {' · '}{formatDuration(outbound.totalDurationMin)}
+                      {' · '}{formatDateTime(outbound.segments[0]?.departAt)}
+                    </>
+                  )}
                 </div>
+                {inbound && (
+                  <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 2 }}>
+                    {inbound.origin} → {inbound.destination} ·{' '}
+                    {(inbound.segments.length - 1) === 0 ? 'Direct' : `${inbound.segments.length - 1} stop${inbound.segments.length - 1 > 1 ? 's' : ''}`}
+                    {' · '}{formatDuration(inbound.totalDurationMin)}
+                    {' · '}{formatDateTime(inbound.segments[0]?.departAt)}
+                  </div>
+                )}
               </div>
               <a
                 href={aviasalesUrl(origin, destination, departDate || null, returnDate || null, tripId ? `trip-${tripId}` : `live_${o.id.slice(0, 8)}`)}
@@ -2071,10 +2110,11 @@ function FlightLiveOffers({ origin, destination, departDate, returnDate, tripId 
                 rel="noopener noreferrer sponsored"
                 onClick={() => track('book_intent', { kind: 'flight', provider: 'duffel-live', cabin, carrier: o.carrier, price: o.totalAmount })}
                 style={{
-                  padding: '8px 14px', borderRadius: 999,
-                  background: 'var(--brand-accent)', color: 'var(--brand-bg)',
+                  padding: '10px 16px', borderRadius: 999,
+                  background: isCheapest ? '#fbbf24' : 'var(--brand-accent)',
+                  color: isCheapest ? '#0a0a1f' : 'var(--brand-bg)',
                   textDecoration: 'none',
-                  fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                  fontFamily: MONO, fontSize: 12, fontWeight: 700,
                   letterSpacing: '0.06em', textTransform: 'uppercase',
                   whiteSpace: 'nowrap',
                 }}
@@ -2093,6 +2133,15 @@ function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
 }
 
 function OriginPicker({ homeAirport, onChange }: {
