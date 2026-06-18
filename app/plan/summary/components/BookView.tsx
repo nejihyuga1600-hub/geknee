@@ -14,7 +14,7 @@ import VoteButtons from '@/app/components/VoteButtons';
 import StreetViewThumb from '@/app/components/StreetViewThumb';
 import { useGeocode } from '@/app/hooks/useGeocode';
 import {
-  aviasalesUrl, wrapTP,
+  aviasalesUrl,
   airaloUrl, kiwitaxiUrl, getrentacarUrl, economybookingsUrl,
 } from '@/lib/affiliate';
 
@@ -1231,11 +1231,12 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
       params.set('label', `trip-${tripId}`);
       params.set('sub_id', `trip-${tripId}`);
     }
-    // Route through TP's redirector so commission attributes when the
-    // user books on Booking.com (TP partner). Non-partner destinations
-    // pass through unchanged. See lib/affiliate.ts.
-    const raw = `https://www.booking.com/searchresults.html?${params}`;
-    return wrapTP(raw, tripId ? `trip-${tripId}` : `hotel_${hotel.name.slice(0, 24)}`);
+    // NOTE: previously routed through tp.media/r — but that endpoint
+    // requires a per-partner p=<id> parameter we don't have for
+    // Booking.com (returned 400 in prod). Reverted to bare URL until
+    // user generates a Booking.com TP short link (or Booking's own
+    // affiliate signup completes — sub_id=trip-xxx survives either way).
+    return `https://www.booking.com/searchresults.html?${params}`;
   })();
   const tierColor = TIER_COLOR[hotel.tier];
   const cacheKey = `${hotel.name}||${city}`;

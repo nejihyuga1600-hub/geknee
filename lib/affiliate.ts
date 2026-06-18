@@ -42,17 +42,19 @@ export function aviasalesUrl(
   return `https://www.aviasales.com/search?${params.toString()}`;
 }
 
-// Wrap any URL through tp.media/r so TP can attribute if the
-// destination is a partner domain. No-op for non-partner destinations
-// but harmless — the redirector still forwards.
-export function wrapTP(rawUrl: string, subId?: string): string {
-  if (!rawUrl) return rawUrl;
+// WARNING: tp.media/r REQUIRES a per-partner `p=<id>` parameter. Without
+// it, the endpoint returns 400. Since we don't have the partner ID map
+// for every TP brand, prefer the per-partner short links generated in
+// the TP dashboard (see *_SHORT_URL constants below). Keeping this
+// helper around for future use but DO NOT call it without a known p.
+export function wrapTP(rawUrl: string, subId: string, partnerId: string): string {
+  if (!rawUrl || !partnerId) return rawUrl;
   const marker = withMarker(MARKER, subId);
   const params = new URLSearchParams({
+    p: partnerId,
     marker,
     u: rawUrl,
   });
-  if (subId) params.set("trs", subId);
   return `https://tp.media/r?${params.toString()}`;
 }
 
