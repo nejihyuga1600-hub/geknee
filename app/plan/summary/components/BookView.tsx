@@ -13,6 +13,7 @@ import { track } from '@/lib/analytics';
 import VoteButtons from '@/app/components/VoteButtons';
 import StreetViewThumb from '@/app/components/StreetViewThumb';
 import { useGeocode } from '@/app/hooks/useGeocode';
+import { aviasalesUrl, wrapTP } from '@/lib/affiliate';
 
 // Locale → ISO 4217 currency map. Mirrors the SummaryView logic; kept
 // inline rather than shared because BookView is its own dynamic import
@@ -1227,7 +1228,11 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
       params.set('label', `trip-${tripId}`);
       params.set('sub_id', `trip-${tripId}`);
     }
-    return `https://www.booking.com/searchresults.html?${params}`;
+    // Route through TP's redirector so commission attributes when the
+    // user books on Booking.com (TP partner). Non-partner destinations
+    // pass through unchanged. See lib/affiliate.ts.
+    const raw = `https://www.booking.com/searchresults.html?${params}`;
+    return wrapTP(raw, tripId ? `trip-${tripId}` : `hotel_${hotel.name.slice(0, 24)}`);
   })();
   const tierColor = TIER_COLOR[hotel.tier];
   const cacheKey = `${hotel.name}||${city}`;
@@ -1791,7 +1796,12 @@ function FlightAggregatorButtons({ flight, startDate, endDate }: {
       mode: 'search',
     }).toString();
 
+  // Aviasales first — TP-attributed, earns commission on bookings.
+  // The others are unaffiliated fallbacks until each gets its own
+  // partner program. See lib/affiliate.ts.
+  const aviasalesHref = aviasalesUrl(from, to, isoStart || null, isoEnd || null, `agg_${from}_${to}`);
   const buttons = [
+    { name: 'Aviasales',       href: aviasalesHref, accent: '#a78bfa', icon: '🎫' },
     { name: 'Google Flights',  href: googleHref,    accent: '#93c5fd', icon: '✈️' },
     { name: 'Skyscanner',      href: skyscannerHref, accent: '#7dd3fc', icon: '🔍' },
     { name: 'Kayak',           href: kayakHref,     accent: '#fbbf24', icon: '🛬' },
@@ -2239,12 +2249,20 @@ function FlightOptionAggregator({ option, startDate, endDate, tripId }: {
   // when we know it. Falls back to Google Flights search if the
   // carrier isn't in CARRIER_BOOK_RULES. The user can always pick
   // an aggregator from the secondary row.
+  // Aviasales is TP-attributed (earns commission). Prefer carrier
+  // deeplink when known (best UX), otherwise Aviasales is the primary.
+  // Either way Aviasales appears in the aggregators row as a backup.
+  const aviasalesHref = aviasalesUrl(
+    from, to, isoStart || null, isoEnd || null,
+    tripId ? `trip-${tripId}` : `opt_${from}_${to}`,
+  );
   const carrierLink = carrierBookingLink(option.carrier, from, to, isoStart, isoEnd);
   const primary = carrierLink
     ? { name: carrierLink.name, href: withSub(carrierLink.href) }
-    : { name: 'Google Flights', href: withSub(buildGoogleFlightsHref(from, to, isoStart, isoEnd)) };
+    : { name: 'Aviasales', href: aviasalesHref };
 
   const aggregators = [
+    ...(carrierLink ? [{ name: 'Aviasales', href: aviasalesHref }] : []),
     {
       name: 'Skyscanner',
       href: withSub(

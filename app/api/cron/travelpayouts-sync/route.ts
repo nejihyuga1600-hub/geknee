@@ -95,9 +95,9 @@ export async function GET(req: Request) {
     }
   }
 
-  const token = process.env.TRAVELPAYOUTS_API_TOKEN;
+  const token = process.env.TRAVELPAYOUTS_TOKEN;
   if (!token) {
-    return Response.json({ error: "TRAVELPAYOUTS_API_TOKEN not set" }, { status: 500 });
+    return Response.json({ error: "TRAVELPAYOUTS_TOKEN not set" }, { status: 500 });
   }
 
   // Pull last 7 days. Each run overlaps the previous so we don't miss
