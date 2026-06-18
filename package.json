@@ -32,6 +32,7 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+    "@duffel/api": "^4.27.0",
     "@prisma/client": "^6.19.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",

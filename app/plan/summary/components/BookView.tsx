@@ -1901,13 +1901,198 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
         across Google Flights, Skyscanner, Kayak, or Expedia.
       </p>
       <OriginPicker homeAirport={homeAirport} onChange={onChangeHome} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {homeAirport?.iata && options[0]?.outbound?.to && (
+        <FlightLiveOffers
+          origin={homeAirport.iata}
+          destination={options[0].outbound.to}
+          departDate={startDate}
+          returnDate={endDate}
+          tripId={tripId}
+        />
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
         {options.map((o, i) => (
           <FlightOptionCard key={i} option={o} startDate={startDate} endDate={endDate} tripId={tripId} />
         ))}
       </div>
     </section>
   );
+}
+
+// ─── Duffel live offers (real prices, cabin selection) ─────────────────────
+//
+// Shows up to 6 real bookable flight offers from Duffel's NDC + GDS
+// aggregation. The cabin selector lets users compare economy through
+// first-class. "Select" on a card currently opens the carrier's own
+// site with the cabin filter pre-set (Phase 1). Phase 2 wires Duffel
+// order creation behind a feature flag.
+
+type LiveCabin = 'economy' | 'premium_economy' | 'business' | 'first';
+
+interface DuffelOfferLite {
+  id: string;
+  totalAmount: string;
+  totalCurrency: string;
+  cabin: LiveCabin;
+  carrier: string;
+  carrierName: string;
+  segments: Array<{
+    from: string;
+    to: string;
+    departAt: string;
+    arriveAt: string;
+    durationMin: number;
+    flightNumber: string;
+  }>;
+}
+
+function FlightLiveOffers({ origin, destination, departDate, returnDate, tripId }: {
+  origin: string;
+  destination: string;
+  departDate?: string;
+  returnDate?: string;
+  tripId?: string;
+}) {
+  const [cabin, setCabin] = useState<LiveCabin>('economy');
+  const [offers, setOffers] = useState<DuffelOfferLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!departDate) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({
+      origin,
+      destination,
+      depart: departDate,
+      cabin,
+      adults: '1',
+    });
+    if (returnDate) params.set('return', returnDate);
+    fetch(`/api/duffel/search?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d.error) {
+          setError(d.error);
+          setOffers([]);
+        } else {
+          setOffers(d.offers ?? []);
+        }
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setError(e?.message ?? 'Network error');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [origin, destination, departDate, returnDate, cabin]);
+
+  const cabins: Array<{ key: LiveCabin; label: string }> = [
+    { key: 'economy',         label: 'Economy' },
+    { key: 'premium_economy', label: 'Premium' },
+    { key: 'business',        label: 'Business' },
+    { key: 'first',           label: 'First' },
+  ];
+
+  return (
+    <div style={{ marginTop: 18, marginBottom: 8 }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 10,
+        textTransform: 'uppercase',
+      }}>
+        Live prices · select cabin
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {cabins.map(c => (
+          <button
+            key={c.key}
+            onClick={() => setCabin(c.key)}
+            style={{
+              padding: '6px 14px', borderRadius: 999,
+              fontFamily: MONO, fontSize: 11, fontWeight: 600,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              background: cabin === c.key ? 'var(--brand-accent)' : 'rgba(255,255,255,0.04)',
+              color: cabin === c.key ? 'var(--brand-bg)' : 'var(--brand-ink)',
+              border: `1px solid ${cabin === c.key ? 'transparent' : 'var(--brand-border)'}`,
+              cursor: 'pointer',
+            }}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {loading && (
+        <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', padding: '8px 0' }}>
+          Fetching live {cabin.replace('_', ' ')} offers…
+        </div>
+      )}
+      {!loading && error && (
+        <div style={{ fontSize: 12, color: '#fca5a5', padding: '8px 0' }}>
+          Could not load live offers ({error}). Showing curated picks below.
+        </div>
+      )}
+      {!loading && !error && offers.length === 0 && departDate && (
+        <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', padding: '8px 0' }}>
+          No {cabin.replace('_', ' ')} offers found for {origin} → {destination}. Try a different cabin.
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {offers.slice(0, 6).map(o => {
+          const out = o.segments[0];
+          const ret = o.segments[o.segments.length - 1];
+          const stops = Math.max(0, o.segments.length / 2 - 1);
+          return (
+            <div
+              key={o.id}
+              style={{
+                padding: '12px 14px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--brand-border)',
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                alignItems: 'center', gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)' }}>
+                  {o.carrierName} · {o.carrier}{out?.flightNumber ? ` ${out.flightNumber}` : ''}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 3 }}>
+                  {out?.from} → {ret?.to ?? out?.to} · {stops === 0 ? 'Direct' : `${stops} stop${stops > 1 ? 's' : ''}`} · {formatDuration(o.segments.reduce((s, x) => s + x.durationMin, 0))}
+                </div>
+              </div>
+              <a
+                href={aviasalesUrl(origin, destination, departDate || null, returnDate || null, tripId ? `trip-${tripId}` : `live_${o.id.slice(0, 8)}`)}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                onClick={() => track('book_intent', { kind: 'flight', provider: 'duffel-live', cabin, carrier: o.carrier, price: o.totalAmount })}
+                style={{
+                  padding: '8px 14px', borderRadius: 999,
+                  background: 'var(--brand-accent)', color: 'var(--brand-bg)',
+                  textDecoration: 'none',
+                  fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {o.totalCurrency} {Math.round(parseFloat(o.totalAmount))}
+              </a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function OriginPicker({ homeAirport, onChange }: {
