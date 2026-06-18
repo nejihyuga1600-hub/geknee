@@ -54,30 +54,30 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   victoriaFalls: new Set(['bronze']),
   tokyoSkytree: new Set(['bronze']),
   iguazuFalls: new Set(['bronze']),
-  stonehenge: new Set(['bronze']),
+  stonehenge: new Set(['bronze', 'meshy']),
   neuschwanstein: new Set(['bronze']),
   acropolis: new Set(['bronze']),
   goldenGate: new Set(['bronze']),
-  pyramidGiza: new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
-  angkorWat: new Set(['bronze']),
+  pyramidGiza: new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'meshy']),
+  angkorWat: new Set(['bronze', 'meshy']),
   // Generated from blob inventory by bin/blob-sync-available-skins.mjs.
   // Re-run that script after uploading new GLBs.
   bigBen:         new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
   christRedeem:   new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus']),
-  colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'natural']),
+  colosseum:      new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'natural', 'meshy']),
   eiffelTower:    new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'damascus', 'natural']),
   greatWall:      new Set(['bronze', 'gold', 'diamond', 'aurora', 'celestial', 'silver']),
-  machuPicchu:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
-  sagradaFamilia: new Set(['bronze', 'celestial']),
-  statueLiberty:  new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  machuPicchu:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'meshy']),
+  sagradaFamilia: new Set(['bronze', 'celestial', 'meshy']),
+  statueLiberty:  new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'meshy']),
   sydneyOpera:    new Set(['bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
-  tajMahal:       new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial']),
+  tajMahal:       new Set(['stone', 'bronze', 'silver', 'gold', 'diamond', 'aurora', 'celestial', 'meshy']),
   mountFuji:      new Set(['bronze']),
-  petra:          new Set(['bronze']),
+  petra:          new Set(['bronze', 'meshy']),
   niagaraFalls:   new Set(['bronze']),
   chichenItza:    new Set(['bronze']),
   burjKhalifa:    new Set(['bronze']),
-  hagiaSophia:    new Set(['bronze']),
+  hagiaSophia:    new Set(['bronze', 'meshy']),
   notreDameF:     new Set(['bronze']),
   forbiddenCity:  new Set(['bronze']),
   uluru:          new Set(['bronze']),
@@ -154,11 +154,15 @@ export const SKIN_RING_COLOR: Record<string, string> = {
   aurora: '#00ff88',
   celestial: '#9370db',
   damascus: '#7c5e3c',
+  // 'meshy' tier = Meshy-generated alt-bronze (image-to-3D from monument
+  // snap). Same rank as bronze; copper ring matches bronze so it doesn't
+  // imply a new rarity level.
+  meshy: '#cd7f32',
 };
 
 // Rarity rank — higher = rarer. Used by /u/[handle] to count "rare" collections
 // and pick the highest-tier skin for display. natural=0 so it sorts BELOW
 // every other tier (the unlocked baseline, no rarity bonus).
 export const SKIN_RANK: Record<string, number> = {
-  natural: 0, stone: 1, bronze: 2, silver: 3, gold: 4, diamond: 5, aurora: 6, celestial: 7,
+  natural: 0, stone: 1, bronze: 2, meshy: 2, silver: 3, gold: 4, diamond: 5, aurora: 6, celestial: 7,
 };
