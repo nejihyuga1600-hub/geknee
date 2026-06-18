@@ -754,10 +754,19 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
         Where will you sleep?
       </h2>
 
+      <HotelbedsLiveRooms
+        location={location}
+        checkIn={startDate}
+        checkOut={endDate}
+        adults={guests}
+        rooms={rooms}
+      />
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: 16,
+        marginTop: 18,
       }}>
         {sortedHotels.map((h, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2142,6 +2151,126 @@ function formatDateTime(iso?: string): string {
   return d.toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
+}
+
+// ─── Hotelbeds live rooms (wholesale availability) ───────────────────────
+
+interface HotelbedsHotelLite {
+  code: number;
+  name: string;
+  categoryName: string | null;
+  destinationName: string | null;
+  minRate: number;
+  currency: string;
+  rateKey: string;
+  cancellationPolicy: string | null;
+  boardName: string | null;
+}
+
+function HotelbedsLiveRooms({ location, checkIn, checkOut, adults, rooms }: {
+  location: string;
+  checkIn?: string;
+  checkOut?: string;
+  adults: number;
+  rooms: number;
+}) {
+  const [hotels, setHotels] = useState<HotelbedsHotelLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [configured, setConfigured] = useState(true); // optimistic — surface only when proven off
+
+  useEffect(() => {
+    if (!location || !checkIn || !checkOut) return;
+    let cancelled = false;
+    setLoading(true);
+    const params = new URLSearchParams({
+      location, checkIn, checkOut,
+      adults: String(adults),
+      rooms: String(rooms),
+    });
+    fetch(`/api/hotelbeds/hotels/search?${params.toString()}`)
+      .then(r => r.json().then(d => ({ d, status: r.status })))
+      .then(({ d, status }) => {
+        if (cancelled) return;
+        if (d.configured === false) setConfigured(false);
+        else setConfigured(true);
+        setHotels(status === 200 ? (d.hotels ?? []) : []);
+      })
+      .catch(() => { if (!cancelled) setHotels([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [location, checkIn, checkOut, adults, rooms]);
+
+  // Silent when not configured — fall back to AI cards below without
+  // exposing implementation detail. We log to console instead.
+  if (!configured) return null;
+  if (loading) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', padding: '8px 0' }}>
+        Finding live wholesale rates in {location}…
+      </div>
+    );
+  }
+  if (hotels.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 10,
+        textTransform: 'uppercase',
+      }}>
+        Live rates · {hotels.length} bookable
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {hotels.slice(0, 6).map((h, idx) => {
+          const isCheapest = idx === 0;
+          return (
+            <div
+              key={h.code}
+              style={{
+                padding: '12px 14px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: `1px solid ${isCheapest ? '#fbbf2466' : 'var(--brand-border)'}`,
+                display: 'grid', gridTemplateColumns: '1fr auto',
+                alignItems: 'center', gap: 12, position: 'relative',
+              }}
+            >
+              {isCheapest && (
+                <span style={{
+                  position: 'absolute', top: -8, left: 12,
+                  padding: '2px 8px', borderRadius: 999,
+                  background: '#fbbf24', color: '#0a0a1f',
+                  fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>Best price</span>
+              )}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)' }}>
+                  {h.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {h.categoryName && <span>{h.categoryName}</span>}
+                  {h.boardName && <span>· {h.boardName}</span>}
+                  {h.cancellationPolicy && <span style={{ color: '#86efac' }}>· {h.cancellationPolicy}</span>}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{
+                  fontFamily: MONO, fontSize: 14, fontWeight: 700,
+                  color: 'var(--brand-ink)',
+                }}>
+                  {h.currency} {Math.round(h.minRate)}
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--brand-ink-dim)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  /night
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ─── Viator live products (real activity availability) ───────────────────
