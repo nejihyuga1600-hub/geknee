@@ -13,7 +13,10 @@ import { track } from '@/lib/analytics';
 import VoteButtons from '@/app/components/VoteButtons';
 import StreetViewThumb from '@/app/components/StreetViewThumb';
 import { useGeocode } from '@/app/hooks/useGeocode';
-import { aviasalesUrl, wrapTP } from '@/lib/affiliate';
+import {
+  aviasalesUrl, wrapTP,
+  airaloUrl, kiwitaxiUrl, getrentacarUrl, economybookingsUrl,
+} from '@/lib/affiliate';
 
 // Locale → ISO 4217 currency map. Mirrors the SummaryView logic; kept
 // inline rather than shared because BookView is its own dynamic import
@@ -2908,7 +2911,36 @@ function TransportSection({ location, startDate, endDate, tripId }: {
   endDate: string;
   tripId?: string;
 }) {
-  const options = regionalTransportOptions(location, startDate, endDate);
+  // Universal TP-attributed options that work for any destination.
+  // Sub-id carries the tripId so conversions get tagged in TP reports.
+  const sub = tripId ? `trip-${tripId}` : 'transport';
+  const universal = [
+    {
+      name: 'Kiwitaxi · Airport transfer',
+      description: 'Pre-book a private car from the airport to your hotel. Works in 100+ countries.',
+      href: kiwitaxiUrl(sub),
+      accent: '#fbbf24',
+    },
+    {
+      name: 'GetRentACar · Rental cars',
+      description: 'Compare 800+ rental suppliers worldwide. Free cancellation on most pickups.',
+      href: getrentacarUrl(sub),
+      accent: '#7dd3fc',
+    },
+    {
+      name: 'EconomyBookings · Budget cars',
+      description: 'Same global inventory pool, often cheaper on long rentals. Worth comparing.',
+      href: economybookingsUrl(sub),
+      accent: '#a78bfa',
+    },
+    {
+      name: 'Airalo · eSIM data',
+      description: 'Stay online abroad without roaming fees. Install in 5 min, pay-as-you-go plans.',
+      href: airaloUrl(sub),
+      accent: '#34d399',
+    },
+  ];
+  const options = [...universal, ...regionalTransportOptions(location, startDate, endDate)];
   const dateLabel = startDate && endDate
     ? `${startDate} → ${endDate}`
     : 'dates not set';
