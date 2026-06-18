@@ -2144,6 +2144,137 @@ function formatDateTime(iso?: string): string {
   });
 }
 
+// ─── Viator live products (real activity availability) ───────────────────
+
+interface ViatorProductLite {
+  productCode: string;
+  title: string;
+  shortDescription: string;
+  imageUrl: string | null;
+  durationLabel: string | null;
+  fromPriceUsd: number | null;
+  rating: number | null;
+  reviewCount: number | null;
+  bookingUrl: string;
+}
+
+function ViatorLiveProducts({ location, startDate, endDate }: {
+  location: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const [products, setProducts] = useState<ViatorProductLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!location) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({ location });
+    if (startDate) params.set('start', startDate);
+    if (endDate) params.set('end', endDate);
+    fetch(`/api/viator/search?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d.error) {
+          setError(d.error);
+          setProducts([]);
+        } else {
+          setProducts(d.products ?? []);
+        }
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setError(e?.message ?? 'Network error');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [location, startDate, endDate]);
+
+  if (!location) return null;
+  if (loading) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', padding: '8px 0' }}>
+        Finding bookable tours in {location}…
+      </div>
+    );
+  }
+  if (error || products.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 10,
+        textTransform: 'uppercase',
+      }}>
+        Bookable now · {products.length} tours
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 12,
+      }}>
+        {products.slice(0, 6).map(p => (
+          <a
+            key={p.productCode}
+            href={p.bookingUrl}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            onClick={() => track('book_intent', { kind: 'activity', provider: 'viator', productCode: p.productCode, price: p.fromPriceUsd })}
+            style={{
+              display: 'flex', flexDirection: 'column',
+              borderRadius: 12, overflow: 'hidden',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--brand-border)',
+              textDecoration: 'none', color: 'inherit',
+            }}
+          >
+            {p.imageUrl && (
+              <div style={{
+                width: '100%', paddingBottom: '66%',
+                background: `url("${p.imageUrl}") center/cover`,
+                position: 'relative',
+              }}>
+                {p.fromPriceUsd != null && (
+                  <span style={{
+                    position: 'absolute', bottom: 8, right: 8,
+                    padding: '4px 10px', borderRadius: 999,
+                    background: 'rgba(10,10,31,0.85)', color: '#fff',
+                    fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.04em',
+                  }}>From ${Math.round(p.fromPriceUsd)}</span>
+                )}
+              </div>
+            )}
+            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)',
+                lineHeight: 1.3,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}>
+                {p.title}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--brand-ink-dim)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {p.rating != null && (
+                  <span>★ {p.rating.toFixed(1)}{p.reviewCount ? ` (${p.reviewCount})` : ''}</span>
+                )}
+                {p.durationLabel && <span>· {p.durationLabel}</span>}
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OriginPicker({ homeAirport, onChange }: {
   homeAirport: UserHome | null;
   onChange: (rec: { iata: string; city: string; country: string; countryCode: string; lat: number; lng: number }) => void;
@@ -2597,10 +2728,12 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
       }}>
         What will you do?
       </h2>
+      <ViatorLiveProducts location={location} startDate={startDate} endDate={endDate} />
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
         gap: 14,
+        marginTop: 18,
       }}>
         {activities.map((a, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
