@@ -673,7 +673,7 @@ export default function BookView(props: BookTabProps) {
           : (flight && <FlightsSection flight={flight} startDate={props.startDate} endDate={props.endDate} />)
       )}
       {!loading && !loadError && tab === 'activities' && <ActivitiesSection activities={activities} location={props.location} startDate={props.startDate} endDate={props.endDate} tripId={props.tripId} onItineraryAdjusted={props.onItineraryAdjusted} />}
-      {tab === 'transport'  && <TransportSection location={props.location} startDate={props.startDate} endDate={props.endDate} tripId={props.tripId} />}
+      {tab === 'transport'  && <TransportSection location={props.location} startDate={props.startDate} endDate={props.endDate} tripId={props.tripId} homeAirport={homeAirport} />}
       {!loading && !loadError && tab === 'insurance' && (
         <InsuranceSection
           location={props.location}
@@ -2273,6 +2273,198 @@ function HotelbedsLiveRooms({ location, checkIn, checkOut, adults, rooms }: {
   );
 }
 
+// ─── Hotelbeds live activities (wholesale activity rates) ───────────────
+
+interface HotelbedsActivityLite {
+  code: string;
+  name: string;
+  fromPrice: number;
+  currency: string;
+  durationLabel: string | null;
+  imageUrl: string | null;
+}
+
+function HotelbedsLiveActivities({ location, from, to }: {
+  location: string;
+  from?: string;
+  to?: string;
+}) {
+  const [items, setItems] = useState<HotelbedsActivityLite[]>([]);
+  const [configured, setConfigured] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!location || !from || !to) return;
+    let cancelled = false;
+    setLoading(true);
+    const params = new URLSearchParams({ location, from, to, adults: '1' });
+    fetch(`/api/hotelbeds/activities/search?${params.toString()}`)
+      .then(r => r.json().then(d => ({ d, status: r.status })))
+      .then(({ d, status }) => {
+        if (cancelled) return;
+        if (d.configured === false) setConfigured(false);
+        else setConfigured(true);
+        setItems(status === 200 ? (d.activities ?? []) : []);
+      })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [location, from, to]);
+
+  if (!configured || loading || items.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 10,
+        textTransform: 'uppercase',
+      }}>
+        Live wholesale · {items.length} tours
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 12,
+      }}>
+        {items.slice(0, 6).map(a => (
+          <div
+            key={a.code}
+            style={{
+              display: 'flex', flexDirection: 'column',
+              borderRadius: 12, overflow: 'hidden',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--brand-border)',
+            }}
+          >
+            {a.imageUrl && (
+              <div style={{
+                width: '100%', paddingBottom: '66%',
+                background: `url("${a.imageUrl}") center/cover`,
+                position: 'relative',
+              }}>
+                <span style={{
+                  position: 'absolute', bottom: 8, right: 8,
+                  padding: '4px 10px', borderRadius: 999,
+                  background: 'rgba(10,10,31,0.85)', color: '#fff',
+                  fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                }}>From {a.currency} {Math.round(a.fromPrice)}</span>
+              </div>
+            )}
+            <div style={{ padding: '10px 12px' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)', lineHeight: 1.3 }}>
+                {a.name}
+              </div>
+              {a.durationLabel && (
+                <div style={{ fontSize: 10, color: 'var(--brand-ink-dim)', marginTop: 4 }}>
+                  {a.durationLabel}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Hotelbeds live transfers (wholesale airport transfers) ───────────────
+
+interface HotelbedsTransferLite {
+  rateKey: string;
+  category: string;
+  vehicleName: string | null;
+  pax: { max: number };
+  totalPrice: number;
+  currency: string;
+}
+
+function HotelbedsLiveTransfers({ location, fromIata, pickupDate }: {
+  location: string;
+  fromIata: string;
+  pickupDate?: string;
+}) {
+  const [items, setItems] = useState<HotelbedsTransferLite[]>([]);
+  const [configured, setConfigured] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!location || !fromIata || !pickupDate) return;
+    let cancelled = false;
+    setLoading(true);
+    const params = new URLSearchParams({
+      location, fromIata,
+      pickup: `${pickupDate}T10:00:00`,
+      adults: '2',
+    });
+    fetch(`/api/hotelbeds/transfers/search?${params.toString()}`)
+      .then(r => r.json().then(d => ({ d, status: r.status })))
+      .then(({ d, status }) => {
+        if (cancelled) return;
+        if (d.configured === false) setConfigured(false);
+        else setConfigured(true);
+        setItems(status === 200 ? (d.transfers ?? []) : []);
+      })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [location, fromIata, pickupDate]);
+
+  if (!configured || loading || items.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 10,
+        textTransform: 'uppercase',
+      }}>
+        Live transfer rates · {fromIata} → {location.split(',')[0]}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.slice(0, 4).map((t, idx) => {
+          const isCheapest = idx === 0;
+          return (
+            <div
+              key={t.rateKey}
+              style={{
+                padding: '12px 14px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: `1px solid ${isCheapest ? '#fbbf2466' : 'var(--brand-border)'}`,
+                display: 'grid', gridTemplateColumns: '1fr auto',
+                alignItems: 'center', gap: 12, position: 'relative',
+              }}
+            >
+              {isCheapest && (
+                <span style={{
+                  position: 'absolute', top: -8, left: 12,
+                  padding: '2px 8px', borderRadius: 999,
+                  background: '#fbbf24', color: '#0a0a1f',
+                  fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>Best price</span>
+              )}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-ink)' }}>
+                  {t.vehicleName ?? t.category}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 3 }}>
+                  {t.category.toLowerCase()} · up to {t.pax.max} pax
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700 }}>
+                  {t.currency} {Math.round(t.totalPrice)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Viator live products (real activity availability) ───────────────────
 
 interface ViatorProductLite {
@@ -2857,6 +3049,7 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
       }}>
         What will you do?
       </h2>
+      <HotelbedsLiveActivities location={location} from={startDate} to={endDate} />
       <ViatorLiveProducts location={location} startDate={startDate} endDate={endDate} />
       <div style={{
         display: 'grid',
@@ -3402,11 +3595,12 @@ function regionalTransportOptions(
   ];
 }
 
-function TransportSection({ location, startDate, endDate, tripId }: {
+function TransportSection({ location, startDate, endDate, tripId, homeAirport }: {
   location: string;
   startDate: string;
   endDate: string;
   tripId?: string;
+  homeAirport: UserHome | null;
 }) {
   // Universal TP-attributed options that work for any destination.
   // Sub-id carries the tripId so conversions get tagged in TP reports.
@@ -3438,6 +3632,9 @@ function TransportSection({ location, startDate, endDate, tripId }: {
     },
   ];
   const options = [...universal, ...regionalTransportOptions(location, startDate, endDate)];
+  // Hotelbeds Transfers — only renders if user has a home airport set
+  // AND the secret is configured. Shows above the affiliate tile grid.
+  const transferOriginIata = homeAirport?.iata ?? null;
   const dateLabel = startDate && endDate
     ? `${startDate} → ${endDate}`
     : 'dates not set';
@@ -3462,6 +3659,9 @@ function TransportSection({ location, startDate, endDate, tripId }: {
         Tap-to-ride IC cards, multi-day passes, and intercity rail — links pre-fill with your destination
         {startDate && endDate ? ` and travel dates` : ''}.
       </p>
+      {transferOriginIata && (
+        <HotelbedsLiveTransfers location={location} fromIata={transferOriginIata} pickupDate={startDate} />
+      )}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
