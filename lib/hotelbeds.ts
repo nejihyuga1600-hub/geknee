@@ -212,6 +212,116 @@ export function resolveDestinationCode(location: string): string | null {
   return HOTELBEDS_DEST_CACHE[stripped] ?? null;
 }
 
+// ── Activities Availability Search ────────────────────────────────────────
+
+export interface ActivitySearchInput {
+  destinationCode: string;
+  from: string; // YYYY-MM-DD
+  to: string;
+  adults?: number;
+}
+
+export interface ActivityOffer {
+  code: string; // Hotelbeds activity code
+  name: string;
+  fromPrice: number;
+  currency: string;
+  durationLabel: string | null;
+  imageUrl: string | null;
+  ratesAvailable: number;
+}
+
+interface ActivitiesApiResponse {
+  activities?: Array<{
+    code: string;
+    name: string;
+    amountsFrom?: Array<{ amount: string; currencyId?: string }>;
+    duration?: { unit?: string; value?: number };
+    content?: { media?: Array<{ urls?: Array<{ resource?: string }> }> };
+    modalities?: Array<unknown>;
+  }>;
+}
+
+export async function searchActivities(input: ActivitySearchInput): Promise<ActivityOffer[]> {
+  const body = {
+    filters: [
+      { searchFilterItems: [{ type: "destination", value: input.destinationCode }] },
+    ],
+    from: input.from,
+    to: input.to,
+    paxes: Array.from({ length: input.adults ?? 1 }, () => ({ age: 30 })),
+    language: "en",
+  };
+  const data = await hbFetch<ActivitiesApiResponse>(
+    "activities",
+    "/activity-api/3.0/activities/availability",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+  return (data.activities ?? []).map((a) => {
+    const cheapest = a.amountsFrom?.[0];
+    const imageUrl = a.content?.media?.[0]?.urls?.[0]?.resource ?? null;
+    const durationLabel = a.duration
+      ? `${a.duration.value ?? "?"} ${a.duration.unit ?? ""}`.trim()
+      : null;
+    return {
+      code: a.code,
+      name: a.name,
+      fromPrice: parseFloat(cheapest?.amount ?? "0"),
+      currency: cheapest?.currencyId ?? "USD",
+      durationLabel,
+      imageUrl,
+      ratesAvailable: a.modalities?.length ?? 0,
+    };
+  });
+}
+
+// ── Transfers Availability Search ─────────────────────────────────────────
+
+export interface TransferSearchInput {
+  fromIata: string; // origin IATA
+  toCode: string;   // destination Hotelbeds zone code OR hotel code
+  toType: "IATA" | "ATLAS"; // ATLAS = Hotelbeds zone (cities/hotels)
+  pickupDate: string; // YYYY-MM-DDTHH:mm:ss
+  returnDate?: string;
+  adults?: number;
+}
+
+export interface TransferOffer {
+  rateKey: string;
+  category: string; // e.g. "STANDARD", "BUSINESS"
+  vehicleName: string | null;
+  pax: { max: number };
+  totalPrice: number;
+  currency: string;
+}
+
+interface TransfersApiResponse {
+  services?: Array<{
+    rateKey: string;
+    category?: { name?: string };
+    vehicle?: { name?: string };
+    pax?: { max?: number };
+    price?: { totalAmount?: number; currencyId?: string };
+  }>;
+}
+
+export async function searchTransfers(input: TransferSearchInput): Promise<TransferOffer[]> {
+  // Transfers v1 is REST-ish: parts of the request go in the path,
+  // others in query string. Format: /availability/{lang}/from/{type}/{code}/to/{type}/{code}/{date}
+  const path =
+    `/transfer-api/1.0/availability/en/from/IATA/${input.fromIata}/to/${input.toType}/${input.toCode}/${input.pickupDate}` +
+    (input.returnDate ? `?returnDate=${input.returnDate}&adults=${input.adults ?? 2}` : `?adults=${input.adults ?? 2}`);
+  const data = await hbFetch<TransfersApiResponse>("transfers", path);
+  return (data.services ?? []).map((s) => ({
+    rateKey: s.rateKey,
+    category: s.category?.name ?? "STANDARD",
+    vehicleName: s.vehicle?.name ?? null,
+    pax: { max: s.pax?.max ?? 4 },
+    totalPrice: s.price?.totalAmount ?? 0,
+    currency: s.price?.currencyId ?? "USD",
+  }));
+}
+
 // ── Status helper (used by the search route for graceful degrades) ──────
 
 export function hotelbedsConfigured(product: HotelbedsProduct): boolean {
