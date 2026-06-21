@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { EditableLine } from './EditableLine';
 import type { ActivityGroup } from '../lib/itinerary-parse';
 import type { EditTarget } from '../lib/types';
-import { extractPlace, fetchPlaceImage, imgCache } from '../lib/places';
+import { extractPlace, imgCache } from '../lib/places';
 import { Walk, Bike, Subway, Bus, Taxi, Train, Ferry, Plane } from '@/lib/icons';
 import StreetViewThumb from '@/app/components/StreetViewThumb';
 import StepThumb from '@/app/components/StepThumb';
@@ -48,10 +48,26 @@ function PlaceThumb({ place, city }: { place: string; city?: string }) {
 
   useEffect(() => {
     if (imgCache.has(cacheKey)) { setSrc(imgCache.get(cacheKey) || null); return; }
-    fetchPlaceImage(place, city).then(url => {
-      imgCache.set(cacheKey, url ?? '');
-      setSrc(url);
-    });
+    // Google Places only — no Wikidata/Wikipedia/Commons fallbacks. Day-step
+    // images must come from Google Maps imagery so the thumb matches what
+    // the user sees when they open the place in Google Maps. The broader
+    // fetchPlaceImage() chain is still used by BookView (hotels) where the
+    // Wikipedia fallback is welcome; here we drop the chain after step 1.
+    (async () => {
+      try {
+        const sp = new URLSearchParams({ name: place, ...(city ? { location: city } : {}) });
+        const r = await fetch(`/api/place-images?${sp.toString()}`);
+        if (r.ok) {
+          const d = await r.json() as { images?: string[] };
+          const url = d.images?.[0] ?? null;
+          imgCache.set(cacheKey, url ?? '');
+          setSrc(url);
+          return;
+        }
+      } catch {}
+      imgCache.set(cacheKey, '');
+      setSrc(null);
+    })();
   }, [cacheKey, place, city]);
 
   // Lightbox-open side effects: close on Esc, lock body scroll so the
@@ -76,7 +92,7 @@ function PlaceThumb({ place, city }: { place: string; city?: string }) {
         disabled={!src}
         aria-label={src ? `View larger photo of ${place}` : place}
         style={{
-          width: 96, height: 96, borderRadius: 12, overflow: 'hidden', flexShrink: 0,
+          width: 384, height: 384, borderRadius: 12, overflow: 'hidden', flexShrink: 0,
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.06)',
           cursor: src ? 'zoom-in' : 'default',
@@ -394,7 +410,7 @@ export function ActivityBlock({
           // dead space on the left margin.
           if (svCoord) {
             return (
-              <div style={{ width: 64, flexShrink: 0, position: 'relative' }}>
+              <div style={{ width: 384, maxWidth: '100%', flexShrink: 0, position: 'relative' }}>
                 <StepThumb
                   lat={svCoord.lat}
                   lng={svCoord.lng}

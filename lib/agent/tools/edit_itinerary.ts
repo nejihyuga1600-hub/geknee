@@ -100,6 +100,32 @@ export const editItineraryTool: AgentTool = {
 
     const { kind, name, district, meta, price } = input as unknown as EditInput;
 
+    // ── PRE-FLIGHT: location mismatch guard ────────────────────────────
+    // If the new booking is clearly in a different city/country from the
+    // trip, refuse before calling the reviser. Prevents Tokyo activities
+    // landing in Reykjavik itineraries (regression 2026-06-21).
+    //
+    // Strategy: pull all geographic tokens from trip.location + the
+    // existing itinerary's known city/country mentions, and check
+    // whether any of them appear in the candidate's name/district/meta.
+    // If the candidate has its own clear city signal (proper noun in
+    // district or meta) and zero overlap with the trip's geography, fail.
+    const mismatch = detectLocationMismatch(
+      trip.location ?? "",
+      trip.itinerary,
+      { name, district, meta },
+    );
+    if (mismatch) {
+      return {
+        error:
+          `This booking appears to be in ${mismatch.candidate}, but the trip is in ${mismatch.trip}. ` +
+          `If this is for a different trip, please switch trips first. Otherwise tell me which day to add it to.`,
+        locationMismatch: true,
+        tripLocation: mismatch.trip,
+        candidateLocation: mismatch.candidate,
+      };
+    }
+
     // ── PERF: send only the affected day to Haiku, not the whole trip ────
     // Pre-optimization: rewriting a full 7-day itinerary ran 30-40s of the
     // 52s end-to-end happy-multi test. Output tokens dominated (Haiku
@@ -180,6 +206,91 @@ function extractText(resp: Anthropic.Message): string {
     .join("")
     .replace(/^\s*```(?:markdown|md)?\s*/i, "")
     .replace(/\s*```\s*$/i, "");
+}
+
+// Detect when an incoming activity/hotel is in a different geography
+// than the trip. Returns { trip, candidate } when the booking has a
+// clear non-trip city/country signal; null otherwise.
+//
+// Heuristic — not perfect, but catches the obvious cross-continent
+// errors (Asakusa→Tokyo vs Reykjavik). False negatives are fine
+// (revise runs, possibly produces something odd); false positives
+// would be bad (legit edits refused) so we only fire when the
+// candidate text has STRONG city evidence.
+const KNOWN_CITY_TOKENS: Record<string, string[]> = {
+  tokyo: ["tokyo", "shibuya", "shinjuku", "asakusa", "ginza", "harajuku", "akihabara", "ikebukuro", "roppongi", "japan", "japanese"],
+  kyoto: ["kyoto", "gion", "arashiyama"],
+  osaka: ["osaka", "namba", "umeda", "dotonbori"],
+  paris: ["paris", "montmartre", "marais", "louvre", "france", "french"],
+  london: ["london", "soho", "shoreditch", "camden", "england", "british", "uk"],
+  reykjavik: ["reykjavik", "iceland", "icelandic", "golden circle", "vik", "akureyri"],
+  "new york": ["new york", "nyc", "manhattan", "brooklyn", "queens", "bronx", "harlem", "soho", "chelsea"],
+  rome: ["rome", "roma", "trastevere", "vatican", "italy", "italian"],
+  barcelona: ["barcelona", "gaudi", "ramblas", "spain", "spanish"],
+  istanbul: ["istanbul", "turkey", "turkish", "galata", "sultanahmet"],
+  bangkok: ["bangkok", "thailand", "thai", "sukhumvit"],
+  bali: ["bali", "indonesia", "ubud", "seminyak", "canggu"],
+  seoul: ["seoul", "korea", "korean", "gangnam", "myeongdong"],
+  dubai: ["dubai", "uae", "emirates"],
+  sydney: ["sydney", "australia", "aussie", "bondi"],
+  "rio de janeiro": ["rio", "brazil", "ipanema", "copacabana"],
+};
+
+function detectLocationMismatch(
+  tripLocation: string,
+  itinerary: string,
+  candidate: { name: string; district?: string; meta?: string },
+): { trip: string; candidate: string } | null {
+  const tripLc = tripLocation.toLowerCase();
+  const candidateBlob = `${candidate.name} ${candidate.district ?? ""} ${candidate.meta ?? ""}`.toLowerCase();
+
+  // Build the trip's geo token set: explicit city + tokens implied by KNOWN_CITY_TOKENS.
+  const tripTokens = new Set<string>();
+  for (const [city, tokens] of Object.entries(KNOWN_CITY_TOKENS)) {
+    if (tripLc.includes(city) || tokens.some((t) => tripLc.includes(t))) {
+      tokens.forEach((t) => tripTokens.add(t));
+      tripTokens.add(city);
+    }
+  }
+  // Also harvest from the existing itinerary's first 1000 chars (Day 1
+  // header usually names the city explicitly).
+  const itinHead = itinerary.slice(0, 1500).toLowerCase();
+  for (const [city, tokens] of Object.entries(KNOWN_CITY_TOKENS)) {
+    if (itinHead.includes(city) || tokens.some((t) => itinHead.includes(t))) {
+      tokens.forEach((t) => tripTokens.add(t));
+      tripTokens.add(city);
+    }
+  }
+
+  // Find the candidate's strongest city signal: which known city's tokens does it match most?
+  let bestCity: string | null = null;
+  let bestHits = 0;
+  for (const [city, tokens] of Object.entries(KNOWN_CITY_TOKENS)) {
+    const hits = tokens.filter((t) => candidateBlob.includes(t)).length;
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestCity = city;
+    }
+  }
+  if (!bestCity || bestHits === 0) return null; // no strong signal — let the revise run
+
+  // If the candidate's best city overlaps with any trip token, it's fine.
+  const candidateTokens = KNOWN_CITY_TOKENS[bestCity];
+  for (const t of candidateTokens) {
+    if (tripTokens.has(t)) return null;
+  }
+
+  // Strong evidence of cross-location.
+  const tripCity =
+    [...tripTokens].find((t) => Object.keys(KNOWN_CITY_TOKENS).includes(t)) ?? tripLocation;
+  return {
+    trip: capitalize(tripCity),
+    candidate: capitalize(bestCity),
+  };
+}
+
+function capitalize(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // Find the `## Day N` section. Returns the section text plus [start, end)
