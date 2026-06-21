@@ -212,6 +212,256 @@ export function resolveDestinationCode(location: string): string | null {
   return HOTELBEDS_DEST_CACHE[stripped] ?? null;
 }
 
+// ── CheckRate (rate re-verification before booking) ────────────────────────
+//
+// Hotelbeds cert §2.5: CheckRate is REQUIRED on rates marked
+// rateType="RECHECK" before issuing a Booking. BOOKABLE rates skip
+// this step entirely. Group up to 10 rates per call (cert §2.6).
+//
+// Response surfaces the up-to-date price, may include upsell options,
+// and crucially returns rateCommentsId / rateComments that the cert
+// process requires us to display pre-confirmation.
+
+export interface CheckRateInput {
+  rateKeys: string[]; // up to 10
+}
+
+export interface CheckedRate {
+  rateKey: string;
+  net: number;
+  currency: string;
+  boardName: string | null;
+  rateCommentsId: string | null;
+  rateComments: string | null;
+  promotions: Array<{ code: string; name: string }>;
+  cancellationPolicies: Array<{ amount: string; from: string }>;
+  upsellRates: Array<{ rateKey: string; netDiff: number }>;
+}
+
+interface CheckRateApiResponse {
+  hotel?: {
+    rooms?: Array<{
+      rates?: Array<{
+        rateKey: string;
+        net?: string;
+        boardName?: string;
+        rateCommentsId?: string;
+        rateComments?: string;
+        promotions?: Array<{ code: string; name: string }>;
+        cancellationPolicies?: Array<{ amount: string; from: string }>;
+        upsellingRates?: Array<{ rateKey: string; netDiff?: string }>;
+      }>;
+    }>;
+    currency?: string;
+  };
+}
+
+export async function checkRates(input: CheckRateInput): Promise<CheckedRate[]> {
+  if (input.rateKeys.length === 0) return [];
+  if (input.rateKeys.length > 10) {
+    throw new Error("CheckRate accepts max 10 rateKeys per call (Hotelbeds cert §2.6)");
+  }
+  const body = {
+    rooms: input.rateKeys.map((k) => ({ rateKey: k })),
+  };
+  const data = await hbFetch<CheckRateApiResponse>(
+    "hotel",
+    "/hotel-api/1.0/checkrates",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+  const currency = data.hotel?.currency ?? "USD";
+  const rates: CheckedRate[] = [];
+  for (const room of data.hotel?.rooms ?? []) {
+    for (const r of room.rates ?? []) {
+      rates.push({
+        rateKey: r.rateKey,
+        net: parseFloat(r.net ?? "0"),
+        currency,
+        boardName: r.boardName ?? null,
+        rateCommentsId: r.rateCommentsId ?? null,
+        rateComments: r.rateComments ?? null,
+        promotions: r.promotions ?? [],
+        cancellationPolicies: r.cancellationPolicies ?? [],
+        upsellRates: (r.upsellingRates ?? []).map((u) => ({
+          rateKey: u.rateKey,
+          netDiff: parseFloat(u.netDiff ?? "0"),
+        })),
+      });
+    }
+  }
+  return rates;
+}
+
+// ── Booking confirmation ───────────────────────────────────────────────────
+//
+// Cert §3.11: Booking response timeout must be ≥60s. Cert §4.x: voucher
+// generation is mandatory. Cert §6.1: must demonstrate a successful
+// live booking + cancellation.
+//
+// Booking flow: takes a rateKey (verified via CheckRate when needed) +
+// passenger details + holder. Returns Hotelbeds reference + confirmation
+// status for voucher rendering.
+
+export interface BookingPax {
+  type: "AD" | "CH"; // adult or child
+  name: string;
+  surname: string;
+  age?: number; // required for children
+  roomId: number; // 1, 2, 3 for multi-room
+}
+
+export interface BookingInput {
+  rateKey: string;
+  holder: { name: string; surname: string };
+  paxes: BookingPax[];
+  clientReference: string; // our internal trip/booking ID
+  remark?: string;
+  tolerance?: number; // % price tolerance (Hotelbeds default 2.0)
+}
+
+export interface ConfirmedBooking {
+  reference: string; // Hotelbeds booking reference
+  clientReference: string;
+  status: "CONFIRMED" | "PENDING" | "ERROR";
+  hotel: {
+    code: number;
+    name: string;
+    categoryName: string | null;
+    destinationName: string | null;
+    address?: string;
+    phone?: string | null;
+  };
+  rooms: Array<{
+    code: string;
+    name: string;
+    boardName: string;
+    paxes: BookingPax[];
+    rateCommentsId: string | null;
+  }>;
+  checkIn: string;
+  checkOut: string;
+  totalNet: number;
+  currency: string;
+  supplier: { name: string; vatNumber: string };
+}
+
+interface BookingApiResponse {
+  booking?: {
+    reference: string;
+    clientReference: string;
+    status: string;
+    hotel: {
+      code: number;
+      name: string;
+      categoryName?: string;
+      destinationName?: string;
+      address?: string;
+      phone?: string;
+      rooms?: Array<{
+        code: string;
+        name: string;
+        boardName?: string;
+        paxes?: Array<{
+          type: string;
+          name: string;
+          surname: string;
+          age?: number;
+          roomId: number;
+        }>;
+        rateCommentsId?: string;
+      }>;
+    };
+    totalNet: string;
+    currency: string;
+    checkIn: string;
+    checkOut: string;
+    supplier?: { name: string; vatNumber: string };
+  };
+}
+
+export async function createBooking(input: BookingInput): Promise<ConfirmedBooking> {
+  const body = {
+    holder: { name: input.holder.name, surname: input.holder.surname },
+    rooms: groupPaxesByRoom(input.paxes),
+    clientReference: input.clientReference,
+    remark: input.remark ?? "",
+    tolerance: input.tolerance ?? 2.0,
+  };
+  // Use rateKey as path-style identifier on confirm — Hotelbeds nests
+  // it inside `rooms[].rateKey` in the request body.
+  const bodyWithRate = {
+    ...body,
+    rooms: [
+      { rateKey: input.rateKey, paxes: body.rooms.flatMap((r) => r.paxes) },
+    ],
+  };
+  const data = await hbFetch<BookingApiResponse>(
+    "hotel",
+    "/hotel-api/1.0/bookings",
+    { method: "POST", body: JSON.stringify(bodyWithRate) },
+  );
+  const b = data.booking;
+  if (!b) throw new Error("Hotelbeds returned no booking object");
+  return {
+    reference: b.reference,
+    clientReference: b.clientReference,
+    status: (b.status as ConfirmedBooking["status"]) ?? "PENDING",
+    hotel: {
+      code: b.hotel.code,
+      name: b.hotel.name,
+      categoryName: b.hotel.categoryName ?? null,
+      destinationName: b.hotel.destinationName ?? null,
+      address: b.hotel.address,
+      phone: b.hotel.phone ?? null,
+    },
+    rooms: (b.hotel.rooms ?? []).map((r) => ({
+      code: r.code,
+      name: r.name,
+      boardName: r.boardName ?? "",
+      paxes: (r.paxes ?? []).map((p) => ({
+        type: p.type as "AD" | "CH",
+        name: p.name,
+        surname: p.surname,
+        age: p.age,
+        roomId: p.roomId,
+      })),
+      rateCommentsId: r.rateCommentsId ?? null,
+    })),
+    checkIn: b.checkIn,
+    checkOut: b.checkOut,
+    totalNet: parseFloat(b.totalNet),
+    currency: b.currency,
+    supplier: b.supplier ?? {
+      name: process.env.HOTELBEDS_SUPPLIER_NAME ?? "HBX Group",
+      vatNumber: process.env.HOTELBEDS_VAT_NUMBER ?? "",
+    },
+  };
+}
+
+function groupPaxesByRoom(paxes: BookingPax[]): Array<{ paxes: BookingPax[] }> {
+  const byRoom = new Map<number, BookingPax[]>();
+  for (const p of paxes) {
+    const list = byRoom.get(p.roomId) ?? [];
+    list.push(p);
+    byRoom.set(p.roomId, list);
+  }
+  return [...byRoom.values()].map((paxes) => ({ paxes }));
+}
+
+// Cancel a booking by Hotelbeds reference. Cert §6.2: must demonstrate
+// cancellation on the live booking made during certification.
+export async function cancelBooking(reference: string, simulate = false): Promise<{ reference: string; status: string }> {
+  const data = await hbFetch<{ booking?: { reference: string; status: string } }>(
+    "hotel",
+    `/hotel-api/1.0/bookings/${encodeURIComponent(reference)}?cancellationFlag=${simulate ? "SIMULATE" : "CANCELLATION"}`,
+    { method: "DELETE" },
+  );
+  return {
+    reference: data.booking?.reference ?? reference,
+    status: data.booking?.status ?? "UNKNOWN",
+  };
+}
+
 // ── Activities Availability Search ────────────────────────────────────────
 
 export interface ActivitySearchInput {
