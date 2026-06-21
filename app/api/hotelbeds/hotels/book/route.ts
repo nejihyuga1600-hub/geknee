@@ -8,6 +8,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { createBooking, hotelbedsConfigured, type BookingPax } from "@/lib/hotelbeds";
+import { renderVoucher } from "@/lib/hotelbeds-voucher";
+import { sendEmail } from "@/lib/admin/email";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
@@ -91,6 +93,19 @@ export async function POST(req: NextRequest) {
         conversionAt: new Date(),
       },
     });
+
+    // Cert §4.1: voucher must be sent on every confirmed booking.
+    // Fire-and-forget — we don't block the booking response on email
+    // delivery; users can also fetch the voucher via /voucher/[ref].
+    if (booking.status === "CONFIRMED" && session.user.email) {
+      void renderVoucher({
+        booking,
+        guestEmail: session.user.email,
+        agencyReference: body.tripId,
+      })
+        .then((v) => sendEmail({ to: v.to, subject: v.subject, html: v.html }))
+        .catch((e) => console.error("[hotelbeds/book] voucher email failed", e));
+    }
 
     return Response.json({ booking, configured: true });
   } catch (err: unknown) {
