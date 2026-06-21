@@ -84,6 +84,18 @@ export interface HotelSearchInput {
   adults?: number;
   children?: number;
   rooms?: number;
+  // Cert §3.3: when children present, ages are mandatory.
+  childAges?: number[];
+  // Cert §3.6: pass-through to influence pricing for the user's market.
+  // Defaults to HOTELBEDS_SOURCE_MARKET env (e.g. "US", "UK").
+  sourceMarket?: string;
+  // Cert §3.7: optional filters — when omitted, no filtering applied.
+  filters?: {
+    boards?: string[]; // e.g. ["RO", "BB"]
+    minCategory?: number;
+    maxCategory?: number;
+    maxRatesPerRoom?: number;
+  };
 }
 
 export interface HotelOffer {
@@ -94,7 +106,11 @@ export interface HotelOffer {
   minRate: number;
   currency: string;
   rateKey: string; // ephemeral — required for booking
-  cancellationPolicy: string | null;
+  rateType: "BOOKABLE" | "RECHECK"; // cert §2.5 — drives whether CheckRate is needed
+  rateCommentsId: string | null; // cert §3.9 — look up rate-comment text via Content API
+  promotions: Array<{ code: string; name: string }>; // cert §2.7
+  cancellationPolicies: Array<{ amount: string; from: string }>; // cert §3.8
+  cancellationPolicy: string | null; // legacy summary string for older UI
   boardName: string | null; // e.g. "Room only", "Bed and breakfast"
 }
 
@@ -110,7 +126,10 @@ interface HotelsApiResponse {
       rooms?: Array<{
         rates?: Array<{
           rateKey: string;
+          rateType?: string;
           boardName?: string;
+          rateCommentsId?: string;
+          promotions?: Array<{ code: string; name: string }>;
           cancellationPolicies?: Array<{ amount: string; from: string }>;
         }>;
       }>;
@@ -119,17 +138,43 @@ interface HotelsApiResponse {
 }
 
 export async function searchHotels(input: HotelSearchInput): Promise<HotelOffer[]> {
-  const body = {
+  const childCount = input.children ?? (input.childAges?.length ?? 0);
+  const occupancy: {
+    rooms: number;
+    adults: number;
+    children: number;
+    paxes?: Array<{ type: "CH"; age: number }>;
+  } = {
+    rooms: input.rooms ?? 1,
+    adults: input.adults ?? 2,
+    children: childCount,
+  };
+  // Cert §3.3: child ages mandatory when children > 0.
+  if (childCount > 0 && input.childAges?.length) {
+    occupancy.paxes = input.childAges.map((age) => ({ type: "CH" as const, age }));
+  }
+
+  const body: Record<string, unknown> = {
     stay: { checkIn: input.checkIn, checkOut: input.checkOut },
-    occupancies: [
-      {
-        rooms: input.rooms ?? 1,
-        adults: input.adults ?? 2,
-        children: input.children ?? 0,
-      },
-    ],
+    occupancies: [occupancy],
     destination: { code: input.destinationCode },
   };
+
+  // Cert §3.6: sourceMarket affects pricing for the user's market.
+  const sourceMarket = input.sourceMarket ?? process.env.HOTELBEDS_SOURCE_MARKET;
+  if (sourceMarket) body.sourceMarket = sourceMarket;
+
+  // Cert §3.7: filters — boards / category range / max rates per room.
+  if (input.filters) {
+    if (input.filters.boards?.length) {
+      body.boards = { included: true, board: input.filters.boards };
+    }
+    const filter: Record<string, unknown> = {};
+    if (input.filters.minCategory) filter.minCategory = input.filters.minCategory;
+    if (input.filters.maxCategory) filter.maxCategory = input.filters.maxCategory;
+    if (input.filters.maxRatesPerRoom) filter.maxRatesPerRoom = input.filters.maxRatesPerRoom;
+    if (Object.keys(filter).length) body.filter = filter;
+  }
 
   const data = await hbFetch<HotelsApiResponse>("hotel", "/hotel-api/1.0/hotels", {
     method: "POST",
@@ -147,6 +192,10 @@ export async function searchHotels(input: HotelSearchInput): Promise<HotelOffer[
       minRate: parseFloat(h.minRate),
       currency: h.currency,
       rateKey: firstRate?.rateKey ?? "",
+      rateType: (firstRate?.rateType as HotelOffer["rateType"]) ?? "BOOKABLE",
+      rateCommentsId: firstRate?.rateCommentsId ?? null,
+      promotions: firstRate?.promotions ?? [],
+      cancellationPolicies: firstRate?.cancellationPolicies ?? [],
       cancellationPolicy: cancelPolicy ? `Free until ${cancelPolicy.from}` : null,
       boardName: firstRate?.boardName ?? null,
     };

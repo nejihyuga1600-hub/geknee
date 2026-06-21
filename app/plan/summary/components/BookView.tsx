@@ -2163,6 +2163,10 @@ interface HotelbedsHotelLite {
   minRate: number;
   currency: string;
   rateKey: string;
+  rateType: 'BOOKABLE' | 'RECHECK';
+  rateCommentsId: string | null;
+  promotions: Array<{ code: string; name: string }>;
+  cancellationPolicies: Array<{ amount: string; from: string }>;
   cancellationPolicy: string | null;
   boardName: string | null;
 }
@@ -2252,7 +2256,21 @@ function HotelbedsLiveRooms({ location, checkIn, checkOut, adults, rooms }: {
                   {h.categoryName && <span>{h.categoryName}</span>}
                   {h.boardName && <span>· {h.boardName}</span>}
                   {h.cancellationPolicy && <span style={{ color: '#86efac' }}>· {h.cancellationPolicy}</span>}
+                  {h.rateType === 'RECHECK' && (
+                    <span style={{ color: '#fbbf24' }}>· Re-verify on selection</span>
+                  )}
                 </div>
+                {h.promotions.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                    {h.promotions.slice(0, 3).map((p) => (
+                      <span key={p.code} style={{
+                        fontSize: 9, fontWeight: 600, letterSpacing: '0.04em',
+                        textTransform: 'uppercase', padding: '2px 6px',
+                        borderRadius: 4, background: '#34d39922', color: '#34d399',
+                      }}>{p.name}</span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{

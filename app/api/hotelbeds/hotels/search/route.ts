@@ -44,6 +44,11 @@ export async function GET(req: NextRequest) {
   const checkOut = searchParams.get("checkOut");
   const adults = parseInt(searchParams.get("adults") ?? "2", 10);
   const rooms = parseInt(searchParams.get("rooms") ?? "1", 10);
+  // Cert §3.3: child ages — comma-separated list e.g. "5,9"
+  const childAges = (searchParams.get("childAges") ?? "")
+    .split(",").map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n >= 0 && n <= 17);
+  // Cert §3.6: pass-through source market for region-specific pricing.
+  const sourceMarket = searchParams.get("sourceMarket") ?? undefined;
 
   if (!location || !checkIn || !checkOut) {
     return Response.json(
@@ -67,6 +72,8 @@ export async function GET(req: NextRequest) {
       checkOut,
       adults: Math.max(1, Math.min(8, adults)),
       rooms: Math.max(1, Math.min(4, rooms)),
+      childAges: childAges.length ? childAges : undefined,
+      sourceMarket,
     });
     return Response.json({ hotels, destinationCode, configured: true });
   } catch (err: unknown) {
