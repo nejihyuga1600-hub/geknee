@@ -17,6 +17,9 @@ import {
   aviasalesUrl,
   airaloUrl, kiwitaxiUrl, getrentacarUrl, economybookingsUrl,
 } from '@/lib/affiliate';
+import { DuffelBookingModal, type DuffelOfferForBooking } from './DuffelBookingModal';
+
+const DUFFEL_BOOKING_ENABLED = process.env.NEXT_PUBLIC_DUFFEL_BOOKING_ENABLED === 'true';
 
 // Locale → ISO 4217 currency map. Mirrors the SummaryView logic; kept
 // inline rather than shared because BookView is its own dynamic import
@@ -1971,6 +1974,7 @@ function FlightLiveOffers({ origin, destination, departDate, returnDate, tripId 
   const [offers, setOffers] = useState<DuffelOfferLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bookingModalOffer, setBookingModalOffer] = useState<DuffelOfferForBooking | null>(null);
 
   useEffect(() => {
     if (!departDate) return;
@@ -2113,27 +2117,61 @@ function FlightLiveOffers({ origin, destination, departDate, returnDate, tripId 
                   </div>
                 )}
               </div>
-              <a
-                href={aviasalesUrl(origin, destination, departDate || null, returnDate || null, tripId ? `trip-${tripId}` : `live_${o.id.slice(0, 8)}`)}
-                target="_blank"
-                rel="noopener noreferrer sponsored"
-                onClick={() => track('book_intent', { kind: 'flight', provider: 'duffel-live', cabin, carrier: o.carrier, price: o.totalAmount })}
-                style={{
-                  padding: '10px 16px', borderRadius: 999,
-                  background: isCheapest ? '#fbbf24' : 'var(--brand-accent)',
-                  color: isCheapest ? '#0a0a1f' : 'var(--brand-bg)',
-                  textDecoration: 'none',
-                  fontFamily: MONO, fontSize: 12, fontWeight: 700,
-                  letterSpacing: '0.06em', textTransform: 'uppercase',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {o.totalCurrency} {Math.round(parseFloat(o.totalAmount))}
-              </a>
+              {DUFFEL_BOOKING_ENABLED ? (
+                <button
+                  onClick={() => {
+                    track('book_intent', { kind: 'flight', provider: 'duffel-direct', cabin, carrier: o.carrier, price: o.totalAmount });
+                    setBookingModalOffer({
+                      id: o.id,
+                      totalAmount: o.totalAmount,
+                      totalCurrency: o.totalCurrency,
+                      cabin: o.cabin,
+                      carrierName: o.carrierName,
+                      slices: o.slices,
+                    });
+                  }}
+                  style={{
+                    padding: '10px 16px', borderRadius: 999,
+                    background: isCheapest ? '#fbbf24' : 'var(--brand-accent)',
+                    color: isCheapest ? '#0a0a1f' : 'var(--brand-bg)',
+                    border: 'none',
+                    fontFamily: MONO, fontSize: 12, fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                    whiteSpace: 'nowrap', cursor: 'pointer',
+                  }}
+                >
+                  {o.totalCurrency} {Math.round(parseFloat(o.totalAmount))}
+                </button>
+              ) : (
+                <a
+                  href={aviasalesUrl(origin, destination, departDate || null, returnDate || null, tripId ? `trip-${tripId}` : `live_${o.id.slice(0, 8)}`)}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  onClick={() => track('book_intent', { kind: 'flight', provider: 'duffel-live', cabin, carrier: o.carrier, price: o.totalAmount })}
+                  style={{
+                    padding: '10px 16px', borderRadius: 999,
+                    background: isCheapest ? '#fbbf24' : 'var(--brand-accent)',
+                    color: isCheapest ? '#0a0a1f' : 'var(--brand-bg)',
+                    textDecoration: 'none',
+                    fontFamily: MONO, fontSize: 12, fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {o.totalCurrency} {Math.round(parseFloat(o.totalAmount))}
+                </a>
+              )}
             </div>
           );
         })}
       </div>
+      {bookingModalOffer && (
+        <DuffelBookingModal
+          offer={bookingModalOffer}
+          tripId={tripId}
+          onClose={() => setBookingModalOffer(null)}
+        />
+      )}
     </div>
   );
 }
