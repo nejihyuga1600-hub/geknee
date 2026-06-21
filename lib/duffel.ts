@@ -164,3 +164,66 @@ function parseIsoDurationToMinutes(iso: string): number {
   const minutes = parseInt(m[2] ?? "0", 10);
   return hours * 60 + minutes;
 }
+
+// ── Phase 2: Booking flow ─────────────────────────────────────────────────
+
+export type DuffelTitle = "mr" | "ms" | "mrs" | "miss" | "dr";
+export type DuffelGender = "m" | "f";
+export type DuffelPaxType = "adult" | "child" | "infant_without_seat";
+
+export interface DuffelPassenger {
+  id: string; // passenger ID returned by the offer request
+  title: DuffelTitle;
+  given_name: string;
+  family_name: string;
+  born_on: string; // YYYY-MM-DD
+  email: string;
+  phone_number: string; // E.164 format e.g. +14155551234
+  gender: DuffelGender;
+  type: DuffelPaxType;
+}
+
+// Re-fetch an offer to confirm price hasn't changed and surface the
+// passenger IDs Duffel assigned at offer-request time. Required before
+// order creation — offers expire within minutes of the original
+// search, and prices can drift.
+export async function quoteOffer(offerId: string) {
+  if (!duffel) throw new Error("Duffel not configured");
+  const resp = await duffel.offers.get(offerId);
+  // Duffel SDK returns null when expired; we normalize to a throw
+  // so the API route can return a clean 410 to the client.
+  if (!resp.data) throw new Error("Offer expired or not found");
+  return normalizeOffer(resp.data);
+}
+
+// Create an order against an offer + passenger list. Uses Duffel
+// balance for payment (assumes our balance is pre-funded). The
+// payment intent on our side (Stripe) is what the customer pays;
+// the Duffel balance side is how we pay the airline.
+export async function createOrder(input: {
+  offerId: string;
+  passengers: DuffelPassenger[];
+  amount: string; // total_amount of the offer (must match)
+  currency: string;
+}) {
+  if (!duffel) throw new Error("Duffel not configured");
+  if (process.env.DUFFEL_BOOKING_ENABLED !== "true") {
+    throw new Error(
+      "DUFFEL_BOOKING_ENABLED is not true — booking flow is feature-flagged off. " +
+        "Flip the env var in Vercel after Stripe LLC + Duffel balance are funded.",
+    );
+  }
+  const resp = await duffel.orders.create({
+    type: "instant", // 'instant' issues immediately; 'hold' reserves without ticketing
+    selected_offers: [input.offerId],
+    passengers: input.passengers,
+    payments: [
+      {
+        type: "balance",
+        amount: input.amount,
+        currency: input.currency,
+      },
+    ],
+  });
+  return resp.data;
+}
