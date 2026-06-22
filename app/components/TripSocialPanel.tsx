@@ -1393,7 +1393,11 @@ export default function TripSocialPanel({
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              padding: '14px 18px',
+              // Top-anchored UI MUST clear the iPhone Dynamic Island
+              // on Capacitor iOS. The overlay's absolute positioning
+              // breaks out of the parent panel's safe-area padding so we
+              // re-apply it here directly. See feedback_dynamic_island_top_offset.md.
+              padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px',
               borderBottom: '1px solid rgba(167,139,250,0.18)',
             }}>
               <button

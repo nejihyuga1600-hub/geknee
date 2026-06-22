@@ -1,12 +1,53 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Geknee-branded glyphs \u2014 clean line-art replacing the prior generic emojis.
+// Each SVG inherits currentColor so we can tint per-tag via TAG_COLORS.
+// Passport label is "Passport (backup)" \u2014 virtual passports aren't accepted
+// at immigration internationally, but a digital backup is useful for
+// embassy replacement / insurance claims / sharing with travel buddies.
 const TAG_LABELS: Record<string, string> = {
-  passport:  '\uD83D\uDEC2 Passport',
-  booking:   '\uD83C\uDFAB Booking',
-  insurance: '\uD83D\uDEE1\uFE0F Insurance',
-  photo:     '\uD83D\uDCF7 Photo',
-  other:     '\uD83D\uDCC4 Other',
+  passport:  'Passport (backup)',
+  booking:   'Booking',
+  insurance: 'Insurance',
+  photo:     'Photo',
+  other:     'Document',
+};
+
+const TAG_ICONS: Record<string, React.ReactElement> = {
+  passport: (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 2.5h8.5a1 1 0 0 1 1 1V14H4a1 1 0 0 1-1-1V2.5z" />
+      <circle cx="7.75" cy="7" r="2" />
+      <path d="M5.5 11.5h4.5" />
+    </svg>
+  ),
+  booking: (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 6.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1a1.5 1.5 0 0 0 0 3v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1a1.5 1.5 0 0 0 0-3v-1z" />
+      <path d="M9 5.5v1m0 1.25v1m0 1.25v1" strokeDasharray="0.5 1" />
+    </svg>
+  ),
+  insurance: (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M8 1.5l5.5 1.75v4.5c0 3-2.4 5.5-5.5 6.75-3.1-1.25-5.5-3.75-5.5-6.75v-4.5L8 1.5z" />
+      <path d="M5.75 7.5l1.75 1.75 3-3.25" />
+    </svg>
+  ),
+  photo: (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="1.75" y="3.5" width="12.5" height="10" rx="1.5" />
+      <circle cx="6" cy="7" r="1.25" />
+      <path d="M2 12l3-3 3 2.5 2.5-2 3.5 3" />
+    </svg>
+  ),
+  other: (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.5 1.75h6.25L13 5v9.25H3.5z" />
+      <path d="M9.5 1.75V5h3.5" />
+      <path d="M5.5 8.5h5M5.5 11h5" />
+    </svg>
+  ),
 };
 
 const TAG_COLORS: Record<string, string> = {
@@ -136,7 +177,9 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
             padding: '3px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 11,
             background: filterTag === t ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.06)',
             color: filterTag === t ? '#a78bfa' : 'rgba(255,255,255,0.45)', fontWeight: filterTag === t ? 700 : 400,
+            display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
+            {t !== 'all' && TAG_ICONS[t]}
             {t === 'all' ? 'All' : TAG_LABELS[t]}
           </button>
         ))}
@@ -160,7 +203,9 @@ export default function FileVault({ tripId, currentUserId }: { tripId: string; c
               padding: '3px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700,
               background: TAG_COLORS[f.tag] ?? TAG_COLORS.other,
               color: '#e2e8f0', whiteSpace: 'nowrap', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: 5,
             }}>
+              {TAG_ICONS[f.tag] ?? TAG_ICONS.other}
               {TAG_LABELS[f.tag] ?? f.tag}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
