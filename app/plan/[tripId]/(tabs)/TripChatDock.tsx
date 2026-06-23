@@ -319,34 +319,19 @@ export default function TripChatDock({ tripId, destination }: Props) {
           margin: '0 auto 8px',
         }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #a78bfa, #7dd3fc)',
-              color: '#0a0f1e', fontSize: 16, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }} aria-hidden>{String.fromCodePoint(0x1F4AC)}</div>
+          {/* Removed 2026-06-23: 36x36 gradient circle with 💬 emoji
+              avatar pill. Visually redundant — the dock title row already
+              says "Trip chat" and the group's purpose is obvious. The
+              unread badge re-anchors to the title area below. */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
             {!expanded && unreadCount > 0 && (
               <span aria-label={`${unreadCount} unread messages`} style={{
-                position: 'absolute', top: -4, right: -4,
+                position: 'absolute', top: -2, right: 0,
                 minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999,
                 background: '#ef4444', color: '#fff',
                 fontSize: 10, fontWeight: 800, lineHeight: '18px', textAlign: 'center',
-                border: '2px solid #0a0f1e',
               }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
             )}
-            {pendingSuggestions > 0 && (
-              <span aria-label={`${pendingSuggestions} suggestions pending vote`} style={{
-                position: 'absolute', bottom: -4, right: -4,
-                width: 18, height: 18, borderRadius: 999,
-                background: '#fbbf24', color: '#0a0f1e',
-                fontSize: 10, fontWeight: 800,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '2px solid #0a0f1e',
-              }}>{String.fromCodePoint(0x1F5F3)}</span>
-            )}
-          </div>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{
               fontSize: 11, fontWeight: 700,
               color: 'rgba(255,255,255,0.92)',

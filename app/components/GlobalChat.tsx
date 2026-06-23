@@ -350,11 +350,7 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
         pointerEvents: tripChatExpanded ? 'none' : 'auto',
         transition: 'opacity 200ms ease',
       }}>
-        {/* Hidden on trip-detail pages 2026-06-23: the floating mascot
-            was sitting over each day-step Street View image. Users access
-            AI editing through the trip's bottom chat dock now. The chat
-            panel itself stays available — just no floating launcher. */}
-        {!open && ctx.page !== 'trip' && (
+        {!open && (
           <button
             onClick={() => setOpen(true)}
             aria-label="Open GeKnee AI assistant"
