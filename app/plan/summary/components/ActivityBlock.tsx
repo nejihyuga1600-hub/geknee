@@ -360,14 +360,10 @@ export function ActivityBlock({
       },
       cancelable: true,
     });
+    // Always route to the in-app trip map drawer — no Google Maps fallback.
+    // SummaryView listens for this event, opens the drawer, then UnifiedTripMap
+    // focuses the matching pin for (place, dayNumber, positionInDay).
     window.dispatchEvent(ev);
-    if (!ev.defaultPrevented) {
-      const q = city ? `${place}, ${city}` : place;
-      window.open(
-        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
-        '_blank', 'noopener,noreferrer',
-      );
-    }
   };
 
   return (
@@ -400,14 +396,10 @@ export function ActivityBlock({
               },
               cancelable: true,
             });
+            // Always route to the in-app trip map drawer — no Google Maps
+            // fallback. SummaryView listens for this event and opens the
+            // drawer; UnifiedTripMap then focuses the matching pin.
             window.dispatchEvent(ev);
-            if (!ev.defaultPrevented) {
-              const q = city ? `${place}, ${city}` : place;
-              window.open(
-                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
-                '_blank', 'noopener,noreferrer',
-              );
-            }
           };
           // Step number rides as an overlay on the thumb's top-left corner
           // so the prose below picks up the full container width instead of

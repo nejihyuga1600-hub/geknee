@@ -563,6 +563,29 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     window.addEventListener('geknee:pin-added', onPinAdded);
     return () => { cancelled = true; window.removeEventListener('geknee:pin-added', onPinAdded); };
   }, [location]);
+
+  // When a user taps an activity headline in the itinerary, ActivityBlock
+  // dispatches geknee:focus-map-pin. Open the trip-map drawer so the
+  // UnifiedTripMap (which lives inside the drawer + has its own listener
+  // for this same event) can focus the matching pin. We re-dispatch the
+  // event after the drawer opens so UnifiedTripMap — which mounts only
+  // when the drawer is open — catches it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    function onFocusPin(ev: Event) {
+      const detail = (ev as CustomEvent).detail;
+      setMapDrawerOpen(true);
+      // Defer re-dispatch one paint so UnifiedTripMap is mounted +
+      // its window listener is attached.
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('geknee:focus-map-pin', { detail }));
+        }, 80);
+      });
+    }
+    window.addEventListener('geknee:focus-map-pin', onFocusPin);
+    return () => window.removeEventListener('geknee:focus-map-pin', onFocusPin);
+  }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (hydratedKeyRef.current !== bookmarksKey) return;
