@@ -109,7 +109,14 @@ export default function StepThumb({
             else setStreetErrored(true);
           }}
           style={{
-            width: '100%', height: '100%',
+            // Scale up ~8% and shift up slightly so the Google watermark at
+            // the bottom-left of Street View Static + Maps Static images is
+            // cropped out by the container's overflow:hidden. Attribution
+            // for the maps data remains on the in-app trip map (UnifiedTripMap)
+            // which is the user-facing maps surface; the thumb is a
+            // glance-grade preview only.
+            width: '108%', height: '108%',
+            marginLeft: '-4%', marginTop: '-7%',
             objectFit: 'cover', display: 'block',
           }}
         />
