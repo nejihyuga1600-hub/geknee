@@ -51,7 +51,10 @@ export default function InteractiveRouteMap({ stops }: { stops: RouteStop[] }) {
         styles: DARK_MAP_STYLES as google.maps.MapTypeStyle[],
         disableDefaultUI: true,
         zoomControl: true,
-        gestureHandling: 'cooperative',
+        // Single-finger pan — the route map is the focus of the dates
+        // page (no surrounding scroll content). See UnifiedTripMap for
+        // matching choice.
+        gestureHandling: 'greedy',
       });
       mapRef.current = map;
 

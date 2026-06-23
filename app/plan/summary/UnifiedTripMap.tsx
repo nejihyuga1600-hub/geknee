@@ -564,7 +564,12 @@ export default function UnifiedTripMap({
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
-          gestureHandling: 'cooperative',
+          // 'greedy' = single-finger pan. The trip drawer is full-screen
+          // when open so there's no surrounding page to scroll — the
+          // cooperative two-finger lockout was hurting UX more than it
+          // helped. CityMapView + GoogleLiveMap already use 'greedy' for
+          // the same reason.
+          gestureHandling: 'greedy',
           styles: DARK_STYLE,
         });
         mapRef.current = map;
