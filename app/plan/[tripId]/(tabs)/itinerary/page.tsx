@@ -111,34 +111,13 @@ export default function ItineraryTabPage() {
 
       {currentUserId && tripId && (
         <>
-          <button
-            onClick={() => setChatOpen(true)}
-            aria-label="Open group chat"
-            title="Group chat"
-            style={{
-              position: 'fixed',
-              right: 20,
-              bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              border: '1px solid rgba(255,255,255,0.14)',
-              background:
-                'linear-gradient(135deg, var(--brand-accent, #a78bfa), var(--brand-accent-2, #7dd3fc))',
-              color: '#0a0a1f',
-              display: 'grid',
-              placeItems: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
-              zIndex: 60,
-              padding: 0,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
+          {/* Removed 2026-06-23: 52x52 floating purple→sky gradient chat
+              button that sat at bottom-right corner. The TripChatDock at
+              the bottom of the page already provides group-chat access,
+              so this was a redundant second affordance bleeding out from
+              behind the dock. TripSocialPanel stays mounted (closed) so
+              the file-vault overlay path can still mount its children
+              if invoked from elsewhere. */}
           <TripSocialPanel
             open={chatOpen}
             onClose={() => setChatOpen(false)}
