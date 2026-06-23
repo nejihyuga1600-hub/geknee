@@ -298,10 +298,16 @@ function Chip({ icon, label, accent }: { icon?: ReactNode; label: string; accent
       borderRadius: 6, padding: '3px 8px',
       fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
       letterSpacing: '0.03em',
-      whiteSpace: 'nowrap',
+      // Allow wrapping for long labels (e.g. transit chips with hotel
+      // pickup notes "45 min (tour bus from BSÍ Terminal or hotel pickup)")
+      // — keeps them inside the viewport instead of bleeding off-screen.
+      // Icon stays attached to the first line via inline-flex.
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      maxWidth: '100%',
     }}>
       {icon !== undefined && icon !== null && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11 }}>{icon}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, flexShrink: 0 }}>{icon}</span>
       )}
       <span>{label}</span>
     </span>

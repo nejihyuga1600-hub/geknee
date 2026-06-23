@@ -64,26 +64,12 @@ export function EditableLine({
         <MarkdownLine line={line} />
       </div>
 
-      {/* Genie ✦ button — escalates a specific line into the chat so
-          the user can phrase a change without typing the line again.
-          Only affordance for "I want to change this part". */}
-      {hovered && (
-        <button
-          onMouseDown={e => { e.preventDefault(); onAskGenie(line); }}
-          title="Ask GeKnee for alternatives"
-          style={{
-            position: 'absolute', top: '50%', right: 4,
-            transform: 'translateY(-50%)',
-            width: 26, height: 26, borderRadius: '50%', border: 'none',
-            background: 'linear-gradient(135deg, rgba(251,191,36,0.8), rgba(167,139,250,0.8))',
-            color: '#fff', fontSize: 12, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(167,139,250,0.4)',
-          }}
-        >
-          {STAR}
-        </button>
-      )}
+      {/* Removed 2026-06-23: inline ✦ "ask genie" star button.
+          Users now edit itineraries through the geknee chat mascot AI
+          (chat panel → "change Day 3 lunch to ramen"). Inline edit
+          chrome on every line was redundant + visually noisy. The
+          onAskGenie prop stays available in case another surface
+          re-introduces the affordance later. */}
     </div>
   );
 }
