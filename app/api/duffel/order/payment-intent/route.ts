@@ -13,6 +13,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { quoteOffer } from "@/lib/duffel";
+import { getOrCreateStripeCustomer } from "@/lib/stripe/customer";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     offerId?: string;
     tripId?: string;
+    paymentMethodId?: string; // pm_xxx — when provided, charges off_session immediately
   } | null;
   if (!body?.offerId) {
     return Response.json({ error: "offerId required" }, { status: 400 });
@@ -50,30 +52,73 @@ export async function POST(req: NextRequest) {
     const customerAmount = baseAmount * (1 + (Number.isFinite(markupPct) ? markupPct : 0));
     const amountCents = Math.round(customerAmount * 100);
 
+    // Always attach to a Stripe customer — supports both "save card" + "use saved card"
+    // patterns without code-fork in the modal.
+    const customerId = await getOrCreateStripeCustomer(session.user.id);
+
+    const metadata = {
+      kind: "duffel_flight",
+      offerId: body.offerId,
+      tripId: body.tripId ?? "",
+      userId: session.user.id,
+      duffelAmount: offer.totalAmount,
+      duffelCurrency: offer.totalCurrency,
+    };
+    const description = `Flight: ${offer.slices.map((s) => `${s.origin}→${s.destination}`).join(" / ")}`;
+
+    // Saved-card path — charge off_session immediately. Returns either
+    // succeeded (no 3DS needed) or requires_action (front-end handles 3DS).
+    if (body.paymentMethodId) {
+      const pi = await stripe.paymentIntents.create({
+        amount: amountCents,
+        currency: offer.totalCurrency.toLowerCase(),
+        customer: customerId,
+        payment_method: body.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        metadata,
+        description,
+      });
+      return Response.json({
+        paymentIntentId: pi.id,
+        status: pi.status,
+        clientSecret: pi.client_secret,
+        amount: amountCents,
+        currency: offer.totalCurrency,
+        duffelAmount: offer.totalAmount,
+      });
+    }
+
+    // New-card path — create a PI the client confirms via Stripe Elements.
     const pi = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: offer.totalCurrency.toLowerCase(),
+      customer: customerId,
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        kind: "duffel_flight",
-        offerId: body.offerId,
-        tripId: body.tripId ?? "",
-        userId: session.user.id,
-        duffelAmount: offer.totalAmount,
-        duffelCurrency: offer.totalCurrency,
-      },
-      // Customer-friendly description on Stripe dashboard + receipts.
-      description: `Flight: ${offer.slices.map((s) => `${s.origin}→${s.destination}`).join(" / ")}`,
+      setup_future_usage: "off_session", // saves the card for next booking
+      metadata,
+      description,
     });
 
     return Response.json({
       clientSecret: pi.client_secret,
       paymentIntentId: pi.id,
+      status: pi.status,
       amount: amountCents,
       currency: offer.totalCurrency,
       duffelAmount: offer.totalAmount,
     });
   } catch (err: unknown) {
+    // Stripe.errors.StripeCardError when off_session card fails — surface
+    // the decline reason to the user, e.g. "Your card was declined" or
+    // "Your card has insufficient funds".
+    if (err && typeof err === "object" && "type" in err && (err as { type: string }).type === "StripeCardError") {
+      const stripeErr = err as unknown as { message: string; code?: string; decline_code?: string };
+      return Response.json(
+        { error: stripeErr.message, code: stripeErr.code, declineCode: stripeErr.decline_code },
+        { status: 402 },
+      );
+    }
     const msg = err instanceof Error ? err.message : "payment intent failed";
     console.error("[duffel/order/payment-intent]", msg);
     return Response.json({ error: msg }, { status: 502 });

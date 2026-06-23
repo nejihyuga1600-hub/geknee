@@ -71,6 +71,23 @@ export function DuffelBookingModal({
   const [bookingRef, setBookingRef] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Saved cards on the user's Stripe customer. Fetched on modal mount
+  // so the payment step opens instantly with a picker — no waiting on
+  // Stripe Elements to load when the user has a card already.
+  const [savedCards, setSavedCards] = useState<Array<{ id: string; brand: string; last4: string; expMonth: number | null; expYear: number | null }>>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [useNewCard, setUseNewCard] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/payments/payment-methods")
+      .then((r) => r.json())
+      .then((d) => {
+        const cards = d.paymentMethods ?? [];
+        setSavedCards(cards);
+        if (cards.length > 0) setSelectedCardId(cards[0].id);
+      })
+      .catch(() => { /* fall through to new-card */ });
+  }, []);
 
   // Initialize empty passenger forms based on Duffel's passenger IDs.
   useEffect(() => {
@@ -90,7 +107,8 @@ export function DuffelBookingModal({
     );
   }, [offer.passengerIds, passengers.length]);
 
-  // Step 1 → Step 2: validate passengers + create payment intent.
+  // Step 1 → Step 2: validate passengers, then either charge saved card
+  // immediately or hand off to Stripe Elements for new-card entry.
   async function continueToPayment() {
     setError(null);
     for (const p of passengers) {
@@ -100,22 +118,41 @@ export function DuffelBookingModal({
       }
     }
     setCreating(true);
+    track("book_intent", { kind: "flight", step: "payment", offerId: offer.id });
+
+    const usingSavedCard = !useNewCard && selectedCardId !== null;
+
     try {
       const resp = await fetch("/api/duffel/order/payment-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId: offer.id, tripId }),
+        body: JSON.stringify({
+          offerId: offer.id,
+          tripId,
+          ...(usingSavedCard ? { paymentMethodId: selectedCardId } : {}),
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) {
+        // 402 = card declined; surface clearly without dropping back to a new-card form
         setError(data.error ?? "Could not start payment.");
         setCreating(false);
         return;
       }
-      setClientSecret(data.clientSecret);
+
       setPaymentIntentId(data.paymentIntentId);
+
+      // Saved-card path: server already confirmed the PaymentIntent.
+      // If succeeded → continue straight to /create (skip Elements entirely).
+      // If requires_action → need 3DS; surface clientSecret to Stripe Elements.
+      if (usingSavedCard && data.status === "succeeded") {
+        setCreating(false);
+        await onPaymentSucceeded(data.paymentIntentId);
+        return;
+      }
+      // 3DS or new-card flow: hand off clientSecret to Elements.
+      setClientSecret(data.clientSecret);
       setStep("payment");
-      track("book_intent", { kind: "flight", step: "payment", offerId: offer.id });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -123,9 +160,13 @@ export function DuffelBookingModal({
     }
   }
 
-  // Step 2 → Step 3 handler (called by the embedded PaymentForm).
-  async function onPaymentSucceeded() {
-    if (!paymentIntentId) return;
+  // Step 2 → Step 3 handler (called by the embedded PaymentForm OR
+  // immediately after a saved-card off_session charge succeeded).
+  // Accepts an optional override of the just-confirmed paymentIntentId
+  // because state-set may not have committed yet when called inline.
+  async function onPaymentSucceeded(piIdOverride?: string) {
+    const pi = piIdOverride ?? paymentIntentId;
+    if (!pi) return;
     setCreating(true);
     setError(null);
     try {
@@ -134,7 +175,7 @@ export function DuffelBookingModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offerId: offer.id,
-          paymentIntentId,
+          paymentIntentId: pi,
           passengers: passengers.map((p) => ({ ...p, type: "adult" })),
           tripId,
         }),
@@ -196,6 +237,12 @@ export function DuffelBookingModal({
             onContinue={continueToPayment}
             creating={creating}
             error={error}
+            savedCards={savedCards}
+            selectedCardId={selectedCardId}
+            onSelectCard={setSelectedCardId}
+            useNewCard={useNewCard}
+            onToggleNewCard={setUseNewCard}
+            offerPrice={`${offer.totalCurrency} ${Math.round(parseFloat(offer.totalAmount))}`}
           />
         )}
 
@@ -222,12 +269,21 @@ export function DuffelBookingModal({
   );
 }
 
-function PassengerStep({ passengers, onChange, onContinue, creating, error }: {
+function PassengerStep({
+  passengers, onChange, onContinue, creating, error,
+  savedCards, selectedCardId, onSelectCard, useNewCard, onToggleNewCard, offerPrice,
+}: {
   passengers: PassengerForm[];
   onChange: (p: PassengerForm[]) => void;
   onContinue: () => void;
   creating: boolean;
   error: string | null;
+  savedCards: Array<{ id: string; brand: string; last4: string; expMonth: number | null; expYear: number | null }>;
+  selectedCardId: string | null;
+  onSelectCard: (id: string | null) => void;
+  useNewCard: boolean;
+  onToggleNewCard: (v: boolean) => void;
+  offerPrice: string;
 }) {
   function updatePax(i: number, patch: Partial<PassengerForm>) {
     onChange(passengers.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
@@ -264,9 +320,81 @@ function PassengerStep({ passengers, onChange, onContinue, creating, error }: {
           </div>
         </fieldset>
       ))}
+      {/* Payment method picker — shows saved cards from the user's
+          Stripe customer. Empty state offers to enter a new card; users
+          can also opt-in to "use a new card" when they have saved cards. */}
+      <fieldset style={{
+        border: "1px solid var(--brand-border)", borderRadius: 8,
+        padding: 12, marginBottom: 12,
+      }}>
+        <legend style={{ padding: "0 6px", fontSize: 12 }}>Payment</legend>
+        {savedCards.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--brand-ink-dim)" }}>
+            No card saved — you&apos;ll enter one on the next step. It will be saved for future bookings.
+          </div>
+        )}
+        {savedCards.length > 0 && !useNewCard && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {savedCards.map((c) => (
+              <label key={c.id} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 10px", borderRadius: 6,
+                border: `1px solid ${selectedCardId === c.id ? "var(--brand-accent)" : "var(--brand-border)"}`,
+                background: selectedCardId === c.id ? "rgba(167,139,250,0.08)" : "transparent",
+                cursor: "pointer",
+              }}>
+                <input
+                  type="radio"
+                  name="saved-card"
+                  checked={selectedCardId === c.id}
+                  onChange={() => onSelectCard(c.id)}
+                />
+                <span style={{ fontSize: 13, textTransform: "capitalize" }}>{c.brand}</span>
+                <span style={{ fontSize: 13, color: "var(--brand-ink-dim)" }}>•••• {c.last4}</span>
+                {c.expMonth && c.expYear && (
+                  <span style={{ fontSize: 11, color: "var(--brand-ink-dim)", marginLeft: "auto" }}>
+                    {String(c.expMonth).padStart(2, "0")}/{String(c.expYear).slice(2)}
+                  </span>
+                )}
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => onToggleNewCard(true)}
+              style={{
+                background: "none", border: "none", color: "var(--brand-accent)",
+                fontSize: 12, padding: "6px 0", cursor: "pointer", textAlign: "left",
+              }}
+            >
+              + Use a different card
+            </button>
+          </div>
+        )}
+        {savedCards.length > 0 && useNewCard && (
+          <div>
+            <div style={{ fontSize: 12, color: "var(--brand-ink-dim)", marginBottom: 6 }}>
+              You&apos;ll enter the new card on the next step.
+            </div>
+            <button
+              type="button"
+              onClick={() => onToggleNewCard(false)}
+              style={{
+                background: "none", border: "none", color: "var(--brand-accent)",
+                fontSize: 12, padding: 0, cursor: "pointer",
+              }}
+            >
+              ← Use saved card instead
+            </button>
+          </div>
+        )}
+      </fieldset>
       {error && <div style={{ color: "#fca5a5", fontSize: 12, marginBottom: 8 }}>{error}</div>}
       <button onClick={onContinue} disabled={creating} style={ctaStyle}>
-        {creating ? "Preparing payment..." : "Continue to payment →"}
+        {creating
+          ? "Charging your card..."
+          : savedCards.length > 0 && !useNewCard
+            ? `Book for ${offerPrice} →`
+            : "Continue to payment →"}
       </button>
     </div>
   );
