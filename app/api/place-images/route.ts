@@ -55,10 +55,12 @@ export async function GET(req: Request) {
         results?: Array<{
           photos?: Array<{ photo_reference: string; width?: number; height?: number }>;
           types?: string[];
+          business_status?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY';
         }>;
       };
       const top = data.results?.[0];
       const photos = top?.photos ?? [];
+      const businessStatus = top?.business_status ?? null;
       // Type-driven filtering. We have three buckets:
       //   - SELFIE_PRONE: markets, cafes, bars, etc. — Google's user-
       //     uploaded photos are dominated by portraits/selfies. Strict
@@ -105,7 +107,12 @@ export async function GET(req: Request) {
           (p) => `/api/place-photo?ref=${encodeURIComponent(p.photo_reference)}`
         );
         log("ok-google", query, { count: images.length, types });
-        return Response.json({ images, status: "ok-google" as PlaceImagesStatus });
+        return Response.json({ images, status: "ok-google" as PlaceImagesStatus, businessStatus });
+      }
+      // No photos but we still know the status — surface it so the
+      // itinerary card can warn the user even if no thumb renders.
+      if (businessStatus && businessStatus !== 'OPERATIONAL') {
+        return Response.json({ images: [], status: "empty" as PlaceImagesStatus, businessStatus });
       }
       log("google-no-photos", query, { hitCount: data.results?.length ?? 0 });
     } catch (err) {

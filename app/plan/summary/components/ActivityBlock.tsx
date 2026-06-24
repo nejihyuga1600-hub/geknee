@@ -343,6 +343,28 @@ export function ActivityBlock({
   const { coord: svCoord } = useGeocode(place ?? group.headline, city);
   const duration = parseDuration(group.headline);
   const cost = parseCost(group.details, group.headline);
+
+  // Closed-place safety check — Google Places business_status. The AI
+  // occasionally proposes permanently-closed restaurants/shops; surface
+  // a warning chip so users don't show up to a locked door. Uses the
+  // same /api/place-images endpoint StepThumb hits, so fetch cache
+  // dedupes the network call.
+  const [businessStatus, setBusinessStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!place) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ name: place });
+    if (city) params.set('location', city);
+    fetch(`/api/place-images?${params.toString()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { businessStatus?: string | null } | null) => {
+        if (cancelled || !d?.businessStatus) return;
+        setBusinessStatus(d.businessStatus);
+      })
+      .catch(() => { /* silent — chip just won't render */ });
+    return () => { cancelled = true; };
+  }, [place, city]);
+  const isClosed = businessStatus === 'CLOSED_PERMANENTLY' || businessStatus === 'CLOSED_TEMPORARILY';
   const transit = parseTransit(group.details, nextActivityNumber);
   const hasAnyChip = !!(duration || cost || transit);
 
@@ -499,8 +521,23 @@ export function ActivityBlock({
             onCancel={onCancel}
             onAskGenie={onAskGenie}
           />
-          {(hasAnyChip || isMonumentQuest) && (
+          {(hasAnyChip || isMonumentQuest || isClosed) && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              {isClosed && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 10, fontWeight: 700, lineHeight: 1.4,
+                  color: '#fca5a5',
+                  background: 'rgba(239,68,68,0.18)',
+                  border: '1px solid rgba(239,68,68,0.45)',
+                  borderRadius: 6, padding: '3px 9px',
+                  fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+                  letterSpacing: '0.06em', whiteSpace: 'nowrap',
+                  textTransform: 'uppercase',
+                }}>
+                  ⚠ {businessStatus === 'CLOSED_PERMANENTLY' ? 'Permanently closed' : 'Temporarily closed'}
+                </span>
+              )}
               {isMonumentQuest && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
