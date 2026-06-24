@@ -209,7 +209,22 @@ function parseCost(details: { line: string }[], headline: string): string | null
   const text = headline + ' ' + details.map(d => d.line).join(' ');
   // Symbol-led match including ₹ (rupee), ₩ (won), ฿ (baht), zł, kr.
   const sym = text.match(/[$¥€£₹₩฿][\s]?[\d,]+(?:[-–][\d,]+)?/);
-  if (sym) return sym[0].replace(/\s/g, '');
+  if (sym) {
+    const primary = sym[0].replace(/\s/g, '');
+    // After the primary symbol-led amount, look for the trailing
+    // local-currency conversion: "(~2,500–3,100 ISK)" or "(~₹650)".
+    // Pull the rest of the string from where the primary match ends.
+    const tail = text.slice((sym.index ?? 0) + sym[0].length);
+    const conv = tail.match(
+      /^\s*\(\s*~?\s*[$¥€£₹₩฿]?[\s]?([\d,.]+(?:[-–]\s*[$¥€£₹₩฿]?[\s]?[\d,.]+)?)\s*([A-Z]{2,4})?\s*\)/,
+    );
+    if (conv) {
+      const amount = conv[1].replace(/\s/g, '');
+      const ccy = conv[2] ? ` ${conv[2]}` : '';
+      return `${primary} · ${amount}${ccy}`;
+    }
+    return primary;
+  }
   // Trailing-currency phrasing: "30 USD", "1,500 yen", "650 INR"
   const trailing = text.match(/(\d{1,4}(?:,\d{3})*(?:[-–]\d{1,4}(?:,\d{3})*)?)\s*(USD|EUR|GBP|JPY|YEN|INR|KRW|THB|RMB|CNY|RUB|MXN|CAD|AUD)\b/i);
   if (trailing) return `${trailing[1]} ${trailing[2].toUpperCase()}`;
@@ -281,8 +296,13 @@ function stripCostFromLine(line: string): string {
     )
     // Bare amount + qualifier: "$30 per person", "₹650 each"
     .replace(/\s*~?\s*[$¥€£₹₩฿][\s]?[\d,]+(?:\.\d+)?(?:[-–]\s*[$¥€£₹₩฿]?[\s]?[\d,]+(?:\.\d+)?)?\s*(?:per\s+person|pp|p\.p\.|each)\.?/gi, '')
-    // Trailing parens conversions: " (~£6.30)", " (~$7.80 USD)"
+    // Trailing parens conversions: " (~£6.30)", " (~$7.80 USD)", " (~2,500-3,100 ISK)"
     .replace(/\s*\(\s*~?\s*[$¥€£₹₩฿]?[\s]?[\d,.]+(?:[-–]\s*[$¥€£₹₩฿]?[\s]?[\d,.]+)?\s*[A-Z]{0,4}\s*\)/g, '')
+    // Bare symbol-led amounts without a qualifier: "~$18-22", "$30",
+    // "₹650-900" — once the chip exists, repeating the dollars inline is
+    // visual clutter. Strip only when preceded by whitespace or sentence
+    // start so we don't eat "C$3" inside identifiers.
+    .replace(/(^|\s)~?\s*[$¥€£₹₩฿][\s]?[\d,.]+(?:[-–]\s*[$¥€£₹₩฿]?[\s]?[\d,.]+)?(?=[\s.,;)]|$)/g, '$1')
     .replace(/\s+([.,;:!?])/g, '$1')
     .trim();
 }
