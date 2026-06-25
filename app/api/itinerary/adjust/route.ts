@@ -12,6 +12,7 @@ import { isAgentEnabledFor } from "@/lib/agent/feature-flag";
 import { runAgent } from "@/lib/agent/loop";
 import { getAgentTools } from "@/lib/agent/tools";
 import { captureError } from "@/lib/sentry";
+import { findClosedVenues, stripClosedMentions } from "@/lib/places-validate";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -129,12 +130,28 @@ markdown text. No commentary, no fences, just the itinerary content.`;
       return Response.json({ error: "Empty response from model" }, { status: 502 });
     }
 
+    // Slot-in edits should not introduce closed venues. If the
+    // newly-injected line happens to name a CLOSED_* venue, strip
+    // those lines before persisting. Adjust is a single surgical
+    // edit so we don't re-prompt — we just remove the bad line and
+    // let the user retry with a different booking.
+    let finalText = cleaned;
+    try {
+      const closed = await findClosedVenues(cleaned, trip.location ?? undefined);
+      if (closed.length > 0) {
+        console.log(`[itinerary/adjust] closed venues detected: ${closed.join(", ")} — stripping`);
+        finalText = stripClosedMentions(cleaned, closed);
+      }
+    } catch (err) {
+      captureError(err, { route: "/api/itinerary/adjust", phase: "closed-validate", userId, tripId: body.tripId });
+    }
+
     await prisma.tripDraft.update({
       where: { id: body.tripId },
-      data: { itinerary: cleaned, itineraryUpdatedAt: new Date() },
+      data: { itinerary: finalText, itineraryUpdatedAt: new Date() },
     });
 
-    return Response.json({ itinerary: cleaned });
+    return Response.json({ itinerary: finalText });
   } catch (err) {
     console.error("[itinerary/adjust] error:", err);
     captureError(err, { route: "/api/itinerary/adjust", userId, tripId: body.tripId });

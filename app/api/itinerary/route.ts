@@ -10,6 +10,7 @@ import { findPlacesTool } from "@/lib/agent/tools/find_places";
 import { weatherForecastTool } from "@/lib/agent/tools/weather_forecast";
 import { captureError } from "@/lib/sentry";
 import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
+import { findClosedVenues, stripClosedMentions } from "@/lib/places-validate";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -213,6 +214,42 @@ FORMATTING RULES:
 
 3. NO TIME-OF-DAY SUBHEADINGS: Do NOT split a day into "Morning / Afternoon / Evening" subsections (no \`### Morning\`, no \`**Morning**\`, no bare "Morning:" lines). The clock time on each activity already conveys when it happens. List all activities for a day as one chronological flow under the day's \`## Day N: Title\` heading.`;
 
+// Post-generation closed-place filter. After the AI finishes streaming,
+// pull every bolded place name, ask Google Places for business_status,
+// and if any came back CLOSED_* re-prompt the model once with explicit
+// replacement instructions. If the retry also has closed venues, strip
+// those lines as a safety net. The user already saw the streamed v1
+// live; the DB save (and any subsequent page load) gets the cleaned
+// text, and the ⚠ Permanently closed chip handles the first-render gap.
+async function finalizeItinerary(
+  accumulated: string,
+  city: string,
+  retryFn: (closedNames: string[]) => Promise<string>,
+): Promise<string> {
+  if (!accumulated.trim()) return accumulated;
+  try {
+    const closed = await findClosedVenues(accumulated, city);
+    if (!closed.length) return accumulated;
+    console.log(`[itinerary] closed venues detected: ${closed.join(", ")} — re-prompting`);
+    try {
+      const retryText = await retryFn(closed);
+      if (!retryText || retryText.trim().length < 100) {
+        return stripClosedMentions(accumulated, closed);
+      }
+      const stillClosed = await findClosedVenues(retryText, city);
+      return stillClosed.length === 0
+        ? retryText
+        : stripClosedMentions(retryText, stillClosed);
+    } catch (err) {
+      captureError(err, { route: "/api/itinerary", phase: "closed-retry", closedCount: closed.length });
+      return stripClosedMentions(accumulated, closed);
+    }
+  } catch (err) {
+    captureError(err, { route: "/api/itinerary", phase: "closed-validate" });
+    return accumulated;
+  }
+}
+
 export async function POST(req: Request) {
   // ── Auth + generation limit ───────────────────────────────────────────────
   const session = await auth();
@@ -341,6 +378,23 @@ export async function POST(req: Request) {
         // survives client disconnects. Only saves if we got a non-empty
         // result and the request carries a tripId the user owns.
         if (body.tripId && userId && accumulated.trim().length > 0) {
+          const cleaned = await finalizeItinerary(
+            accumulated,
+            body.location,
+            async (closedNames) => {
+              const retryPrompt = `${buildPrompt(body)}\n\nIMPORTANT: A previous draft suggested these venues that are currently permanently or temporarily closed: ${closedNames.map((n) => `"${n}"`).join(", ")}. Generate a fresh itinerary that does NOT mention any of these places. Use different, currently-operating alternatives that match the same role (cuisine, neighborhood, activity type).`;
+              const retry = await client.messages.create({
+                model: "claude-sonnet-4-6",
+                max_tokens: 8192,
+                system: SYSTEM,
+                messages: [{ role: "user", content: retryPrompt }],
+              });
+              return retry.content
+                .filter((b) => b.type === "text")
+                .map((b) => (b as { type: "text"; text: string }).text)
+                .join("");
+            },
+          );
           try {
             const trip = await prisma.tripDraft.findUnique({
               where: { id: body.tripId },
@@ -350,11 +404,11 @@ export async function POST(req: Request) {
               await prisma.tripDraft.update({
                 where: { id: body.tripId },
                 data: {
-                  itinerary: accumulated,
+                  itinerary: cleaned,
                   itineraryUpdatedAt: new Date(),
                 },
               });
-              console.log(`[itinerary] saved ${accumulated.length} chars for trip ${body.tripId}`);
+              console.log(`[itinerary] saved ${cleaned.length} chars for trip ${body.tripId}`);
             } else {
               console.warn(`[itinerary] tripId ${body.tripId} ownership mismatch — not saving`);
             }
@@ -535,6 +589,23 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
       } finally {
         clearInterval(heartbeat);
         if (body.tripId && accumulated.trim().length > 0) {
+          const cleaned = await finalizeItinerary(
+            accumulated,
+            body.location,
+            async (closedNames) => {
+              const retryPrompt = `${buildPrompt(body)}\n\nIMPORTANT: A previous draft suggested these venues that are currently permanently or temporarily closed: ${closedNames.map((n) => `"${n}"`).join(", ")}. Generate a fresh itinerary that does NOT mention any of these places. Use different, currently-operating alternatives that match the same role (cuisine, neighborhood, activity type).`;
+              const retry = await client.messages.create({
+                model: "claude-sonnet-4-6",
+                max_tokens: 8192,
+                system: SYSTEM,
+                messages: [{ role: "user", content: retryPrompt }],
+              });
+              return retry.content
+                .filter((b) => b.type === "text")
+                .map((b) => (b as { type: "text"; text: string }).text)
+                .join("");
+            },
+          );
           try {
             const trip = await prisma.tripDraft.findUnique({
               where: { id: body.tripId },
@@ -543,7 +614,7 @@ async function runViaAgent(body: TripParams, userId: string): Promise<Response> 
             if (trip && trip.userId === userId) {
               await prisma.tripDraft.update({
                 where: { id: body.tripId },
-                data: { itinerary: accumulated, itineraryUpdatedAt: new Date() },
+                data: { itinerary: cleaned, itineraryUpdatedAt: new Date() },
               });
             }
           } catch (e) {

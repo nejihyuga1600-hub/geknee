@@ -5,6 +5,7 @@ import { runAgent } from "@/lib/agent/loop";
 import { getAgentTools } from "@/lib/agent/tools";
 import { captureError } from "@/lib/sentry";
 import { IDENTITY_VOICE_PRIMER } from "@/lib/voice/identity";
+import { findClosedVenues } from "@/lib/places-validate";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -78,6 +79,7 @@ ${IDENTITY_VOICE_PRIMER}`;
       // the client's reader wakes up before the first real byte.
       try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
       let firstDeltaSeen = false;
+      let accumulated = "";
       const heartbeat = setInterval(() => {
         if (firstDeltaSeen) return;
         try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
@@ -94,6 +96,7 @@ ${IDENTITY_VOICE_PRIMER}`;
             // text deltas, not data: framed events.
             if (e.type === "text") {
               firstDeltaSeen = true;
+              accumulated += e.delta;
               try { controller.enqueue(encoder.encode(e.delta)); } catch {}
             }
           },
@@ -103,12 +106,34 @@ ${IDENTITY_VOICE_PRIMER}`;
         try { controller.enqueue(encoder.encode("\n\n[Error regenerating section. Please try again.]")); } catch {}
       } finally {
         clearInterval(heartbeat);
+        await appendClosedWarning(accumulated, tripInfo.location, controller, encoder);
         try { controller.close(); } catch {}
       }
     },
   });
 
   return new Response(readable, { headers: STREAM_HEADERS });
+}
+
+async function appendClosedWarning(
+  accumulated: string,
+  city: string,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+): Promise<void> {
+  if (!accumulated.trim()) return;
+  try {
+    const closed = await findClosedVenues(accumulated, city);
+    if (!closed.length) return;
+    const list = closed.map((n) => `"${n}"`).join(", ");
+    try {
+      controller.enqueue(
+        encoder.encode(`\n\n> ⚠ Heads up: ${list} ${closed.length === 1 ? "appears" : "appear"} to be permanently or temporarily closed. Tap to replan again for a fresh suggestion.\n`),
+      );
+    } catch { /* client gone */ }
+  } catch (err) {
+    captureError(err, { route: "/api/itinerary/replan", phase: "closed-validate" });
+  }
 }
 
 async function runLegacy(body: ReplanBody): Promise<Response> {
@@ -138,6 +163,7 @@ Rewrite ONLY the section above. Keep the same markdown heading (## ...) but repl
     async start(controller) {
       try { controller.enqueue(encoder.encode(" ".repeat(8192) + "\n")); } catch {}
       let firstDeltaSeen = false;
+      let accumulated = "";
       const heartbeat = setInterval(() => {
         if (firstDeltaSeen) return;
         try { controller.enqueue(encoder.encode(" ".repeat(64) + "\n")); } catch {}
@@ -151,6 +177,7 @@ Rewrite ONLY the section above. Keep the same markdown heading (## ...) but repl
         for await (const chunk of stream) {
           if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
             firstDeltaSeen = true;
+            accumulated += chunk.delta.text;
             try { controller.enqueue(encoder.encode(chunk.delta.text)); } catch {}
           }
         }
@@ -160,6 +187,7 @@ Rewrite ONLY the section above. Keep the same markdown heading (## ...) but repl
         try { controller.enqueue(encoder.encode("\n\n[Error regenerating section. Please try again.]")); } catch {}
       } finally {
         clearInterval(heartbeat);
+        await appendClosedWarning(accumulated, tripInfo.location, controller, encoder);
         try { controller.close(); } catch {}
       }
     },
