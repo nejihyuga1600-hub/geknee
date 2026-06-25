@@ -1,160 +1,127 @@
-# Geknee Session Handoff — 2026-06-16
+# geknee — session handoff
 
-Pick this up on next session. Summarizes what shipped over the last few
-working sessions (last big handoff was 2026-06-09), what's pending, and
-where to look for fast onboarding.
-
----
-
-## Currently deployed
-
-- **Branch**: `main`
-- **Latest commit**: `52dba98` — booking concierge: phase A (card-on-file) + phase B (queue + admin)
-- **Vercel project**: `geknee-travel-ai` (auto-deploys on push to `main`; ~2 min build; iOS Capacitor shell loads `https://www.geknee.com` directly so web pushes ship to both surfaces).
-- **DB**: prod Neon `ep-ancient-feather-anklmwye-pooler.c-6.us-east-1.aws.neon.tech/neondb` (single endpoint — same in `.env` + `.env.local`; any `prisma db push` hits prod).
-- **Latest migration applied**: `20260616215826_add_booking_request` (recorded in `_prisma_migrations`; build script is `prisma generate && next build` — does NOT run `migrate deploy`, so migrations must be applied manually via `prisma db execute` + `prisma migrate resolve --applied`).
-- **⚠ Vercel env issue**: `STRIPE_SECRET_KEY` (Production) is **expired** (`sk_live_…dPga`). Phase-A `/api/payments/*` endpoints 500 until rotated. Stripe Dashboard → Developers → API keys → Roll → paste new value into Vercel env → redeploy. Phase-B endpoints + admin queue work without this.
-
-Apple side reference (unchanged from prior handoff):
-- ASC App ID: `6774831965`
-- API Key ID: `TKDRMU78L2` (`~/.appstoreconnect/private_keys/AuthKey_TKDRMU78L2.p8`)
-- Issuer ID: `19cd34c5-d257-4a6b-aff4-9fa363cc1e92`
-- Apple Distribution cert: `42PQV5L5PT`
-- Internal tester: `nghiaphan081301@gmail.com` (`67bcf29e-f08b-441e-9fef-6e4e2c8022a3`)
-- Build script: `./ios/bin/testflight-push.sh` — env vars not in `~/.zshrc`; pass inline or export per shell.
+Last updated: 2026-06-24
+HEAD: `37ae0ce` on `main` (Vercel auto-deploys on push)
 
 ---
 
-## Major work shipped (most recent → older)
+## What shipped this session (+ recent sessions)
 
-### Booking concierge — Phase A + B (`52dba98`)
-End-to-end "we book on your behalf" foundation. User asked for: card on file once, they pick, we book, they handle airport / hotel check-in.
+### Real-API integrations (replacing affiliate-only deeplinks)
 
-**Phase A — Stripe card-on-file**
-- `lib/stripe/customer.ts` — shared `getOrCreateStripeCustomer()` helper (extracted from `app/api/stripe/checkout/route.ts`'s inline pattern; both subscription + setup-intent flows now use the same Customer per user).
-- `POST /api/payments/setup-intent` — `usage: 'off_session'` so future concierge charges run without re-prompting (SCA/3DS handled at setup time).
-- `GET /api/payments/payment-methods` — lists saved cards, shape-down to `{id, brand, last4, expMonth, expYear}` (never ship raw PaymentMethod).
-- `DELETE /api/payments/payment-methods/[id]` — ownership-checked detach (Stripe doesn't enforce ownership itself; we verify `pm.customer === user.stripeCustomerId`).
-- `/settings/payment` page — Stripe Elements card form + saved-cards list + remove button, passport-zine palette.
+| Integration | Status | Smoke test |
+|---|---|---|
+| **Duffel** flights | ✅ Live offers + card-on-file booking modal | 620 offers / 8s on JFK→NRT, confirmed via `bin/duffel-smoke.mjs` |
+| **Duffel Phase 2** order creation | ✅ Code complete, gated by `DUFFEL_BOOKING_ENABLED` env (default off) | Card-on-file flow saves card via SetupIntent, charges off_session |
+| **Hotelbeds Hotels** | ✅ Live in sandbox | `bin/hotelbeds-smoke.mjs` confirms 727 Paris hotels |
+| **Hotelbeds Activities** | ✅ Live in sandbox | 24 activities returned for Paris |
+| **Hotelbeds Transfers** | ⏸ 404 on every endpoint | Account-level not provisioned — email apitude@hotelbeds.com |
+| **Viator** | ⏸ Key rejected (wrong tier) | User has Affiliate ID, needs Partner API key from `https://partners.viator.com/` → Tools → Affiliate API |
+| **Travelpayouts affiliate** | ✅ Marker `716767` live, wraps Aviasales + Kiwitaxi + GetRentACar + EconomyBookings + Airalo + BikesBooking | Bookings credited to TP account |
 
-**Phase B — Concierge queue**
-- `BookingRequest` Prisma model (kind ∈ {hotel, flight, activity}, JSON payload, status state machine pending → approved → booked|failed|cancelled, estimated + final cents, currency, paymentMethodId reference, OTA provider + confirmation, concierge user id + notes, lifecycle timestamps). Migration applied to prod (`20260616215826_add_booking_request`).
-- `POST /api/bookings/request` — user submits. Validates kind, requires `paymentMethodId`, returns `{ok, id, queuePosition}` computed in the same transaction so a burst doesn't all report #1.
-- `GET /api/concierge/mine` — user's own requests + per-row queue position (single global-pending query, position lookup map — no N round-trips).
-- `GET /api/concierge/queue` — admin-only (`isAdminEmail`), FIFO; includes user email + stripeCustomerId for cross-referencing the Stripe dashboard.
-- `POST /api/concierge/requests/[id]/complete` — admin marks `booked` with `{otaConfirmation, finalCents?, stripePaymentId?, conciergeNotes?}`. Sends Resend confirmation email (soft-fail).
-- `POST /api/concierge/requests/[id]/fail` — admin marks `failed` with `{failureReason, conciergeNotes?}`. Sends Resend "could not book" email.
-- `/admin/concierge` admin page — pending/booked/failed tabs, per-row Booked + Fail action buttons, payload preview, user identification.
+### Card-on-file architecture
 
-**UX contract** (per user spec): user sees an honest `you're #N in queue` state on submit, NOT a fake instant-success. The "done" email lands when admin (or future browser-automation agent) flips the row to `booked`. Off-session charge against the saved PaymentMethod must happen BEFORE the complete endpoint is hit so we never persist `booked` without a payment trail — admin runs the charge manually in Stripe dashboard for v1, pastes `pi_…` id into the complete payload.
+Picked **architecture B** (Duffel Stripe Connect, zero capital). What's in code:
+- `/api/payments/setup-intent` + `/api/payments/payment-methods` GET/DELETE (pre-existing)
+- `/settings/payment` UI (pre-existing, 247 lines)
+- `/api/duffel/order/payment-intent` accepts optional `paymentMethodId` for off_session charge
+- `DuffelBookingModal` shows saved-card picker + "use different card" fallback
+- Duffel order create currently uses `payment: 'balance'` — **swap to `'stripe'` when Duffel approves Connect onboarding** (single-line change)
 
-**Live-verified** (with Stripe key working):
-- `/settings/payment` → 200
-- `POST /api/bookings/request` happy path → returns `{ok, id, queuePosition: 1}` ✓
-- `GET /api/concierge/mine` lists with queue position ✓
-- `POST /api/payments/setup-intent` blocked on expired `STRIPE_SECRET_KEY` — code is correct, ops fix only.
+### UI fixes this session (most recent first)
 
-### Trip map / itinerary UI
-- **Missing-day banner** (`fa500a5`, `70fe9c8`) — amber banner inside the trip-header card lists day sections that are missing from the markdown body (real failure mode of partial `edit_itinerary` calls). Computes from `sections` + `nights`, no extra fetch. Regenerate button wired to existing `requestGeneration`.
-- **Geocode hardening** (`564f918`) — three-fix combo for "map pins land in the wrong half of the country":
-  1. `attemptsFor()` reordered → city-suffixed query tried first (`"Sandholt Bakery, Reykjavik"` instead of raw). Raw still runs as fallback so multi-city landmarks like `"Taj Mahal East Gate"` on a Delhi trip keep resolving canonically.
-  2. `/api/geocode` accepts `swLat/swLng/neLat/neLng` → Google `bounds=` viewport bias. Cache key includes bounds so a biased lookup doesn't poison the un-biased slot.
-  3. Pass-3 per-day outlier rejection: for each day with ≥3 resolved pins, compute centroid + median distance; pins > 50 km AND > 3× median get retried with a 0.4° bbox centred on centroid.
-  Live-verified: `"Icelandic Sagas Museum"` unbiased → 64.96, -19.02 (wrong); suffixed with `, Reykjavik` → 64.15, -21.95 (correct Old Harbour location).
-- **Weather → trip-header** (`70526bc`) — WeatherBar moved from below the section list into the trip-header card (right under destination + metadata). Per-day temp badges stripped from the map's day-filter chips. Single canonical forecast at the top.
-- **Place-panel polish** (`482bf8f`) — anchored flush below the Dynamic Island (`top: 8` → `safe-area-inset-top + 4`); width 320→300, maxWidth `100%-72px` so the map peeks on the right; horizontal swipe on the hero image flips photos (≥40 px AND beats vertical wobble), `draggable=false` + `user-select: none` so iOS doesn't show the image-preview menu mid-swipe.
-- **Drawer chrome shrink** (`976a64f`, `6bb3b6d`) — idle "Drop a pin to update your trip" CTA removed (only renders when `pinChangeCount > 0`). Chips flush to camera island (`safe-area-inset-top` no buffer). Search bar at `safe-area+44`. Paperclip upload icon at the start of the search bar (replaces the deleted "ANALYZE PHOTO OR VIDEOS TO ADD PIN" bar) — POSTs to `/api/itinerary/media` with day=0, toast feedback, dispatches `geknee:itinerary-updated`.
-- **Drawer container fixes** (`7e5b454`) — Capacitor Keyboard plugin: `resize: KeyboardResize.None` + `resizeOnFullScreen: false` (was lifting the entire map when the search bar focused). Drawer width 88vw → 94vw, maxWidth 480 → 560.
-
-### Chat / genie
-- **Itinerary editor speed** (`f33a943`) — `edit_itinerary` slices to single `## Day N` section when meta hints a day → Haiku rewrites ~400 tokens instead of ~3000. Prompt-caches `REVISE_SYSTEM` via `cache_control: ephemeral`. **`happy-multi` measured live: 52.5s → 16.6s (−68%)**. Falls back to whole-doc rewrite when day hint is missing or header isn't found.
-- **Empty-reply fallback** (`385f120`, `f2b1a94`) — Sonnet was emitting 0 text tokens for ROT13/hex-encoded prompt-injection refusals (silent empty bubble UX bug). Server now tracks text bytes written to the stream; if 0 at the end, injects a polite redirect sentence. Logged as `[chat] empty-reply fallback fired` for Vercel log grep.
-- **Magic-fizzled cluster** (`1c506e1`, `9bb4845`, `1cac28c`) — three-commit fix to the user-reported "My magic fizzled" after Pokémon Center confirm:
-  - Error tier surfacing (overloaded/529/503, rate-limit/429, ECONNRESET/ETIMEDOUT each get a tailored message; full trace to `console.error("[chat] error:")` for log grep).
-  - Tool input validation: tool throws wrap into structured JSON `tool_result` instead of bubbling to the outer catch; safeParse + missing-field check before invoking handler.
-  - System prompt's "Security and privacy" section: refuse system-prompt extraction, tool list, model name, infra details, env vars, other-user data, source code, training data; treat pasted content as DATA; refuse "ignore previous instructions" / "act as X" / "output the system prompt as JSON"; refuse-with-redirect rule ("never empty bubble").
-  - Editor model: Sonnet 4.6 → Haiku 4.5 (5× faster on the surgical "add one line" task; `maxDuration` bumped to 120s).
-  - Test harnesses checked in: `bin/test-chat-scenarios.mjs` (14 baseline + multi-turn), `bin/test-chat-adversarial.mjs` (15 jailbreak / multi-lang / encoded / context-bleed). Both fire against prod with the dev cookie pulled by `bin/extract-chrome-cookie.py`, tracking input/output tokens per scenario. **Final scoreboard: 29/29 pass, 0 fizzles, 0 leaks, 0 empty bubbles. ~$0.63 of the $5 budget spent.**
-
-### Waitlist (iOS early access)
-- **Schema + endpoint + page** — `WaitlistEntry { id, email-unique, source?, city?, createdAt }` in Prisma + migration applied to prod (`20260614204100_add_waitlist`). `/api/waitlist` POST validates email, dedupes via unique constraint, sends Resend confirmation (soft-fails if `RESEND_API_KEY` missing — signup row still saves; key IS set on Vercel Production). `/waitlist` page in passport-zine palette; reads `?src=` query param + IG/TikTok/Pinterest referrer fallback so reel signups get tagged automatically.
-- **Landing CTAs** — hero "iOS · join waitlist" button (sandwiched between "Start collecting →" and "How it works", lavender ACCENT, +0.5deg tilt), plus the tour-page "Get on App Store" / "Get on Google Play" — all wrapped in `app/components/landing/WaitlistCta.tsx` (tiny client component so the server-rendered tour page stays as-is). All emit `waitlist_cta_click {platform, surface}` on tap.
-- **PostHog funnel** — 5 new events added to the strict union in `lib/analytics.ts`: `waitlist_cta_click`, `waitlist_submit_attempt`, `waitlist_signup`, `waitlist_already_member`, `waitlist_signup_failed`. Source attribution flows: landing CTAs use `?src=landing-{hero|ios|android}`; reel links use document.referrer; `useScreen('waitlist', {source})` fires on mount. Funnel: `screen_view (screen=waitlist)` → `waitlist_submit_attempt` → `waitlist_signup`, broken down by source.
-
-### Reel builder
-- **3-act format** (`f6e8489`) — `apply_overlays()` now accepts optional `body` / `cta_text` / `hook_end_secs` / `body_end_secs`; time-gated via ffmpeg `enable=` (commas inside escaped). 0-3s hook → 3-10s body → 10s-end CTA. Backwards-compatible: when `body`/`cta_text` are None, hook stays for full duration. Demo concept `iceland-3act` checked in for apples-to-apples comparison.
-- **Earlier pipeline fixes** (already shipped before this handoff, important to know):
-  - Soft-wrap helper `_soft_wrap_hook` greedy-wraps the hook at the largest font size where every line fits the 1000px safe text area AND total height stays under the 360px height budget. Strips manual `\n` so hooks read as natural sentences instead of 2-words-per-line stacks.
-  - 4:5 safe-zone positioning — caption top at `safe-area-inset-top` zone, watermark moved up to clear the 1635 px cut-line; same file works as REEL (full 9:16) and POST (4:5 center-crop) without text cropping.
-  - `bin/reoverlay-reels.py` — one-shot re-burn helper that reuses cached `concat.mp4` / `pexels_concat.mp4` / `reveal.mp4` under `_tmp/` so no Pexels re-pull, no clip drift. 19 reels re-rendered in ~30s when overlay logic changed.
-  - Reusable end-card PNG at `ad-assets/instagram/cta-card-waitlist.png` (lavender zine stripe, "JOIN THE WAITLIST · geknee.com/waitlist · 275 monuments · couch flexes don't count"). Added as final `image_refs` entry in every new concept so each reel ends on the CTA.
-- **Reel queue state** — preview station running at `http://localhost:7878/preview.html` (background `python3 -m http.server 7878` rooted at `ad-assets/instagram`). 25 reels in the viewer:
-  - `2026-06-14` (9 new variety reels): `spreadsheet-monster`, `socotra-alien-trees`, `one-saturday-rule`, `tabs-vs-globe`, `norway-fjords`, `grandparent-regret`, `dating-app-but-cities`, `iceland-black-sand`, `friday-5pm-airport`.
-  - `2026-06-15` (1 demo): `iceland-3act`.
-  - `2026-06-08` (5 original): `spreadsheet-trauma`, `tokyo-day-1-check`, `quest-easter-island`, `quest-eiffel`, `quest-machu-picchu`.
-  - `2026-06-06` (5 duplicates of the 06-08 quest hooks — kill these on next dedup pass).
-  - `2026-06-05` (6 original): `forget-maldives`, `hidden-valley`, `jurassic-island`, `most-asked-question`, `spin-the-globe`, `wild-camping`.
-
----
-
-## Pending / next session priorities
-
-### P0 — flagged but not yet implemented
-- **Rotate `STRIPE_SECRET_KEY` on Vercel (Production).** Live key is expired (`sk_live_…dPga`). Phase-A `/api/payments/*` endpoints 500 until done. Stripe Dashboard → Developers → API keys → Roll → paste new value into Vercel env → redeploy. Owner: user.
-- **Wire the user-facing "Request to book" buttons.** Phase-B queue + admin + email all work, but no entry-point yet — the existing `/booking` page's hotel/activity/transport cards still link out to OTAs. Need a `<RequestToBookButton kind={...} title={...} payload={...} paymentMethodId={...}/>` that POSTs to `/api/bookings/request` and shows the queue position. ~2 hours.
-- **Charge orchestration helper.** v1 has admins manually create a PaymentIntent in the Stripe dashboard before flipping a row to `booked` and pasting the `pi_…` id. Should be a button on the admin page that runs `stripe.paymentIntents.create({ amount, customer, payment_method, off_session: true, confirm: true })` against the queued row. ~1 day once Stripe key is rotated.
-- **Re-cut existing 2026-06-14 reels in the 3-act format.** Only `iceland-3act` was built as a demo. The other 9 concepts have `hook` only; re-author each with `body` + `cta_text` and run the builder.
-- **Source explicit audio IDs for the unpaired reels** — 10 of the 14 currently say "pull a trending audio at upload"; only `prove-3-of-47` (Wings), `spreadsheet-trauma` (SPEND DAT SAX), `tokyo-day-1-check` (Life Feels So Good), `spin-the-globe` (cinematic-travel trending) have specific IDs. Higgsfield virality predictor + IG audio library can rank candidates.
-- **Cleanup duplicate 2026-06-06 quest reels** (5 reels) — same hooks as 2026-06-08, both render in the preview viewer.
-
-### P1 — known issues
-- **Reykjavik test trip is missing `## Day 2:` and `## Day 3:` sections.** Banner now warns the user, but the underlying generator/edit bug isn't fixed. Probably worth instrumenting `edit_itinerary` to log when a returned sliced section is shorter than expected or when full rewrites lose day count.
-- **Some reels include off-topic Pexels footage** — `tabs-vs-globe` opens on a laptop showing a random "Adoption Today" page; `socotra-alien-trees` got dragonfruit footage because Pexels has no actual Socotra trees. Either re-pull with different queries OR swap concepts.
-
-### P2 — nice-to-have
-- **TTS voiceover for reels** — not wired today. Would need ElevenLabs or OpenAI TTS plus a per-concept `voiceover` field. Big lift; only valuable if the silent-reel + trending-audio pattern starts underperforming.
-- **Pinterest mood-board pipeline** — flagged in memory as "in the pipeline" but not built. Per `project_pinterest_in_pipeline.md`: build a 12-20-pin secret board per reel before any Kling/Seedance gen.
-
----
-
-## Where to look / what to run
-
-| What | Where |
+| Commit | What |
 |---|---|
-| Trip-map drawer | `app/plan/summary/UnifiedTripMap.tsx` (2200+ lines). `apply_overlays`, `PlacePanelOverlay`, geocode pipeline, day chip strip all live here. |
-| Itinerary header / banner | `app/plan/summary/SummaryView.tsx` lines ~1797-1985 (trip-header card + WeatherBar + missing-day banner). |
-| Chat handler | `app/api/chat/route.ts`. Streaming tool loop, error-tier surfacing, empty-reply fallback, security prompt at lines ~225-245. |
-| Itinerary editor tool | `lib/agent/tools/edit_itinerary.ts`. Slice-to-day path + extractDaySection helper at the bottom. |
-| Waitlist | `app/waitlist/{page.tsx, WaitlistForm.tsx}` + `app/api/waitlist/route.ts` + `app/components/landing/WaitlistCta.tsx`. |
-| Stripe card-on-file | `lib/stripe/customer.ts` + `app/api/payments/setup-intent/route.ts` + `app/api/payments/payment-methods/{route.ts, [id]/route.ts}` + `app/settings/payment/{page.tsx, PaymentMethodsClient.tsx}`. |
-| Concierge queue | `app/api/bookings/request/route.ts` (user submits) + `app/api/concierge/{mine,queue}/route.ts` + `app/api/concierge/requests/[id]/{complete,fail}/route.ts` + `app/admin/concierge/{page.tsx, ConciergeQueue.tsx}`. Schema: `BookingRequest` in `prisma/schema.prisma`. |
-| Reel builder | `bin/build-remix-reel.py` (variety reels), `bin/build-monument-quest-reel.py` (quest-format reels), `bin/reoverlay-reels.py` (one-shot re-burn). |
-| Preview station | `bin/build-preview-html.py` → `ad-assets/instagram/preview.html`. Layout markers (`max-width: 420/540px`, `minmax(0, 1fr)`, `width: 64px; height: 90px`) live in the generator's CSS strings — re-edit there, not the output. |
-| Test harnesses | `bin/test-chat-scenarios.mjs` (14 baseline), `bin/test-chat-adversarial.mjs` (15 jailbreak). Both need `bin/extract-chrome-cookie.py` running against Chrome with a live geknee session. |
-
-### Useful commands
-- Re-render every existing reel after an overlay logic change: `python3 bin/reoverlay-reels.py`
-- Regenerate preview HTML after building a new reel: `python3 bin/build-preview-html.py`
-- Start preview server: `cd ad-assets/instagram && python3 -m http.server 7878` (already running in the most recent session — check `lsof -iTCP:7878 -sTCP:LISTEN`)
-- Run chat baseline tests: `node bin/test-chat-scenarios.mjs` (~$0.17 / run)
-- Run chat adversarial tests: `node bin/test-chat-adversarial.mjs` (~$0.17 / run)
+| `37ae0ce` | "⚠ Permanently closed" chip on activities when Google business_status returns CLOSED_* |
+| `95e46b6` | Cost chip rolls in local currency `$18-22 · 2,500 ISK`, prose strips both |
+| `bee0b87` | Crop Google watermark out of Street View day-step thumbs (108% scale + offset) |
+| `89e1afe` | Tap activity → in-app trip map drawer (was Google Maps tab) |
+| `5a5f893` | Single-finger pan on trip map + route map (`gestureHandling: 'greedy'`) |
+| `2c2d9e4` | Removed redundant bottom-right group-chat launcher |
+| `2007564` | Removed 💬 avatar pill inside TripChatDock collapsed view |
+| `54a74f0` | Removed inline ✦ star edit button + long transit chips wrap |
+| `0a5fde4` | File-vault Dynamic Island clearance + brand SVG icons + "Passport (backup)" honest label |
+| `51e4f23` | Chat AI cross-city guard (Reykjavik + Tokyo refusal) + Google-only photos + 50% larger day thumbs |
 
 ---
 
-## Memory hits worth knowing about
+## User-side blockers (action by Nghia, in priority order)
 
-Per the user's auto-memory (`MEMORY.md`):
-- Higgsfield is the canonical image/video tool; Claude Code stays in lane (automation, scripts, orchestration).
-- IG posting is manual since 2026-05-31 — `@gekneetravel` was disabled; build deliverables only, user uploads.
-- HQ Creative Loop (`~/geknee/hq-creative-loop/`) is the canonical source-of-truth for geknee creative; read its `SKILL.md` first.
-- Verify before push: trivial fix → push + tell user exactly what to verify; substantive → dev server + Playwright on `?mapbox-globe=1`; iOS-only → admit you can't verify, ask user.
-- Playwright on geknee: use `page.evaluate` + CDP screenshots — `locator.click/fill/visible` all hang on actionability/fonts.ready.
+| Task | Action | Time | Unblocks |
+|---|---|---|---|
+| **Email apitude@hotelbeds.com** | Request Transfers sandbox activation; send certification email when ready (template in earlier session) | 5 min + 24h wait | Hotelbeds Transfers + Hotels Go Live |
+| **Email support@duffel.com** | Request Stripe Connect onboarding (architecture B) | 5 min + ~1-2 wk approval | Duffel Phase 2 with zero capital |
+| **Stripe LLC upgrade** | https://dashboard.stripe.com/settings/account → enter EIN `42-3280661` | 10 min | LLC entity for Duffel + Hotelbeds payouts |
+| **Viator API key** | https://partners.viator.com/ → Tools → Affiliate API → "Start your development" | 5 min | Live Viator activity availability |
+| **Hotelbeds profile** | https://apitude.hotelbeds.com/ → complete profile + paste EIN | 10 min | Hotelbeds certification path |
+| **TP affiliate signups** | Hotellook, WayAway, GetYourGuide via Travelpayouts dashboard | 30 min per | Affiliate commission on existing deeplinks |
+| **Vercel preview env** | `TRAVELPAYOUTS_MARKER=716767` on preview branches (CLI bug; use dashboard) | 2 min | Preview deploys earn commission |
 
 ---
 
-## Open questions / decisions for the user
+## Open code tasks (next session)
 
-1. **3-act re-cut**: greenlight to re-author the 9 remaining 2026-06-14 reels in the hook/body/CTA format? (Will need ~10 min of copywriting + ~5 min builder runtime per reel.)
-2. **Duplicate 2026-06-06 reels**: safe to delete? They share hooks with 2026-06-08.
-3. **`socotra-alien-trees` swap**: replace with a concept Pexels has real coverage for (Faroe Islands / Lofoten / Lençóis Maranhenses)?
-4. **Itinerary missing-section root cause**: instrument the generator to detect dropped days, OR add a "regenerate just Day N" affordance to the chat?
+### Task #24 — closed-place filter at AI generation time (HIGH PRIORITY)
+**Why deferred:** ~2-3 hr refactor touching 5 generation routes (`/api/agent`, `/api/itinerary`, `/api/itinerary/adjust`, `/api/itinerary/replan`, `/api/agent/edit`). Started this session, stopped at 79% context to avoid half-baked refactor.
+
+**Approach:**
+1. Build `lib/places-validate.ts` — batch-checks Google Places `business_status` for a list of place names, returns `{ name → status }` map. Cache by name+city for 24h.
+2. After every itinerary-generating AI call, extract place names via existing `extractPlace()` from `lib/itinerary-parse.ts`.
+3. For closed places: either re-prompt the AI with `"replace these closed venues: X, Y, Z"` (max 1 round to avoid loops) OR strip the day-step and let downstream UI handle the gap.
+4. Smoke-test against the Reykjavik trip where Bergsson Mathús (permanently closed) was generated.
+
+**Today's safety net:** the `37ae0ce` chip warning is shipped — users see "⚠ Permanently closed" on the card. Root fix is preventing generation in the first place.
+
+### Task #25 — screenshot → iOS share sheet (LOWER PRIORITY)
+**Why deferred:** Requires Capacitor native plugin (web JS can't detect screenshots on iOS). ~1-2 hr work: install/write `@capacitor-community/screenshot-detector`-style plugin, hook `UIApplication.userDidTakeScreenshotNotification`, bridge to web JS that calls `navigator.share()`.
+
+---
+
+## Critical context for next session
+
+### Architecture decisions made
+- **Stripe Connect via Duffel** (no capital) — confirmed by user 2026-06-22. All code paths assume this; balance-payment branch in `lib/duffel.ts::createOrder` is the placeholder until Duffel approves Connect.
+- **Card on file is universal** — same `paymentMethodId` shape will plug into Hotelbeds + Viator booking modals when those ship.
+- **EIN `42-3280661`** lives in user's records only — NOT in any code/env. Use in partner dashboards, never persist.
+
+### Env vars set (Vercel prod + .env.local)
+- `TRAVELPAYOUTS_TOKEN`, `TRAVELPAYOUTS_MARKER=716767`
+- `HOTELBEDS_{HOTEL,ACTIVITIES,TRANSFERS}_API_KEY` + `_SECRET` + `HOTELBEDS_ENV=test`
+- `DUFFEL_API_KEY` (live key — careful), `DUFFEL_BOOKING_ENABLED=false`, `DUFFEL_MARKUP_PCT` (optional)
+- `VIATOR_API_KEY` (wrong tier — needs replacement)
+
+### Memory entries added/updated this session
+- `feedback_send_action_links.md` — always include URL when asking user to act
+- `feedback_pill_targeting.md` — "remove the X pill behind Y" = X inside Y, not Y itself
+
+### Smoke-test scripts available
+- `bin/duffel-smoke.mjs` — `node bin/duffel-smoke.mjs` after sourcing `.env.local`
+- `bin/hotelbeds-smoke.mjs` — same pattern
+- `bin/viator-smoke.mjs` — currently returns 401 (key tier issue)
+
+### Known UI surfaces touched
+- `app/components/GlobalChat.tsx` — floating GeKnee mascot (kept everywhere — user's AI access point)
+- `app/plan/[tripId]/(tabs)/TripChatDock.tsx` — bottom group-chat dock
+- `app/plan/summary/SummaryView.tsx` — main trip page, owns `mapDrawerOpen` state + `geknee:focus-map-pin` listener
+- `app/plan/summary/UnifiedTripMap.tsx` — Google Maps inside the drawer (greedy gesture, listens for focus event)
+- `app/plan/summary/components/ActivityBlock.tsx` — day-step rendering, owns business_status warning chip
+- `app/plan/summary/components/DuffelBookingModal.tsx` — 3-step booking flow with saved-card picker
+
+---
+
+## Deployment
+
+Vercel auto-deploys on push to `main`. Last verified deploy is current. The Vercel CLI is on 51 (outdated — latest is 54+); `vercel ls --limit` errors but `vercel ls` works. Manual deploy via `vercel --prod --yes` fails on "Upload aborted" — push to git instead.
+
+---
+
+## How to verify what shipped
+
+```bash
+git log --oneline -10              # see recent commits
+vercel ls                          # confirm prod deploy is Ready
+```
+
+Live URL: `https://www.geknee.com` (www canonical, geknee.com 307s to www).
+
+Dev account for testing: `nghiaphan081301@gmail.com` (signed in via Chrome — pull cookie with `python3 bin/extract-chrome-cookie.py --host www.geknee.com --name authjs.session-token` if doing authenticated curls).
