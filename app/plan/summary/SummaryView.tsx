@@ -586,6 +586,41 @@ function SummaryContent({ tripIdOverride, initialMainTab, autoGenerate = true }:
     window.addEventListener('geknee:focus-map-pin', onFocusPin);
     return () => window.removeEventListener('geknee:focus-map-pin', onFocusPin);
   }, []);
+
+  // iOS-only: when ScreenshotDetector (native plugin) fires
+  // geknee:screenshot, surface the native share sheet pre-loaded with
+  // the current trip URL. Users who screenshot a trip almost always
+  // want to send it to a travel-mate; this skips the manual "tap
+  // share, find the URL" step. Web JS can't read the screenshot image
+  // itself without Photos-library permission, so we share the URL
+  // (the recipient gets the live trip — better than a static image).
+  // 4s cooldown so a single screenshot doesn't fire twice if iOS
+  // double-notifies. Only fires on trip pages where there's an actual
+  // URL worth sharing.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let lastFireAt = 0;
+    async function onScreenshot() {
+      if (!savedTripId) return;
+      if (typeof navigator === 'undefined' || !navigator.share) return;
+      const now = Date.now();
+      if (now - lastFireAt < 4000) return;
+      lastFireAt = now;
+      track('screenshot_share_prompt', { tripId: savedTripId, location });
+      try {
+        await navigator.share({
+          title: `Trip to ${location}`,
+          text: `My ${location} trip — built on geknee`,
+          url: window.location.href,
+        });
+        track('screenshot_share_completed', { tripId: savedTripId });
+      } catch {
+        // User dismissed the share sheet — expected, not an error.
+      }
+    }
+    window.addEventListener('geknee:screenshot', onScreenshot);
+    return () => window.removeEventListener('geknee:screenshot', onScreenshot);
+  }, [savedTripId, location]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (hydratedKeyRef.current !== bookmarksKey) return;

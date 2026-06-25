@@ -27,6 +27,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // Attach the screenshot detector once the bridge is mounted.
+        // Safe to call repeatedly — attach removes the prior observer.
+        if let bridgeVC = window?.rootViewController as? CAPBridgeViewController,
+           let bridge = bridgeVC.bridge {
+            ScreenshotDetector.shared.attach(to: bridge)
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

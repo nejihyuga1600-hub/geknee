@@ -66,7 +66,12 @@ export type AnalyticsEvent =
   | 'waitlist_submit_attempt'
   | 'waitlist_signup'
   | 'waitlist_already_member'
-  | 'waitlist_signup_failed';
+  | 'waitlist_signup_failed'
+  // iOS native screenshot detector fired and we surfaced the share
+  // sheet pre-loaded with the trip URL. _prompt = sheet shown,
+  // _completed = user actually shared (not dismissed).
+  | 'screenshot_share_prompt'
+  | 'screenshot_share_completed';
 
 let initialized = false;
 
