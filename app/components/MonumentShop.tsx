@@ -1084,6 +1084,29 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
 
   useEffect(() => { if (open) { load(); setSelected(null); setMsg(''); setLastUnlock(null); } }, [open, load]);
 
+  // Tell the globe how much of the viewport the detail sheet occupies so
+  // map.setPadding can hold the monument in the visible upper half across
+  // any subsequent pan/zoom — not just the one-shot flyTo. Cleared when
+  // the user leaves the detail view (back to grid or close).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!open || !selected) {
+      window.dispatchEvent(new CustomEvent('geknee:globe-padding-set', { detail: { paddingBottom: 0 } }));
+      return;
+    }
+    const measureAndDispatch = () => {
+      const el = document.querySelector('[data-geknee-monument-sheet="detail"]') as HTMLElement | null;
+      const rect = el?.getBoundingClientRect();
+      const paddingBottom = rect && rect.height > 0 ? Math.round(rect.height) : Math.round(window.innerHeight * 0.5);
+      window.dispatchEvent(new CustomEvent('geknee:globe-padding-set', { detail: { paddingBottom } }));
+    };
+    const raf = requestAnimationFrame(measureAndDispatch);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.dispatchEvent(new CustomEvent('geknee:globe-padding-set', { detail: { paddingBottom: 0 } }));
+    };
+  }, [open, selected]);
+
   // Spin both globes (web Three.js + Capacitor Mapbox) to a monument.
   // City-level zoom so the user lands in the actual neighborhood, not a
   // continental dot. EVERY skin-state-changing path must call this:
@@ -1105,15 +1128,25 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
   const flyGlobeTo = useCallback((monumentId: string) => {
     const ll = MONUMENT_LATLON[monumentId];
     if (!ll) return;
-    // The sheet is always open when this fires (detail view holds Unlock /
-    // Equip / Mission CTAs; card-tap is what opens it). Half the viewport
-    // is covered; rounding once avoids subpixel jitter across rerenders.
-    const paddingBottom = typeof window !== 'undefined'
-      ? Math.round(window.innerHeight * 0.5)
-      : 0;
-    window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
-      detail: { lat: ll.lat, lon: ll.lon, zoom: 12, paddingBottom },
-    }));
+    // Measure the actual sheet — innerHeight * 0.5 was an under-estimate
+    // on iOS Capacitor (window.innerHeight excludes part of the safe-area
+    // dance, leaving the 3D sprite landing right at the sheet edge). The
+    // querySelector hits the data-geknee-monument-sheet attr; rAF gives
+    // it one frame to mount when called from the initialMk useEffect.
+    const fallback = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.5) : 0;
+    const fire = () => {
+      let paddingBottom = fallback;
+      if (typeof document !== 'undefined') {
+        const el = document.querySelector('[data-geknee-monument-sheet="detail"]') as HTMLElement | null;
+        const rect = el?.getBoundingClientRect();
+        if (rect && rect.height > 0) paddingBottom = Math.round(rect.height);
+      }
+      window.dispatchEvent(new CustomEvent('geknee:globe-fly-to', {
+        detail: { lat: ll.lat, lon: ll.lon, zoom: 12, paddingBottom },
+      }));
+    };
+    if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(fire);
+    else fire();
   }, []);
 
   // Pre-select a monument when the shop opens via globe tap. Lands the user
@@ -1297,7 +1330,7 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
       background: selected ? 'transparent' : 'rgba(2, 4, 12, 0.92)',
       pointerEvents: selected ? 'none' : 'auto',
     }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <div onClick={e => e.stopPropagation()} data-geknee-monument-sheet={selected ? 'detail' : 'grid'} style={{
         position: 'relative',
         background: 'linear-gradient(135deg,#0a0f1e,#0f172a,#1a0a2e)',
         border: '1px solid rgba(167, 139, 250,0.3)',

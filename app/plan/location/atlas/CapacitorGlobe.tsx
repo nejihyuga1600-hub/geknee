@@ -131,6 +131,20 @@ export default function CapacitorGlobe() {
     };
     window.addEventListener("geknee:globe-fly-to", onFlyTo);
 
+    // Persistent padding while the MonumentShop detail sheet is open. The
+    // one-shot padding inside flyTo only holds for the animation; any
+    // user pan/zoom afterward would let the monument drift behind the
+    // sheet again. setPadding keeps it pinned to the visible upper half
+    // until the sheet is closed (paddingBottom: 0 resets).
+    const onPaddingSet = (e: Event) => {
+      const detail = (e as CustomEvent<{ paddingBottom?: number }>).detail;
+      const pb = typeof detail?.paddingBottom === "number" ? detail.paddingBottom : 0;
+      try {
+        map.setPadding({ top: 0, right: 0, bottom: pb, left: 0 });
+      } catch { /* setPadding can throw if camera mid-transition; ignore */ }
+    };
+    window.addEventListener("geknee:globe-padding-set", onPaddingSet);
+
     map.on("style.load", () => {
       // Atmosphere settings — Mapbox's native rendering, free.
       map.setFog({
@@ -606,6 +620,7 @@ export default function CapacitorGlobe() {
     return () => {
       window.removeEventListener("geknee:globe-initialize", onInitialize);
       window.removeEventListener("geknee:globe-fly-to", onFlyTo);
+      window.removeEventListener("geknee:globe-padding-set", onPaddingSet);
       window.removeEventListener("geknee:monuments-updated", onMonumentsUpdated);
       const rafId = (map as unknown as { __geknee_rafId?: number }).__geknee_rafId;
       if (rafId) cancelAnimationFrame(rafId);
