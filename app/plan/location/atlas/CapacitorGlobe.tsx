@@ -545,12 +545,23 @@ export default function CapacitorGlobe() {
 
       // Tap targets — invisible HTML markers over each monument for click
       // handling. Raycasting onto a custom layer is doable but slow on
-      // WKWebView; a 64x64 transparent <div> overlay is dirt cheap and
-      // gives a comfortable tap zone for finger touch on small sprites.
+      // WKWebView; a transparent <div> overlay is dirt cheap and gives a
+      // comfortable tap zone for finger touch on small sprites.
+      //
+      // Geometry: the Three.js sprite is anchored at the lat/lon GROUND
+      // point and extends UPWARD (~40-50px visible after the 52° forward
+      // tilt). The previous 90x90 / anchor:'center' marker centred its
+      // tap zone on the ground point, so the visible top half of the
+      // sprite fell OUTSIDE the tap zone — users tapping the floating
+      // 3D shape were missing the box. Fix: anchor 'bottom' so the
+      // element sits above the ground point (matches where the sprite
+      // is rendered), and bump to 120x120 for finger tolerance.
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        el.style.cssText = "width:90px;height:90px;background:transparent;cursor:pointer;";
+        // touchAction:'manipulation' prevents the WKWebView 300ms
+        // double-tap-zoom delay from swallowing the click on iOS.
+        el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
         el.addEventListener("click", () => {
           // Fly the globe IN to the tapped monument so the user sees
           // the live skin preview at street/landmark level before the
@@ -558,11 +569,17 @@ export default function CapacitorGlobe() {
           // (matches the search-bar zoom for landmark mks). The pause
           // handler kicks in once the shop mounts so the heavy zoom
           // doesn't compound with the modal backdrop GPU load.
+          //
+          // padding.bottom = 50svh so the monument lands in the visible
+          // upper half above the MonumentShop bottom-sheet. MonumentShop
+          // also re-issues flyGlobeTo on initialMk for belt-and-braces.
+          const paddingBottom = Math.round(window.innerHeight * 0.5);
           map.flyTo({
             center: [lon, lat],
             zoom: 14,
             duration: 1400,
             essential: true,
+            padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
           });
           // Existing select event — preserved for any legacy listeners.
           window.dispatchEvent(
@@ -577,7 +594,7 @@ export default function CapacitorGlobe() {
         });
         new mapboxgl.Marker({
           element: el,
-          anchor: "center",
+          anchor: "bottom",
           rotationAlignment: "viewport",
           pitchAlignment: "viewport",
         })

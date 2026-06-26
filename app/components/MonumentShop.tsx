@@ -1091,8 +1091,12 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
   //   • completeMission()  — skin unlocked via quest verification
   //   • onEquipSkin        — user equips an already-owned skin
   //   • setSelected() tap  — user opens detail view of a card
-  // If you add a new path that mutates skin state, call flyGlobeTo too
-  // or the live preview moment behind the bottom-sheet won't fire.
+  //   • initialMk useEffect — shop opens directly into detail view from globe tap
+  // If you add a new path that mutates skin state OR opens the detail view,
+  // call flyGlobeTo too — the CapacitorGlobe tap handler flies to the
+  // monument without paddingBottom, so without this second flyTo the
+  // monument lands at the geographic midpoint (which is BEHIND the 50svh
+  // bottom sheet) instead of the visible upper half.
   //
   // paddingBottom: when the detail-view bottom-sheet is the layout,
   // Mapbox would center the target at the geometric viewport mid-point —
@@ -1125,6 +1129,11 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
     if (!target) return;
     setTab(inAnimals ? 'animals' : 'monuments');
     setSelected(target);
+    // Re-issue the fly-to with paddingBottom so the monument lands in the
+    // visible upper half, not behind the bottom sheet. CapacitorGlobe's
+    // marker-click flyTo doesn't pass padding — without this second call
+    // the monument visually offsets to the side of the screen.
+    flyGlobeTo(target.id);
   }, [open, initialMk]);
 
   // Reset selected when switching tabs
