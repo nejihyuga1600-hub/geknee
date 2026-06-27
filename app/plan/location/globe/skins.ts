@@ -102,40 +102,47 @@ export const MONUMENT_SCALE_OVERRIDE: Record<string, number> = {
 
 // Raw lat/lon for each collectable monument. Consumed by:
 //   - CityMapView (Google Maps Circle overlays at real coords)
+//   - CapacitorGlobe (Mapbox markers + 3D sprite projection)
 //   - /u/[handle] profile page (labels)
 //   - Future: creator geolocation verification
+//
+// Precision: 4 decimals (~11m). Previously 2 decimals (~1.1km), which on
+// z=14 monument zoom planted the sprite a full street block off-target
+// (Taj Mahal landed 600m SW of the building, etc). Where a complex spans
+// area (Great Wall, Iguazu, Easter Island, Petra), the point is the
+// iconic / most-photographed sub-feature, noted in the trailing comment.
 export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
-  eiffelTower:    { lat: 48.86, lon: 2.29 },
-  colosseum:      { lat: 41.89, lon: 12.49 },
-  tajMahal:       { lat: 27.17, lon: 78.04 },
-  greatWall:      { lat: 40.43, lon: 116.57 },
-  statueLiberty:  { lat: 40.69, lon: -74.04 },
-  sagradaFamilia: { lat: 41.40, lon: 2.17 },
-  machuPicchu:    { lat: -13.16, lon: -72.54 },
-  christRedeem:   { lat: -22.95, lon: -43.21 },
-  angkorWat:      { lat: 13.41, lon: 103.87 },
-  pyramidGiza:    { lat: 29.98, lon: 31.13 },
-  goldenGate:     { lat: 37.82, lon: -122.48 },
-  bigBen:         { lat: 51.50, lon: -0.12 },
-  acropolis:      { lat: 37.97, lon: 23.73 },
-  sydneyOpera:    { lat: -33.86, lon: 151.21 },
-  neuschwanstein: { lat: 47.56, lon: 10.75 },
-  stonehenge:     { lat: 51.18, lon: -1.83 },
-  iguazuFalls:    { lat: -25.69, lon: -54.44 },
-  tokyoSkytree:   { lat: 35.71, lon: 139.81 },
-  victoriaFalls:  { lat: -17.92, lon: 25.86 },
-  niagaraFalls:   { lat: 43.10, lon: -79.06 },
-  forbiddenCity:  { lat: 39.92, lon: 116.39 },
-  fushimiInari:   { lat: 34.97, lon: 135.78 },
-  mountFuji:      { lat: 35.36, lon: 138.73 },
-  petra:          { lat: 30.33, lon: 35.44 },
-  uluru:          { lat: -25.34, lon: 131.04 },
-  mtRushmore:     { lat: 43.88, lon: -103.46 },
-  notreDame:      { lat: 48.85, lon: 2.35 },
-  chichenItza:    { lat: 20.68, lon: -88.57 },
-  easterIsland:   { lat: -27.11, lon: -109.36 },
-  hagiaSophia:    { lat: 41.01, lon: 28.98 },
-  burjKhalifa:    { lat: 25.20, lon: 55.27 },
+  eiffelTower:    { lat: 48.8584, lon: 2.2945 },
+  colosseum:      { lat: 41.8902, lon: 12.4922 },
+  tajMahal:       { lat: 27.1751, lon: 78.0421 },
+  greatWall:      { lat: 40.4319, lon: 116.5704 },   // Mutianyu section
+  statueLiberty:  { lat: 40.6892, lon: -74.0445 },
+  sagradaFamilia: { lat: 41.4036, lon: 2.1744 },
+  machuPicchu:    { lat: -13.1631, lon: -72.5450 },
+  christRedeem:   { lat: -22.9519, lon: -43.2105 },
+  angkorWat:      { lat: 13.4125, lon: 103.8670 },
+  pyramidGiza:    { lat: 29.9792, lon: 31.1342 },    // Khufu / Great Pyramid
+  goldenGate:     { lat: 37.8199, lon: -122.4783 },  // mid-span
+  bigBen:         { lat: 51.5007, lon: -0.1246 },    // Elizabeth Tower
+  acropolis:      { lat: 37.9715, lon: 23.7267 },    // Parthenon
+  sydneyOpera:    { lat: -33.8568, lon: 151.2153 },
+  neuschwanstein: { lat: 47.5576, lon: 10.7498 },
+  stonehenge:     { lat: 51.1789, lon: -1.8262 },
+  iguazuFalls:    { lat: -25.6953, lon: -54.4367 },  // Devil's Throat
+  tokyoSkytree:   { lat: 35.7101, lon: 139.8107 },
+  victoriaFalls:  { lat: -17.9243, lon: 25.8572 },   // Main Falls
+  niagaraFalls:   { lat: 43.0796, lon: -79.0747 },   // Horseshoe Falls
+  forbiddenCity:  { lat: 39.9163, lon: 116.3972 },
+  fushimiInari:   { lat: 34.9671, lon: 135.7727 },
+  mountFuji:      { lat: 35.3606, lon: 138.7274 },   // summit
+  petra:          { lat: 30.3225, lon: 35.4513 },    // Al-Khazneh / Treasury
+  uluru:          { lat: -25.3444, lon: 131.0369 },
+  mtRushmore:     { lat: 43.8791, lon: -103.4591 },
+  notreDame:      { lat: 48.8530, lon: 2.3499 },
+  chichenItza:    { lat: 20.6829, lon: -88.5686 },   // El Castillo (Kukulkan)
+  easterIsland:   { lat: -27.1257, lon: -109.2769 }, // Ahu Tongariki (15 moai)
+  hagiaSophia:    { lat: 41.0086, lon: 28.9802 },
+  burjKhalifa:    { lat: 25.1972, lon: 55.2744 },
   // animals (no globe-position; intentionally omitted): blueWhale, bear, …
 };
 
