@@ -44,6 +44,23 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
   mtRushmore: 'mt_rushmore',
   easterIsland: 'easter_island',
   fushimiInari: 'fushimi_inari',
+  // Added 2026-07-01 batch — 16 new Meshy-generated monuments.
+  sigiriya: 'sigiriya',
+  borobudur: 'borobudur',
+  bagan: 'bagan',
+  montSaintMichel: 'mont_saint_michel',
+  salarUyuni: 'salar_uyuni',
+  meteora: 'meteora',
+  alhambra: 'alhambra',
+  petronasTowers: 'petronas_towers',
+  marinaBaySands: 'marina_bay_sands',
+  pamukkale: 'pamukkale',
+  tikal: 'tikal',
+  stBasils: 'st_basils',
+  stPeters: 'st_peters',
+  ergChebbi: 'erg_chebbi',
+  antelopeCanyon: 'antelope_canyon',
+  cliffsOfMoher: 'cliffs_of_moher',
 };
 
 // Skins actually uploaded to Vercel Blob. Requesting a skin not in this map
@@ -84,6 +101,23 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   mtRushmore:     new Set(['bronze']),
   easterIsland:   new Set(['bronze']),
   fushimiInari:   new Set(['bronze']),
+  // Added 2026-07-01 batch — 16 new Meshy-generated monuments (meshy tier only).
+  sigiriya:         new Set(['meshy']),
+  borobudur:        new Set(['meshy']),
+  bagan:            new Set(['meshy']),
+  montSaintMichel:  new Set(['meshy']),
+  salarUyuni:       new Set(['meshy']),
+  meteora:          new Set(['meshy']),
+  alhambra:         new Set(['meshy']),
+  petronasTowers:   new Set(['meshy']),
+  marinaBaySands:   new Set(['meshy']),
+  pamukkale:        new Set(['meshy']),
+  tikal:            new Set(['meshy']),
+  stBasils:         new Set(['meshy']),
+  stPeters:         new Set(['meshy']),
+  ergChebbi:        new Set(['meshy']),
+  antelopeCanyon:   new Set(['meshy']),
+  cliffsOfMoher:    new Set(['meshy']),
 };
 
 // Per-monument visual scale override, applied on top of the uniform landmark
@@ -143,6 +177,24 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
   easterIsland:   { lat: -27.1257, lon: -109.2769 }, // Ahu Tongariki (15 moai)
   hagiaSophia:    { lat: 41.0086, lon: 28.9802 },
   burjKhalifa:    { lat: 25.1972, lon: 55.2744 },
+
+  // Added 2026-07-01 batch — 16 new Meshy-generated monuments.
+  sigiriya:         { lat: 7.957, lon: 80.7603 },
+  borobudur:        { lat: -7.6079, lon: 110.2038 },
+  bagan:            { lat: 21.1717, lon: 94.8585 },  // Ananda Temple area
+  montSaintMichel:  { lat: 48.636, lon: -1.5115 },
+  salarUyuni:       { lat: -20.1338, lon: -67.4891 },  // center of salt flat
+  meteora:          { lat: 39.7217, lon: 21.6303 },  // Varlaam monastery
+  alhambra:         { lat: 37.1761, lon: -3.5881 },  // Nasrid Palaces
+  petronasTowers:   { lat: 3.1579, lon: 101.7116 },
+  marinaBaySands:   { lat: 1.2834, lon: 103.8607 },  // SkyPark
+  pamukkale:        { lat: 37.9203, lon: 29.1215 },  // travertines
+  tikal:            { lat: 17.2222, lon: -89.6237 },  // Temple I
+  stBasils:         { lat: 55.7525, lon: 37.6231 },  // Red Square
+  stPeters:         { lat: 41.9022, lon: 12.4539 },
+  ergChebbi:        { lat: 31.15, lon: -4.0 },  // dune center Merzouga
+  antelopeCanyon:   { lat: 36.8619, lon: -111.3743 },  // Upper Canyon
+  cliffsOfMoher:    { lat: 52.9715, lon: -9.4309 },  // O'Brien's Tower
   // animals (no globe-position; intentionally omitted): blueWhale, bear, …
 };
 
