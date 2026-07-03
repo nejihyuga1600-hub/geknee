@@ -61,6 +61,17 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
   ergChebbi: 'erg_chebbi',
   antelopeCanyon: 'antelope_canyon',
   cliffsOfMoher: 'cliffs_of_moher',
+  // Added 2026-07-02 batch 2 — 10 more Meshy-generated monuments.
+  blueMosque: 'blue_mosque',
+  brandenburgGate: 'brandenburg_gate',
+  budapestParliament: 'budapest_parliament',
+  ajantaCaves: 'ajanta_caves',
+  baliUluwatu: 'bali_uluwatu',
+  chanChan: 'chan_chan',
+  bathRomans: 'bath_romans',
+  cologneCathedral: 'cologne_cathedral',
+  persepolis: 'persepolis',
+  trulli: 'trulli',
 };
 
 // Skins actually uploaded to Vercel Blob. Requesting a skin not in this map
@@ -118,6 +129,17 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   ergChebbi:        new Set(['meshy']),
   antelopeCanyon:   new Set(['meshy']),
   cliffsOfMoher:    new Set(['meshy']),
+  // Added 2026-07-02 batch 2 — 10 more Meshy-generated monuments (meshy tier only).
+  blueMosque:           new Set(['meshy']),
+  brandenburgGate:      new Set(['meshy']),
+  budapestParliament:   new Set(['meshy']),
+  ajantaCaves:          new Set(['meshy']),
+  baliUluwatu:          new Set(['meshy']),
+  chanChan:             new Set(['meshy']),
+  bathRomans:           new Set(['meshy']),
+  cologneCathedral:     new Set(['meshy']),
+  persepolis:           new Set(['meshy']),
+  trulli:               new Set(['meshy']),
 };
 
 // Per-monument visual scale override, applied on top of the uniform landmark
@@ -195,6 +217,17 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
   ergChebbi:        { lat: 31.15, lon: -4.0 },  // dune center Merzouga
   antelopeCanyon:   { lat: 36.8619, lon: -111.3743 },  // Upper Canyon
   cliffsOfMoher:    { lat: 52.9715, lon: -9.4309 },  // O'Brien's Tower
+  // Added 2026-07-02 batch 2 — 10 more Meshy-generated monuments.
+  blueMosque:           { lat: 41.0055, lon: 28.9769 },  // Sultanahmet
+  brandenburgGate:      { lat: 52.5163, lon: 13.3777 },
+  budapestParliament:   { lat: 47.5072, lon: 19.0459 },  // Danube facade
+  ajantaCaves:          { lat: 20.5522, lon: 75.7033 },  // Cave 26
+  baliUluwatu:          { lat: -8.829, lon: 115.0849 },  // Pura Luhur Uluwatu
+  chanChan:             { lat: -8.1069, lon: -79.0762 },  // Tschudi complex
+  bathRomans:           { lat: 51.3811, lon: -2.3596 },  // Great Bath
+  cologneCathedral:     { lat: 50.9413, lon: 6.9583 },
+  persepolis:           { lat: 29.935, lon: 52.8916 },  // Apadana
+  trulli:               { lat: 40.7853, lon: 17.2358 },  // Alberobello, Puglia
   // animals (no globe-position; intentionally omitted): blueWhale, bear, …
 };
 

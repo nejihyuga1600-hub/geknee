@@ -24,3 +24,13 @@
 {"key": "ergChebbi", "task_id": "019f1c2b-6562-70c8-8dee-3b76c039ded5", "snap": "public/monument-snaps/ergChebbi.png", "glb": "public/models/ergChebbi.glb", "credits_estimated": 20}
 {"key": "antelopeCanyon", "task_id": "019f1c2e-5752-77e2-8c8e-cbf25538214d", "snap": "public/monument-snaps/antelopeCanyon.png", "glb": "public/models/antelopeCanyon.glb", "credits_estimated": 20}
 {"key": "cliffsOfMoher", "task_id": "019f1c31-116e-71fd-8385-99c6c029afe8", "snap": "public/monument-snaps/cliffsOfMoher.png", "glb": "public/models/cliffsOfMoher.glb", "credits_estimated": 20}
+{"key": "blueMosque", "task_id": "019f245c-9528-7311-91bc-56dd3dbb1b0c", "snap": "public/monument-snaps/blueMosque.png", "glb": "public/models/blueMosque.glb", "credits_estimated": 20}
+{"key": "brandenburgGate", "task_id": "019f245f-4671-7634-b251-3c9043ef4891", "snap": "public/monument-snaps/brandenburgGate.png", "glb": "public/models/brandenburgGate.glb", "credits_estimated": 20}
+{"key": "budapestParliament", "task_id": "019f25ad-35f8-748a-80b2-671e333c3726", "snap": "public/monument-snaps/budapestParliament.png", "glb": "public/models/budapestParliament.glb", "credits_estimated": 20}
+{"key": "ajantaCaves", "task_id": "019f25af-ea88-7035-85be-98eca6cf5524", "snap": "public/monument-snaps/ajantaCaves.png", "glb": "public/models/ajantaCaves.glb", "credits_estimated": 20}
+{"key": "baliUluwatu", "task_id": "019f25b2-4f59-7c44-a68c-bc957fe6f4c3", "snap": "public/monument-snaps/baliUluwatu.png", "glb": "public/models/baliUluwatu.glb", "credits_estimated": 20}
+{"key": "chanChan", "task_id": "019f25b4-afe1-75ca-aede-9bfde1da626c", "snap": "public/monument-snaps/chanChan.png", "glb": "public/models/chanChan.glb", "credits_estimated": 20}
+{"key": "bathRomans", "task_id": "019f25b6-8486-713e-90c3-db881b2f3830", "snap": "public/monument-snaps/bathRomans.png", "glb": "public/models/bathRomans.glb", "credits_estimated": 20}
+{"key": "cologneCathedral", "task_id": "019f25b9-c48d-76cb-af77-74bc7cd8ce97", "snap": "public/monument-snaps/cologneCathedral.png", "glb": "public/models/cologneCathedral.glb", "credits_estimated": 20}
+{"key": "persepolis", "task_id": "019f25bc-f172-7221-90d2-a0c7c847f922", "snap": "public/monument-snaps/persepolis.png", "glb": "public/models/persepolis.glb", "credits_estimated": 20}
+{"key": "trulli", "task_id": "019f25bf-b6e0-77dc-8a4d-38cdd0158433", "snap": "public/monument-snaps/trulli.png", "glb": "public/models/trulli.glb", "credits_estimated": 20}
