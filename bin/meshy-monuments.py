@@ -35,8 +35,9 @@ Cost (Meshy standard tier as of 2026-06):
 from __future__ import annotations
 import argparse, json, os, sys, time
 from pathlib import Path
+import socket
 from urllib.request import Request, urlopen, urlretrieve
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 ROOT = Path.home() / "geknee"
 SNAPS = ROOT / "public" / "monument-snaps"
@@ -81,6 +82,35 @@ def get_token() -> str:
     return tok
 
 
+# Transient errors we treat as retryable — SSL handshake failures, DNS
+# hiccups, timeouts, dropped connections. HTTPError 5xx and 429 are also
+# retried (server-side flakiness / rate limit). HTTPError 4xx (except 429)
+# is a client bug and re-raised immediately so bad tokens/prompts fail fast.
+_TRANSIENT = (URLError, socket.timeout, ConnectionError, TimeoutError, OSError)
+
+
+def _with_retry(op_name: str, fn, retries: int = 3, initial_wait: float = 2.0):
+    """Retry a nullary callable on transient network errors with exponential
+    backoff (2s → 4s → 8s by default). Total wall time before giving up ≈
+    initial_wait * (2**retries - 1) = 14s at defaults, plus per-attempt cost."""
+    wait = initial_wait
+    for attempt in range(retries + 1):
+        try:
+            return fn()
+        except HTTPError as e:
+            # Client errors don't fix themselves — re-raise unless it's a rate limit.
+            if 400 <= e.code < 500 and e.code != 429:
+                raise
+            last = f"HTTP {e.code}"
+        except _TRANSIENT as e:
+            last = f"{type(e).__name__}: {e}"
+        if attempt >= retries:
+            raise RuntimeError(f"{op_name} failed after {retries + 1} attempts, last: {last}")
+        print(f"    {op_name} transient ({last}), retry {attempt + 1}/{retries} in {int(wait)}s")
+        time.sleep(wait)
+        wait *= 2
+
+
 def post(path: str, token: str, body: dict) -> dict:
     req = Request(
         f"{API_BASE}{path}",
@@ -91,18 +121,22 @@ def post(path: str, token: str, body: dict) -> dict:
         },
         method="POST",
     )
-    try:
+    def do():
         with urlopen(req, timeout=60) as r:
             return json.loads(r.read().decode("utf-8"))
+    try:
+        return _with_retry(f"POST {path}", do)
     except HTTPError as e:
         sys.exit(f"Meshy POST {path} → {e.code}: {e.read().decode('utf-8', errors='replace')[:500]}")
 
 
 def get(path: str, token: str) -> dict:
     req = Request(f"{API_BASE}{path}", headers={"Authorization": f"Bearer {token}"})
-    try:
+    def do():
         with urlopen(req, timeout=60) as r:
             return json.loads(r.read().decode("utf-8"))
+    try:
+        return _with_retry(f"GET {path}", do)
     except HTTPError as e:
         sys.exit(f"Meshy GET {path} → {e.code}: {e.read().decode('utf-8', errors='replace')[:500]}")
 
@@ -221,9 +255,12 @@ def generate_one(token: str, key: str, dry: bool) -> None:
         sys.exit(f"  ! {key}: no glb URL in response: {info}")
     MODELS.mkdir(parents=True, exist_ok=True)
     print(f"  -> {out_glb.name}")
-    urlretrieve(glb_url, out_glb)
+    _with_retry(f"download {out_glb.name}", lambda: urlretrieve(glb_url, out_glb))
     if prev_url:
-        urlretrieve(prev_url, out_preview)
+        try:
+            _with_retry(f"download {out_preview.name}", lambda: urlretrieve(prev_url, out_preview))
+        except RuntimeError as e:
+            print(f"    ! preview download failed (non-fatal): {e}")
     append_log({
         "key": key, "task_id": task_id,
         "snap": str(snap.relative_to(ROOT)),
