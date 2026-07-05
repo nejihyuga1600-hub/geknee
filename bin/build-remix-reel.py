@@ -2834,6 +2834,366 @@ CONCEPTS = {
         ),
         "based_on": "Taj-template: rule-then-exception (crowded visitor center vs empty 14km trail) + 320-million-year body + Doolin-Liscannor ritual. Bronze tier.",
     },
+    "blue-mosque-6-minarets": {
+        "search_queries": [
+            "blue mosque istanbul",
+            "sultan ahmed mosque",
+            "istanbul sultanahmet",
+            "blue mosque interior",
+            "istanbul mosque dome",
+            "istanbul turkey",
+        ],
+        "pexels_ids": [19375192, 30682382, 32912534, 35888869, 36202041, 7311797],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "6 minarets.\nonly mecca had that many.\nthey added a 7th.",
+        "body": "istanbul · blue mosque\nbuilt 1616 · sultan ahmed I\n20,000 iznik ceramic tiles",
+        "cta_text": "do this · dawn call at 5am\ncourtyard breathes empty",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "silver" / "blue_mosque_silver.jpg",
+            "monument": "Blue Mosque",
+            "tier": "Silver",
+            "subtitle": "Sultanahmet, Istanbul  ·  dawn call at 5am, courtyard breathes empty",
+            "secs": 4.5,
+        },
+        "caption": (
+            "6 minarets. only mecca had that many. they added a 7th.\n\n"
+            "the blue mosque. sultanahmet, istanbul. commissioned by sultan ahmed I at age 19 and completed in 1616. the sultan wanted six minarets to signal his mosque as the imperial flagship — but at the time, only the great mosque of mecca had six minarets, and any other match was considered an act of hubris toward the prophet's city. the outcry in mecca was immediate. sultan ahmed's fix, elegant and expensive, was to commission and finance a SEVENTH minaret at mecca, restoring the great mosque's numerical supremacy and letting his own stand. the mosque's interior is lined with over 20,000 hand-painted iznik ceramic tiles, mostly in the deep cobalt blue that gives the mosque its western name.\n\n"
+            "do this: arrive for the fajr (dawn) call to prayer around 5am. the courtyard is empty, the muezzin's voice fills the space, and you get the tile work at sunrise before the tour groups.\n\n"
+            "save this for the turkey trip everyone plans around hagia sophia only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#BlueMosque #Istanbul #SultanAhmed #TurkeyTravel #gekneequest\n\n"
+            "🎵 PAIR WITH: turkish ney flute + call to prayer. Sparse build through hook + body, dome-toned swell on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (mecca had monopoly on 6 vs sultan matched then bought exception) + 20k-tile body + dawn-call ritual. Silver tier.",
+    },
+    "brandenburg-gate-death-strip": {
+        "search_queries": [
+            "brandenburg gate berlin",
+            "brandenburg tor",
+            "berlin brandenburg",
+            "berlin germany",
+            "brandenburg gate night",
+            "berlin pariser platz",
+        ],
+        "pexels_ids": [34930787, 13687298, 18732683, 34459923, 32478264, 35690089],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "the arch stood\nin no-mans-land.\nfor 28 years.",
+        "body": "berlin · brandenburg gate\nbuilt 1791 · neoclassical\ndeath strip 1961-1989",
+        "cta_text": "do this · sunset facing east\nwalk through it slowly",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "brandenburg_gate_bronze.jpg",
+            "monument": "Brandenburg Gate",
+            "tier": "Bronze",
+            "subtitle": "Pariser Platz, Berlin  ·  sunset facing east, walk through it slowly",
+            "secs": 4.5,
+        },
+        "caption": (
+            "the arch stood in no-mans-land. for 28 years.\n\n"
+            "the brandenburg gate. berlin. commissioned by king frederick william II and completed in 1791, the neoclassical arch was built to celebrate peace and modeled on the propylaea of athens. after the berlin wall went up in 1961, the gate ended up in the no-mans-land death strip between east and west berlin — physically accessible from neither side, guarded by GDR border troops, watched from both. it stood in that isolation for 28 years, framed on both sides by concrete and barbed wire, becoming the single most photographed symbol of the divided city. on the night of november 9, 1989 the wall fell; the gate reopened officially on december 22, 1989, and berliners walked through together for the first time in a generation.\n\n"
+            "do this: come at sunset and stand on the east side (former GDR side) facing west. walk through it slowly toward pariser platz. that is the direction the reunification walk took.\n\n"
+            "save this for the germany trip everyone plans around beer halls only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#BrandenburgGate #Berlin #GermanyTravel #ColdWarHistory #gekneequest\n\n"
+            "🎵 PAIR WITH: solo cello + choir pad. Sparse build through hook + body, swell on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (arches unite vs this one divided for 28 years) + 1961-1989 body + sunset walk-through ritual. Bronze tier.",
+    },
+    "budapest-parliament-copy": {
+        "search_queries": [
+            "budapest parliament",
+            "hungarian parliament",
+            "budapest danube",
+            "budapest hungary",
+            "budapest parliament night",
+            "budapest chain bridge parliament",
+        ],
+        "pexels_ids": [18444689, 31587892, 34430693, 34564778, 34649739, 34783228],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "691 rooms.\nevery detail copied\nfrom westminster.",
+        "body": "budapest · parliament\ncompleted 1904 · neo-gothic\n3rd largest in the world",
+        "cta_text": "do this · sunset from fishermans\nlit gold across the danube",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "gold" / "budapest_parliament_gold.jpg",
+            "monument": "Budapest Parliament",
+            "tier": "Gold",
+            "subtitle": "Budapest, Hungary  ·  sunset from Fisherman's Bastion, lit gold across the Danube",
+            "secs": 4.5,
+        },
+        "caption": (
+            "691 rooms. every detail copied from westminster.\n\n"
+            "the hungarian parliament building. budapest. completed 1904 after 20 years of construction, on the pest bank of the danube. imre steindl won the design competition with a proposal explicitly modeled after the palace of westminster in london — the same neo-gothic revival style, the same central dome flanked by symmetrical spired towers, the same long river-facing facade of pointed-arch windows. steindl walked visitors through the completed building the year he went blind, and died five weeks before its official inauguration in october 1904. it contains 691 rooms, 27 gates, 20 kilometers of stairs, and remains the third-largest parliament building in the world. it is also the tallest building in budapest — a rule that predates it: nothing in the city may rise above the parliament dome and st stephen's basilica (both 96 meters).\n\n"
+            "do this: cross to buda side and watch sunset from fisherman's bastion. the parliament lights up gold against the darkening danube from that angle exactly at the golden hour.\n\n"
+            "save this for the hungary trip everyone reduces to a stag party.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#BudapestParliament #Hungary #DanubeRiver #BudapestTravel #gekneequest\n\n"
+            "🎵 PAIR WITH: cimbalom + solo violin. Builds through hook + body, swell on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (world's third largest vs literal Westminster copy) + 691 rooms body + fisherman's bastion sunset ritual. Gold tier.",
+    },
+    "ajanta-caves-tiger-hunt": {
+        "search_queries": [
+            "ajanta caves",
+            "ajanta india",
+            "ajanta buddhist caves",
+            "maharashtra caves",
+            "ajanta rock temple",
+            "india rock cut cave",
+        ],
+        "pexels_ids": [27695955, 35061907, 35061959, 36364645, 36402986, 37609510],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "30 caves.\nhidden 1,000 years.\nfound during a tiger hunt.",
+        "body": "india · ajanta caves\ncarved 200 BC-500 AD\nrediscovered 1819",
+        "cta_text": "do this · morning caves 1 & 2\nfrescoes glow in the light",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "ajanta_caves_bronze.jpg",
+            "monument": "Ajanta Caves",
+            "tier": "Bronze",
+            "subtitle": "Maharashtra, India  ·  Caves 1 & 2 in the morning for the fresco light",
+            "secs": 4.5,
+        },
+        "caption": (
+            "30 caves. hidden 1,000 years. rediscovered during a tiger hunt.\n\n"
+            "the ajanta caves. maharashtra, india. 30 rock-cut buddhist cave temples carved into a horseshoe-shaped basalt cliff above the waghora river, between roughly 200 BC and 500 AD. after buddhism declined in india the caves were abandoned around the 7th century and the jungle grew over the cliff face, hiding them completely. they sat undisturbed for over 1,000 years. on april 28, 1819, british cavalry officer john smith of the 28th cavalry was hunting tigers in the area, spotted the horseshoe curve of the cliff and one of the arched cave entrances peeking through the vegetation, and climbed up. he carved his name and the date into the pillar of cave 10 — the earliest surviving western signature at the site. the interiors turned out to hold some of the oldest surviving painted murals in indian buddhist art.\n\n"
+            "do this: enter caves 1 and 2 in the mid-morning. the murals only glow when direct sun catches the mica-flecked plaster ceiling; noon is too flat and afternoon is shadow.\n\n"
+            "save this for the india trip everyone plans around delhi-agra-jaipur only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#AjantaCaves #India #BuddhistArt #MaharashtraTravel #gekneequest\n\n"
+            "🎵 PAIR WITH: sitar + tabla + drone. Sparse build through hook + body, temple-bell strike on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (buried 1000yr vs found by tiger hunter) + john smith 1819 body + mid-morning cave 1&2 ritual. Bronze tier.",
+    },
+    "uluwatu-monkey-hostages": {
+        "search_queries": [
+            "uluwatu temple bali",
+            "pura luhur uluwatu",
+            "bali cliff temple",
+            "bali sunset uluwatu",
+            "uluwatu bali",
+            "kecak dance bali",
+        ],
+        "pexels_ids": [11856437, 18514343, 19672615, 28242253, 34553104, 9359177],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "the monkeys steal\nyour glasses.\nthey want crackers.",
+        "body": "bali · pura luhur uluwatu\n11th-century sea temple\n70m vertical sea cliff",
+        "cta_text": "do this · kecak dance sunset\namphitheater on the cliff",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "bali_uluwatu_bronze.jpg",
+            "monument": "Uluwatu Temple",
+            "tier": "Bronze",
+            "subtitle": "Bali, Indonesia  ·  kecak dance at sunset in the cliff amphitheater",
+            "secs": 4.5,
+        },
+        "caption": (
+            "the monkeys steal your glasses. they want crackers.\n\n"
+            "pura luhur uluwatu. bali, indonesia. an 11th-century balinese hindu sea temple perched on the very edge of a vertical 70-meter cliff on the island's southwestern peninsula, dedicated to the sea spirit rudra. the temple is guarded by a resident troop of long-tailed macaques who have learned, through generations of observation, exactly which items tourists value most. they will snatch sunglasses, phones, hats, or camera lens caps directly off a person's face or hands, retreat to a safe distance, and wait. temple staff walk the crowd with small bags of biscuits — the monkeys will only return the stolen item in exchange for a cracker. this is not aggression; it's a functional local economy the macaques run.\n\n"
+            "do this: buy tickets to the kecak fire dance at 6pm inside the small cliff-edge amphitheater. the performance ends exactly as the sun drops behind the horizon.\n\n"
+            "save this for the bali trip everyone plans around canggu only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#Uluwatu #BaliTravel #Indonesia #KecakDance #gekneequest\n\n"
+            "🎵 PAIR WITH: gamelan + kecak vocal chant. Builds through hook + body, chant peak on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (holy temple vs macaque black market) + 70m-cliff body + kecak sunset ritual. Bronze tier.",
+    },
+    "chan-chan-rain-never-comes": {
+        "search_queries": [
+            "chan chan peru",
+            "trujillo peru",
+            "chimu adobe ruins",
+            "peru north coast",
+            "chan chan ruins",
+            "peru desert coast",
+        ],
+        "pexels_ids": [20720930, 30131678, 30131689, 30402664, 27296158, 5840831],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "biggest adobe city on earth.\nrain would erase it.\nrain never comes.",
+        "body": "peru · chan chan\nchimu capital 900-1470 AD\n6,000 hectares of mud brick",
+        "cta_text": "do this · tschudi complex 8am\nfriezes catch morning shadow",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "chan_chan_bronze.jpg",
+            "monument": "Chan Chan",
+            "tier": "Bronze",
+            "subtitle": "Trujillo, Peru  ·  Tschudi complex at 8am, friezes catch morning shadow",
+            "secs": 4.5,
+        },
+        "caption": (
+            "biggest adobe city on earth. rain would erase it. rain never comes.\n\n"
+            "chan chan. north coast of peru, near modern trujillo. capital of the chimú kingdom from around 900 AD until the incas conquered the region in 1470, holding a peak population estimated at 40,000-60,000 in ten walled royal citadels covering 6,000 hectares — the largest pre-columbian city in the americas and the largest earthen city ever built. every wall, plaza, palace, and frieze is adobe: sun-dried mud brick, with no stone in the core structures. adobe dissolves in rain. the reason chan chan is still standing 1,000 years later is that it sits inside the atacama desert climatic zone, one of the driest places on earth, where measurable rainfall averages less than 25 mm per year and some coastal stretches go a decade between rain events. the climate is what preserved the city — and el niño years are its single biggest existential threat.\n\n"
+            "do this: enter the tschudi (nik-an) complex at 8am when the low sun rakes across the walls. the seabird and stepped-wave friezes only show in that raking morning light; by noon they flatten out.\n\n"
+            "save this for the peru trip everyone reduces to machu picchu only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#ChanChan #PeruTravel #Chimu #TrujilloPeru #gekneequest\n\n"
+            "🎵 PAIR WITH: andean quena flute + wind. Sparse build through hook + body, drum on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (adobe dissolves in rain vs this survives) + 6,000-ha body + morning-frieze ritual. Bronze tier.",
+    },
+    "bath-46-degree-spring": {
+        "search_queries": [
+            "roman baths bath",
+            "bath england romans",
+            "bath abbey",
+            "bath somerset",
+            "roman baths thermal",
+            "bath england city",
+        ],
+        "pexels_ids": [29107374, 29107407, 29107440, 29107441, 29184526, 29331121],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "46 degrees c\nfrom underground.\nfor 2,000 years.",
+        "body": "england · bath\nromans built 60-70 AD\n250 million liters per year",
+        "cta_text": "do this · torchlit evening tour\nsteam rises off the pool",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "silver" / "bath_romans_silver.jpg",
+            "monument": "Roman Baths",
+            "tier": "Silver",
+            "subtitle": "Bath, England  ·  torchlit evening tour, steam rises off the pool",
+            "secs": 4.5,
+        },
+        "caption": (
+            "46 degrees c. from underground. for 2,000 years.\n\n"
+            "the roman baths at bath, in somerset, england. the only naturally hot springs in the united kingdom — water that fell as rain 10,000 years ago in the mendip hills, seeped 2.7 kilometers into the earth's crust where geothermal heating raises its temperature, and rises through a fault back to the surface at a steady 46 degrees celsius. the celts worshipped the spring as sacred to the goddess sulis. the romans arrived in the 1st century and built the bath complex we see today between roughly 60 and 70 AD, dedicating it to sulis-minerva. the sacred spring still produces around 1.17 million liters per day — approximately 250 million liters a year — and has done so, without interruption, since well before the romans came. the great bath at the center is still fed from the same source, still steaming, still exactly 46 degrees.\n\n"
+            "do this: skip the daytime tour and book the torchlit evening entry (summer only). the great bath under torchlight with steam rising and the abbey backlit is the actual experience.\n\n"
+            "save this for the england trip everyone plans around london only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#RomanBaths #BathEngland #Somerset #EnglandTravel #gekneequest\n\n"
+            "🎵 PAIR WITH: solo harp + water sounds. Sparse build through hook + body, choral swell on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (UK is cold vs 46°c since Romans) + 250M-litre body + torchlit evening ritual. Silver tier.",
+    },
+    "cologne-14-bomb-hits": {
+        "search_queries": [
+            "cologne cathedral",
+            "cologne germany",
+            "kolner dom",
+            "cologne dom spires",
+            "cologne cathedral interior",
+            "cologne rhine river",
+        ],
+        "pexels_ids": [16594074, 31316976, 34653082, 35017492, 35017493, 37681157],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "600 years to build.\n14 direct bomb hits.\nstill standing.",
+        "body": "germany · cologne cathedral\nbuilt 1248-1880\n157m twin spires",
+        "cta_text": "do this · climb south tower\n533 steps to the spires",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "gold" / "cologne_cathedral_gold.jpg",
+            "monument": "Cologne Cathedral",
+            "tier": "Gold",
+            "subtitle": "Cologne, Germany  ·  climb the south tower, 533 steps to the spires",
+            "secs": 4.5,
+        },
+        "caption": (
+            "600 years to build. 14 direct bomb hits. still standing.\n\n"
+            "cologne cathedral (kölner dom). germany. begun in 1248 as a housing for the relics of the three magi that had been brought to cologne from milan in 1164. construction stopped in 1473 with the choir complete but the towers only stubs, and stayed frozen for nearly 400 years. work resumed in 1842 under prussian sponsorship and finished in 1880, following the original 14th-century plan almost exactly — the completed cathedral has the tallest twin gothic spires in the world (157 meters) and was briefly the tallest building on earth. during world war II, allied bombing raids reduced most of central cologne to rubble. the cathedral was hit by 14 aerial bombs — direct hits, not near misses — but the flying buttresses and stone lattice held. the working theory: the RAF and USAAF deliberately spared the spires because they served as an unmissable navigation landmark for the rest of the bombing runs.\n\n"
+            "do this: climb the 533 steps of the south tower to the spire base. the view over the rhine is worth the burn.\n\n"
+            "save this for the germany trip everyone plans around bavaria only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#CologneCathedral #KolnerDom #GermanyTravel #GothicArchitecture #gekneequest\n\n"
+            "🎵 PAIR WITH: cathedral organ + bass drone. Builds through hook + body, bell-toll on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (600yr build vs 14 bombs survived) + spire body + 533-step climb ritual. Gold tier.",
+    },
+    "persepolis-alexander-burned": {
+        "search_queries": [
+            "persepolis iran",
+            "persepolis ruins",
+            "iran ancient ruins",
+            "persian empire ruins",
+            "shiraz persepolis",
+            "achaemenid ruins",
+        ],
+        "pexels_ids": [11276580, 25912817, 31960183, 32161865, 34940178, 37617054],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "alexander drank\nall the wine.\nthen he burned it down.",
+        "body": "iran · persepolis\nbuilt 515 BC · darius I\nburned 330 BC",
+        "cta_text": "do this · apadana at sunset\nreliefs cast long shadows",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "persepolis_bronze.jpg",
+            "monument": "Persepolis",
+            "tier": "Bronze",
+            "subtitle": "Fars Province, Iran  ·  Apadana at sunset, reliefs cast long shadows",
+            "secs": 4.5,
+        },
+        "caption": (
+            "alexander drank all the wine. then he burned it down.\n\n"
+            "persepolis. fars province, southern iran. the ceremonial capital of the achaemenid persian empire, founded in 515 BC by darius the great and expanded over 150 years by his successors xerxes and artaxerxes. every year at the spring equinox (nowruz), tribute delegations from across the empire climbed the great staircase carrying gifts — depicted in the massive stone relief of the tribute-bearer procession that still lines the eastern staircase of the apadana palace. in 330 BC, alexander the great captured the city after defeating darius III. after months of victory celebration and, according to plutarch and diodorus siculus, a wild banquet in which the athenian courtesan thaïs suggested (or dared) alexander to burn the palace as revenge for xerxes' 480 BC sack of athens 150 years earlier, alexander gave the order. the ceremonial complex went up. archaeologists confirmed the destruction pattern — a single catastrophic fire — from carbonized cedar beams in the treasury.\n\n"
+            "do this: enter through the gate of all nations at 5pm and stay on the apadana terrace until sunset. the low sun rakes across the tribute-bearer reliefs and every carved figure casts a long parallel shadow.\n\n"
+            "save this for the iran trip you keep telling yourself is too complicated.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#Persepolis #Iran #AncientPersia #Achaemenid #gekneequest\n\n"
+            "🎵 PAIR WITH: santur + tar strings + drone. Sparse build through hook + body, drum on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (majestic capital vs drunken bonfire) + 515BC-330BC body + apadana sunset ritual. Bronze tier.",
+    },
+    "trulli-tax-inspector": {
+        "search_queries": [
+            "alberobello trulli",
+            "trulli puglia",
+            "alberobello italy",
+            "puglia trulli houses",
+            "italy stone huts",
+            "alberobello streets",
+        ],
+        "pexels_ids": [17692718, 27706605, 29852974, 33954906, 34613165, 36097834],
+        "n_clips": 6,
+        "clip_secs": 1.8,
+        "hook": "they built the roofs\nwithout mortar.\nfor the tax man.",
+        "body": "italy · alberobello\nconical dry-stone huts\n1,500 trulli still standing",
+        "cta_text": "do this · rione monti walk dawn\nsteep lane between white cones",
+        "hook_end_secs": 3.0,
+        "body_end_secs": 6.0,
+        "image_refs": [],
+        "reveal": {
+            "badge": BADGES / "bronze" / "trulli_bronze.jpg",
+            "monument": "Trulli of Alberobello",
+            "tier": "Bronze",
+            "subtitle": "Alberobello, Puglia  ·  Rione Monti at dawn, steep lane between white cones",
+            "secs": 4.5,
+        },
+        "caption": (
+            "they built the roofs without mortar. for the tax man.\n\n"
+            "the trulli of alberobello. valle d'itria, puglia, southern italy. small circular whitewashed peasant houses topped with conical grey limestone roofs, built dry-stone — every single stone in the roof cone dry-fitted without mortar, held in place only by its shape and weight. the standard historical explanation, disputed by some scholars but repeated by locals: through the 16th and 17th centuries, the kingdom of naples taxed permanent dwellings but not temporary ones. when a royal tax inspector was reported to be approaching, alberobello's peasants pulled a single cornerstone from the roof cone and the entire dome collapsed into a pile of rubble — no house, no tax. once the inspector had left, the roof was rebuilt in a day. the town today holds around 1,500 trulli still standing, most in the rione monti and rione aja piccola quarters, and the technique is a UNESCO world heritage protected craft.\n\n"
+            "do this: walk rione monti at dawn before the tour buses arrive from bari. the steep lane climbs between whitewashed walls with the grey cones on both sides catching first light.\n\n"
+            "save this for the italy trip everyone plans around rome-florence-venice only.\n\n"
+            "geknee.com\napply for iOS early access → geknee.com/waitlist\n\n"
+            "#Trulli #Alberobello #Puglia #ItalyTravel #gekneequest\n\n"
+            "🎵 PAIR WITH: pizzica tarantella + acoustic guitar. Builds through hook + body, tambourine on reveal."
+        ),
+        "based_on": "Taj-template: rule-then-exception (permanent house = tax vs dismantlable dry-stone) + 1,500-trulli body + dawn rione-monti ritual. Bronze tier.",
+    },
 }
 
 W, H = 1080, 1920
@@ -3194,24 +3554,48 @@ def build(concept_id: str):
             pulled.append((p, h))
         except Exception as e:
             print(f"  ! curated {vid} fetch failed: {e}")
-    for q in cfg["search_queries"]:
+    # Multi-source fallback: pexels → pixabay → wikimedia. Each is best-effort;
+    # missing API key or network hiccup just skips to the next. Override per
+    # concept via cfg["sources"]; default order below tries deepest first.
+    sources = cfg.get("sources", ["pexels", "pixabay", "wikimedia"])
+    for src_name in sources:
         if len(pulled) >= cfg["n_clips"]: break
-        print(f"  searching: '{q}'")
-        hits = search_videos(q, per_page=20, orient="portrait")
-        for h in hits:
+        try:
+            if src_name == "pexels":
+                from pexels_fetch import search_videos as sv, download as dl
+                orient = "portrait"
+            elif src_name == "pixabay":
+                from pixabay_fetch import search_videos as sv, download as dl
+                orient = "vertical"
+            elif src_name == "wikimedia":
+                from wikimedia_fetch import search_videos as sv, download as dl
+                orient = "any"
+            else:
+                print(f"  ? unknown source '{src_name}', skipping"); continue
+        except Exception as e:
+            print(f"  ! source '{src_name}' unavailable: {e}"); continue
+        for q in cfg["search_queries"]:
             if len(pulled) >= cfg["n_clips"]: break
-            if h["id"] in seen_ids: continue
-            if str(h["id"]) in used_ids:
-                continue
-            seen_ids.add(h["id"])
+            print(f"  [{src_name}] searching: '{q}'")
             try:
-                p = download(h, tmp, prefix="src_")
-                print(f"    + {h['id']}  dur={h.get('duration','?')}s")
-                pulled.append((p, h))
+                hits = sv(q, per_page=20, orient=orient)
             except Exception as e:
-                print(f"    ! download {h['id']} failed: {e}")
+                print(f"    ! {src_name} search failed: {e}"); break
+            for h in hits:
+                if len(pulled) >= cfg["n_clips"]: break
+                hid = h["id"]
+                skey = f"{src_name}:{hid}"
+                if skey in seen_ids: continue
+                if src_name == "pexels" and str(hid) in used_ids: continue
+                seen_ids.add(skey)
+                try:
+                    p = dl(h, tmp, prefix="src_")
+                    print(f"    + [{src_name}] {hid}  dur={h.get('duration','?')}s")
+                    pulled.append((p, h))
+                except Exception as e:
+                    print(f"    ! download {hid} failed: {e}")
     if not pulled:
-        raise RuntimeError("no clips pulled — Pexels returned nothing usable")
+        raise RuntimeError("no clips pulled — all sources returned nothing usable")
 
     # Normalize each video clip
     normed: list[Path] = []
