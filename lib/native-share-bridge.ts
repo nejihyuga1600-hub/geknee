@@ -15,11 +15,13 @@
 
 import { useEffect } from 'react';
 
+console.log('NSB module-load');
+
 let installed = false;
 
 export function NativeShareBridge() {
   useEffect(() => {
-    console.log('[NativeShareBridge] mount', { installed });
+    console.log('NSB mount installed=' + installed);
     if (installed) return;
     installed = true;
     void install();
@@ -28,25 +30,27 @@ export function NativeShareBridge() {
 }
 
 async function install() {
-  console.log('[NativeShareBridge] install() start');
+  console.log('NSB install-start');
   const [{ Capacitor }, { App }] = await Promise.all([
     import('@capacitor/core'),
     import('@capacitor/app'),
   ]);
-  const platform = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web';
-  console.log('[NativeShareBridge] platform', platform);
-  if (!Capacitor.isNativePlatform()) return;
+  const isNative = Capacitor.isNativePlatform();
+  const platform = isNative ? Capacitor.getPlatform() : 'web';
+  console.log('NSB platform=' + platform + ' isNative=' + isNative);
+  if (!isNative) return;
 
   // Fire an initial sync on mount, then whenever the app returns to
   // foreground. Session-token can rotate on the server so re-reading each
   // time keeps the extension current.
-  await sync();
-  console.log('[NativeShareBridge] sync done');
+  try { await sync(); } catch (e) { console.log('NSB sync-error ' + (e as Error).message); }
+  console.log('NSB sync-done');
   if (platform === 'android') {
-    console.log('[NativeShareBridge] android — poll + subscribe');
-    await pollAndroidShare();
-    await subscribeAndroidShareEvent();
-    console.log('[NativeShareBridge] android — subscribe done');
+    console.log('NSB android-start');
+    try { await pollAndroidShare(); } catch (e) { console.log('NSB poll-error ' + (e as Error).message); }
+    console.log('NSB poll-done');
+    try { await subscribeAndroidShareEvent(); } catch (e) { console.log('NSB subscribe-error ' + (e as Error).message); }
+    console.log('NSB subscribe-done');
   }
 
   await App.addListener('appStateChange', ({ isActive }) => {
