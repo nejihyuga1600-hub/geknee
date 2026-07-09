@@ -19,6 +19,7 @@ let installed = false;
 
 export function NativeShareBridge() {
   useEffect(() => {
+    console.log('[NativeShareBridge] mount', { installed });
     if (installed) return;
     installed = true;
     void install();
@@ -27,20 +28,25 @@ export function NativeShareBridge() {
 }
 
 async function install() {
+  console.log('[NativeShareBridge] install() start');
   const [{ Capacitor }, { App }] = await Promise.all([
     import('@capacitor/core'),
     import('@capacitor/app'),
   ]);
+  const platform = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web';
+  console.log('[NativeShareBridge] platform', platform);
   if (!Capacitor.isNativePlatform()) return;
-  const platform = Capacitor.getPlatform();
 
   // Fire an initial sync on mount, then whenever the app returns to
   // foreground. Session-token can rotate on the server so re-reading each
   // time keeps the extension current.
   await sync();
+  console.log('[NativeShareBridge] sync done');
   if (platform === 'android') {
+    console.log('[NativeShareBridge] android — poll + subscribe');
     await pollAndroidShare();
     await subscribeAndroidShareEvent();
+    console.log('[NativeShareBridge] android — subscribe done');
   }
 
   await App.addListener('appStateChange', ({ isActive }) => {
