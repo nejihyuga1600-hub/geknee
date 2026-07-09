@@ -131,11 +131,26 @@ type AndroidSharePlugin = {
 
 const URL_RE = /https?:\/\/[^\s]+/i;
 
+// Capacitor 5+ requires custom plugins to be exposed via registerPlugin on
+// the JS side — reading `window.Capacitor.Plugins.AndroidShare` returns
+// undefined without it, even when the native plugin is registered on the
+// Bridge. registerPlugin returns a proxy that dispatches to whichever native
+// implementation exists for the current platform. On web / iOS this returns
+// a stub plugin whose calls no-op (or the `noop` fallback we set).
+let androidSharePluginProxy: AndroidSharePlugin | null = null;
+async function loadAndroidSharePlugin(): Promise<AndroidSharePlugin | null> {
+  if (androidSharePluginProxy) return androidSharePluginProxy;
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    androidSharePluginProxy = registerPlugin<AndroidSharePlugin>('AndroidShare');
+    return androidSharePluginProxy;
+  } catch {
+    return null;
+  }
+}
+
 async function pollAndroidShare() {
-  const global = window as unknown as {
-    Capacitor?: { Plugins?: { AndroidShare?: AndroidSharePlugin } };
-  };
-  const plugin = global.Capacitor?.Plugins?.AndroidShare;
+  const plugin = await loadAndroidSharePlugin();
   if (!plugin) return;
 
   let payload: AndroidPendingShare;
@@ -193,10 +208,7 @@ async function pollAndroidShare() {
 }
 
 async function subscribeAndroidShareEvent() {
-  const global = window as unknown as {
-    Capacitor?: { Plugins?: { AndroidShare?: AndroidSharePlugin } };
-  };
-  const plugin = global.Capacitor?.Plugins?.AndroidShare;
+  const plugin = await loadAndroidSharePlugin();
   if (!plugin?.addListener) return;
   try {
     await plugin.addListener('pendingShareAvailable', () => {
