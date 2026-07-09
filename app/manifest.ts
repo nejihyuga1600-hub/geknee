@@ -35,5 +35,29 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'maskable',
       },
     ],
-  };
+    // Web Share Target — registers geknee as a share destination in Chrome
+    // (and any other browser that supports the API) once the PWA is installed.
+    // Users on Android / desktop Chrome can hit Share → geknee → the payload
+    // POSTs to /api/share/receive which stashes it and redirects the user to
+    // the picker page.
+    //
+    // Note: MetadataRoute.Manifest doesn't yet type share_target, so we widen
+    // with `as` on the return.
+    share_target: {
+      action: '/api/share/receive',
+      method: 'POST',
+      enctype: 'multipart/form-data',
+      params: {
+        title: 'title',
+        text: 'text',
+        url: 'url',
+        files: [
+          {
+            name: 'media',
+            accept: ['image/*', 'video/*'],
+          },
+        ],
+      },
+    },
+  } as MetadataRoute.Manifest;
 }

@@ -30,6 +30,24 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="geknee" android:host="auth" />
             </intent-filter>
+
+            <!-- Android share sheet — makes geknee appear when the user taps
+                 Share in Instagram / TikTok / Chrome / Photos / any app.
+                 MainActivity picks up the intent extras in onCreate / onNewIntent
+                 and stashes them for AndroidSharePlugin to expose to the WebView. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
         </activity>
 
         <provider
