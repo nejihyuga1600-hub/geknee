@@ -78,6 +78,8 @@ model User {
   tokenUsage             DailyTokenUsage[]
   pushTokens             PushToken[]
   bookingRequests        BookingRequest[]
+  savedPlaces            SavedPlace[]
+  nearbyNotifications    NearbyNotification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -164,11 +166,77 @@ model TripDraft {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  files    TripFile[]
-  bookings Booking[]
-  expenses TripExpense[]
-  members  TripMember[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files        TripFile[]
+  bookings     Booking[]
+  expenses     TripExpense[]
+  members      TripMember[]
+  savedPlaces  SavedPlace[]
+}
+
+// ── Saved Places ──────────────────────────────────────────────────────────────
+// Structured storage for every venue a user has saved into geknee, whether
+// from a share sheet, in-app search, or itinerary edit. Powers /saves
+// (search + filter across all trips) and /api/geofence/register (returns
+// the closest N places to a lat/lng so the native geofence plugin can arm
+// CoreLocation / GeofencingClient).
+//
+// The trip's markdown itinerary remains the source of truth for day
+// ordering + free-text notes. This table is a *side-index* for structured
+// queries; /api/trips/add-from-share writes to both.
+model SavedPlace {
+  id         String    @id @default(cuid())
+  userId     String
+  tripId     String?   // null = saved without a specific trip yet
+
+  venueName  String
+  city       String?
+  country    String?
+  lat        Float?
+  lon        Float?
+
+  // Google Places `types` array — verbatim from the Places API when we
+  // enriched during the unfurl step. `category` is the user-facing rollup
+  // derived from these on write (mapCategory in lib/places-categories.ts).
+  placeTypes String[]  @default([])
+  category   String    @default("other") // restaurant | cafe | bar | museum | landmark | outdoor | beach | shopping | nightlife | hotel | toddler | other
+
+  thumbnail  String?
+  source     String    // instagram | tiktok | youtube | airbnb | gmaps | vision | url | text | manual
+  sourceUrl  String?
+
+  notes      String?
+
+  savedAt    DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip TripDraft? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  nearbyNotifications NearbyNotification[]
+
+  @@index([userId, savedAt(sort: Desc)])
+  @@index([userId, category])
+  @@index([userId, lat, lon]) // used by /api/geofence/register for bounding-box queries
+  @@index([tripId])
+}
+
+// ── Nearby notifications rate-limit ───────────────────────────────────────────
+// Tracks when we last fired a "you're near X" notification for a user +
+// place pair, so we don't spam if the user is loitering in the area.
+// The geofence trigger endpoint checks this table before allowing a fresh
+// notification (30 min cooldown per place, tunable).
+model NearbyNotification {
+  id         String   @id @default(cuid())
+  userId     String
+  placeId    String
+  notifiedAt DateTime @default(now())
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place SavedPlace @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, notifiedAt(sort: Desc)])
+  @@index([placeId, notifiedAt(sort: Desc)])
 }
 
 // ── Trip membership (multi-user shared trips) ─────────────────────────────────
