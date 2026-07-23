@@ -50,7 +50,9 @@ public class SharedGroupPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("trips required"); return
         }
         // Persist as JSON so the Swift-side JSONDecoder can rebuild the array.
-        if let data = try? JSONSerialization.data(withJSONObject: trips.rawValue) {
+        // JSArray is Array<any JSValue>; JSONSerialization accepts it directly
+        // because every JSValue-conforming type is already a JSON-safe Foundation type.
+        if let data = try? JSONSerialization.data(withJSONObject: trips) {
             defaults()?.set(data, forKey: "tripsCache")
         }
         call.resolve()
