@@ -190,6 +190,6 @@
   </g>
 
   <text x="36" y="510" class="accent" font-size="9" font-weight="700">USAGE</text>
-  <text x="36" y="535" fill="#a8a8c0" font-size="11" font-family="Georgia, serif">{`<IconBadge icon={Walk} tier="gold" size={44} />`}</text>
+  <text x="36" y="535" fill="#a8a8c0" font-size="11" font-family="Georgia, serif">&lt;IconBadge icon={Walk} tier="gold" size={44} /&gt;</text>
   <text x="36" y="556" fill="#6b6b85" font-size="9" letter-spacing="0.10em" text-transform="uppercase">23 glyphs · 7 tiers · ~16-64px range</text>
 </svg>

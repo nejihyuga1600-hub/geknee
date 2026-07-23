@@ -1157,7 +1157,16 @@ export default function UnifiedTripMap({
     );
   }
 
-  const dayChips = Array.from(new Set(pins.map((p) => p.dayNumber))).sort((a, b) => a - b);
+  // Derive chips from the parsed day HEADINGS, not from resolved pins.
+  // If a Day-N section has no `**HH:MM AM**` time-stamped activities
+  // (or all its activities failed to geocode), pin-derived chips
+  // silently dropped it and the user saw "Day 1 → Day 4" with no
+  // explanation. Union with pin day-numbers so any pin that somehow
+  // outlives its section still surfaces.
+  const dayChips = Array.from(new Set([
+    ...daySections.map((entry) => extractDayNumber(entry.s.heading ?? '') as number),
+    ...pins.map((p) => p.dayNumber),
+  ])).sort((a, b) => a - b);
 
   return (
     <div

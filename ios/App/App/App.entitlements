@@ -8,5 +8,16 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!--
+	  Shared container between the main app and the Share Extension
+	  (ios/App/GekneeShare). Main app writes auth cookie + trip list
+	  into this suite so the extension can call geknee's API as the
+	  logged-in user and render an offline-safe trip picker inside
+	  the iOS share sheet.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.geknee.shared</string>
+	</array>
 </dict>
 </plist>

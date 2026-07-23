@@ -93,3 +93,29 @@ android/app/debug/
 # Apple Sign In private key (used by bin/mint-apple-secret.mjs)
 apple/
 *.p8
+
+# Authenticated capture state — contains NextAuth session cookies
+.geknee-webkit-state.json
+.agents/ig-poster/.geknee-webkit-state.json
+.geknee-safari-cookies.json
+.agents/ig-poster/.geknee-safari-cookies.json
+
+# Local agent tooling — not part of the shipped app.
+.agents/mcp-meta/
+.agents/pexels-cache/
+.agents/skills/
+.agents/tiktok-history.json
+.agents/ig-poster/.last-posted.json
+.agents/ig-poster/tiktok-*.json
+ad-assets/instagram/daily/.last-posted.json
+
+# iOS/Android build artifacts and IDE cruft
+ios/App/CapApp-SPM/build/
+ios/App/App.xcodeproj/project.pbxproj.backup
+ios/App/ExportOptions.plist
+android/.idea/
+
+# Python bytecode
+bin/__pycache__/
+__pycache__/
+*.pyc

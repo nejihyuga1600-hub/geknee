@@ -61,7 +61,13 @@ echo "▶ Build number bumped: $CURRENT_BUILD → $NEW_BUILD"
 TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :DEVELOPMENT_TEAM" "$INFO_PLIST" 2>/dev/null || echo "")
 if [ -z "$TEAM_ID" ]; then
   echo "ℹ Reading team id from project.pbxproj…"
-  TEAM_ID=$(grep -m1 "DEVELOPMENT_TEAM = " "$PROJECT/project.pbxproj" | head -n1 | awk -F'"' '{print $2}' || true)
+  # pbxproj stores it as `DEVELOPMENT_TEAM = 42PQV5L5PT;` (no quotes). Older
+  # form used quotes; handle both by extracting whatever follows the '=' up to
+  # the trailing semicolon, then stripping whitespace and any quotes.
+  TEAM_ID=$(grep -m1 "DEVELOPMENT_TEAM = " "$PROJECT/project.pbxproj" \
+    | head -n1 \
+    | sed -E 's/.*DEVELOPMENT_TEAM = "?([^";]+)"?;.*/\1/' \
+    | tr -d '[:space:]' || true)
 fi
 if [ -z "$TEAM_ID" ]; then
   echo "❌ Could not determine Apple Team ID. Open the project in Xcode once, set Signing → Team."
@@ -90,14 +96,29 @@ cat > "$EXPORT_OPTIONS" <<EOF
 EOF
 
 # ──── 5. Archive ────────────────────────────────────────────────────────────
+# `-allowProvisioningUpdates` lets xcodebuild register new bundle IDs (like
+# com.geknee.app.share) and regenerate profiles when entitlements change (App
+# Groups, Sign in with Apple, push). Without it xcodebuild refuses to touch
+# provisioning and archive fails on any capability drift.
+#
+# The `-authenticationKey*` flags let xcodebuild call App Store Connect to
+# perform those updates when a browser session isn't logged in.
 echo "▶ Archiving (this can take 2-4 min)…"
+# Note: we intentionally do NOT pass -authenticationKey* here. The App Store
+# Connect API key `TKDRMU78L2` was minted with role "App Manager", which can
+# upload builds via altool but cannot modify identifiers/profiles. Passing
+# the key makes xcodebuild use ONLY that key for auth and fail. Without the
+# flags xcodebuild falls back to the Keychain-cached Apple ID session (the
+# same one that made Xcode's Signing panel go green). altool still gets the
+# key later for the upload step, where App-Manager scope is sufficient.
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration Release \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE_PATH" \
-  archive | tail -20
+  -allowProvisioningUpdates \
+  archive | tail -30
 
 # ──── 6. Export signed .ipa ─────────────────────────────────────────────────
 echo "▶ Exporting signed .ipa…"
@@ -106,7 +127,8 @@ xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
-  -exportPath "$EXPORT_DIR" | tail -10
+  -exportPath "$EXPORT_DIR" \
+  -allowProvisioningUpdates | tail -10
 
 IPA_PATH=$(find "$EXPORT_DIR" -name "*.ipa" | head -1)
 if [ -z "$IPA_PATH" ]; then

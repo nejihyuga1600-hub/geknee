@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>geknee</string>
+	<string>geknee</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,10 +20,41 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.geknee.app.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>geknee</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>14</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>geknee uses the camera so you can capture photos at landmarks to add to your trip vault.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>geknee uses Always-location so we can quietly notify you when you're near a place you've saved — even when the app isn't open. You control which places have alerts.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>geknee uses Always-location so we can quietly notify you when you're near a place you've saved — even when the app isn't open. You control which places have alerts.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>geknee uses your location to suggest nearby landmarks, plan routes, and verify monument check-ins while the app is open.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>geknee saves shareable trip recap images to your photo library when you tap Save.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>geknee accesses your photo library so you can attach existing photos to trips and monument collections.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -47,28 +78,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>geknee uses the camera so you can capture photos at landmarks to add to your trip vault.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>geknee accesses your photo library so you can attach existing photos to trips and monument collections.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>geknee saves shareable trip recap images to your photo library when you tap Save.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>geknee uses your location to suggest nearby landmarks, plan routes, and verify monument check-ins while the app is open.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>geknee only uses your location while the app is open. This string is required because the Capacitor Geolocation SDK references the always-and-when-in-use API even when the app does not request background location.</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.geknee.app.auth</string>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>geknee</string>
-			</array>
-		</dict>
-	</array>
 </dict>
 </plist>

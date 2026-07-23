@@ -140,6 +140,48 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   cologneCathedral:     new Set(['meshy']),
   persepolis:           new Set(['meshy']),
   trulli:               new Set(['meshy']),
+  // Added 2026-07-20 batch 3 — 20 more Meshy-generated monuments (meshy tier only).
+  mountEverest:         new Set(['meshy']),
+  kaaba:                new Set(['meshy']),
+  charlesBridge:        new Set(['meshy']),
+  grandCanyon:          new Set(['meshy']),
+  kilimanjaro:          new Set(['meshy']),
+  matterhorn:           new Set(['meshy']),
+  halongBay:            new Set(['meshy']),
+  cappadocia:           new Set(['meshy']),
+  chateauChambord:      new Set(['meshy']),
+  tableMountain:        new Set(['meshy']),
+  goldenTemple:         new Set(['meshy']),
+  watArun:              new Set(['meshy']),
+  prambanan:            new Set(['meshy']),
+  ayutthaya:            new Set(['meshy']),
+  konarkTemple:         new Set(['meshy']),
+  devilsTower:          new Set(['meshy']),
+  monumentValley:       new Set(['meshy']),
+  milfordSound:         new Set(['meshy']),
+  palenque:             new Set(['meshy']),
+  lakeBled:             new Set(['meshy']),
+  // Added 2026-07-21 batch 4 — 20 more Meshy-generated monuments (meshy tier only).
+  terracottaArmy:       new Set(['meshy']),
+  sensoji:              new Set(['meshy']),
+  meenakshiTemple:      new Set(['meshy']),
+  branCastle:           new Set(['meshy']),
+  alcatraz:             new Set(['meshy']),
+  treviFountain:        new Set(['meshy']),
+  pantheonRome:         new Set(['meshy']),
+  leaningTower:         new Set(['meshy']),
+  versailles:           new Set(['meshy']),
+  kinkakuji:            new Set(['meshy']),
+  himejiCastle:         new Set(['meshy']),
+  abuSimbel:            new Set(['meshy']),
+  karnakTemple:         new Set(['meshy']),
+  greatSphinx:          new Set(['meshy']),
+  genghisKhanStatue:    new Set(['meshy']),
+  torresDelPaine:       new Set(['meshy']),
+  peritoMoreno:         new Set(['meshy']),
+  halfDome:             new Set(['meshy']),
+  delicateArch:         new Set(['meshy']),
+  giantsCauseway:       new Set(['meshy']),
 };
 
 // Per-monument visual scale override, applied on top of the uniform landmark
@@ -228,6 +270,50 @@ export const MONUMENT_LATLON: Record<string, { lat: number; lon: number }> = {
   cologneCathedral:     { lat: 50.9413, lon: 6.9583 },
   persepolis:           { lat: 29.935, lon: 52.8916 },  // Apadana
   trulli:               { lat: 40.7853, lon: 17.2358 },  // Alberobello, Puglia
+
+  // Added 2026-07-20 batch 3 — 20 new Meshy-generated monuments.
+  mountEverest:      { lat: 27.9881, lon: 86.9250 },   // summit
+  kaaba:             { lat: 21.4225, lon: 39.8262 },   // Masjid al-Haram, Mecca
+  charlesBridge:     { lat: 50.0865, lon: 14.4114 },   // Old Town Bridge Tower
+  grandCanyon:       { lat: 36.0544, lon: -112.1401 }, // South Rim / Mather Point
+  kilimanjaro:       { lat: -3.0674, lon: 37.3556 },   // Uhuru Peak
+  matterhorn:        { lat: 45.9763, lon: 7.6586 },    // summit
+  halongBay:         { lat: 20.9101, lon: 107.1839 },  // main bay
+  cappadocia:        { lat: 38.6431, lon: 34.8289 },   // Göreme fairy chimneys
+  chateauChambord:   { lat: 47.6161, lon: 1.5169 },
+  tableMountain:     { lat: -33.9628, lon: 18.4098 },  // upper cable station
+  goldenTemple:      { lat: 31.6200, lon: 74.8765 },   // Harmandir Sahib
+  watArun:           { lat: 13.7437, lon: 100.4889 },  // central prang
+  prambanan:         { lat: -7.7520, lon: 110.4914 },
+  ayutthaya:         { lat: 14.3532, lon: 100.5680 },  // Wat Mahathat
+  konarkTemple:      { lat: 19.8876, lon: 86.0946 },   // Sun Temple
+  devilsTower:       { lat: 44.5902, lon: -104.7146 },
+  monumentValley:    { lat: 36.9987, lon: -110.0985 }, // The Mittens overlook
+  milfordSound:      { lat: -44.6740, lon: 167.9231 }, // Mitre Peak
+  palenque:          { lat: 17.4844, lon: -92.0451 },  // Temple of Inscriptions
+  lakeBled:          { lat: 46.3625, lon: 14.0895 },   // Bled Island church
+
+  // Added 2026-07-21 batch 4 — 20 more Meshy-generated monuments.
+  terracottaArmy:    { lat: 34.3841, lon: 109.2785 },  // Pit 1
+  sensoji:           { lat: 35.7148, lon: 139.7967 },  // Kaminarimon
+  meenakshiTemple:   { lat: 9.9195, lon: 78.1194 },    // Madurai
+  branCastle:        { lat: 45.5149, lon: 25.3672 },
+  alcatraz:          { lat: 37.8267, lon: -122.4230 }, // main cellhouse
+  treviFountain:     { lat: 41.9009, lon: 12.4833 },
+  pantheonRome:      { lat: 41.8986, lon: 12.4769 },
+  leaningTower:      { lat: 43.7229, lon: 10.3966 },   // Piazza dei Miracoli
+  versailles:        { lat: 48.8049, lon: 2.1204 },    // Château
+  kinkakuji:         { lat: 35.0394, lon: 135.7292 },  // Golden Pavilion
+  himejiCastle:      { lat: 34.8394, lon: 134.6939 },  // main keep
+  abuSimbel:         { lat: 22.3372, lon: 31.6258 },   // Great Temple
+  karnakTemple:      { lat: 25.7188, lon: 32.6573 },   // Hypostyle Hall
+  greatSphinx:       { lat: 29.9753, lon: 31.1376 },
+  genghisKhanStatue: { lat: 47.8083, lon: 107.5308 },  // Tsonjin Boldog
+  torresDelPaine:    { lat: -50.9423, lon: -73.4068 }, // Base Torres
+  peritoMoreno:      { lat: -50.4967, lon: -73.1377 }, // glacier terminus
+  halfDome:          { lat: 37.7459, lon: -119.5332 }, // Yosemite summit
+  delicateArch:      { lat: 38.7436, lon: -109.4993 }, // Arches NP
+  giantsCauseway:    { lat: 55.2408, lon: -6.5117 },   // County Antrim
   // animals (no globe-position; intentionally omitted): blueWhale, bear, …
 };
 
