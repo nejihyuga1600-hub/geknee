@@ -5,6 +5,7 @@ import StepPillNav from './components/StepPillNav';
 import LandingTour from './components/landing/LandingTour';
 import WaitlistCta from './components/landing/WaitlistCta';
 import Link from 'next/link';
+import { HideOnNative } from '@/lib/useIsNative';
 
 // ─── Landing · Passport-zine concept ─────────────────────────────────────────
 // Replaces the previous dark-gradient hero with the design handoff's
@@ -94,7 +95,7 @@ export default async function Home() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
           <Link href="/leaderboard" style={navLink}>Leaderboard</Link>
-          <Link href="/pricing"     style={navLink}>Pricing</Link>
+          <HideOnNative><Link href="/pricing"     style={navLink}>Pricing</Link></HideOnNative>
           <Link href="/plan" style={{
             padding: '10px 16px', background: INK, color: PAPER,
             fontFamily: 'inherit', fontSize: 13, fontWeight: 700, letterSpacing: '0.04em',
@@ -550,7 +551,8 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── Pro band ──────────────────────────────────────────────────────── */}
+      {/* ── Pro band (hidden on Capacitor — App Store 3.1.1) ─────────────── */}
+      <HideOnNative>
       <section style={{
         maxWidth: 1280, margin: '0 auto', padding: '20px 32px 80px',
         position: 'relative', zIndex: 4,
@@ -603,6 +605,7 @@ export default async function Home() {
           </div>
         </div>
       </section>
+      </HideOnNative>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer style={{
@@ -624,7 +627,7 @@ export default async function Home() {
             color: '#3a3a30',
           }}>
             <Link href="/leaderboard" style={navLink}>Leaderboard</Link>
-            <Link href="/pricing"     style={navLink}>Pricing</Link>
+            <HideOnNative><Link href="/pricing"     style={navLink}>Pricing</Link></HideOnNative>
             <Link href="/plan"        style={navLink}>Open globe</Link>
           </div>
           <div style={{

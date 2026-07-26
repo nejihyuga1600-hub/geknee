@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CheckoutButton from '../pricing/CheckoutButton';
+import { useIsNative } from '@/lib/useIsNative';
 import createGlobe, { type COBEOptions } from 'cobe';
 import { track, useScreen } from '@/lib/analytics';
 
@@ -899,12 +900,78 @@ function Paywall({
   update: (p: Partial<Data>) => void;
   onContinueFree: () => void;
 }) {
+  const isNative = useIsNative();
   const topStyle = data.styles[0] ? STYLE_NAMES[data.styles[0]] : 'Culture';
   const destCount = data.dests.length || 3;
   const paceLabel = data.pace ? `${PACE_NAMES[data.pace] ?? 'Balanced'} pace` : 'Balanced pace';
   const pills = [`${topStyle} quests`, `${destCount} dream destinations`, paceLabel, '7 rarity tiers'];
 
   const yearlySelected = data.plan === 'yearly';
+
+  // App Store 3.1.1: no non-IAP subscription upsell in the native app.
+  // Replace the paywall slide with a free-plan confirmation on Capacitor.
+  if (isNative) {
+    return (
+      <Slide active={active}>
+        <div style={{ marginTop: 6 }}>
+          <Eyebrow>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: T.success, boxShadow: `0 0 8px ${T.success}`,
+            }} />
+            you&rsquo;re all set
+          </Eyebrow>
+          <h1 style={{
+            fontFamily: T.serif, fontWeight: 300,
+            fontSize: 33, lineHeight: 1, letterSpacing: '-0.025em',
+            margin: '0 0 16px', color: T.ink,
+          }}>
+            Welcome to geknee, <Em>{data.name || 'wanderer'}</Em>.
+          </h1>
+          <div style={{ margin: '14px 0 18px' }}>
+            {pills.map((p) => (
+              <span
+                key={p}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 11px', borderRadius: 999,
+                  margin: '0 6px 6px 0',
+                  background: 'rgba(167,139,250,0.10)',
+                  border: `1px solid ${T.border}`,
+                  fontSize: 11, color: T.accent, fontWeight: 500,
+                }}
+              >
+                ✦ {p}
+              </span>
+            ))}
+          </div>
+          <p style={{
+            fontFamily: T.ui, fontSize: 15, lineHeight: 1.6,
+            color: T.inkDim, margin: '18px 0 0',
+          }}>
+            Spin the globe, save landmarks, and collect monuments as you travel.
+            Every planning feature is yours on the free plan.
+          </p>
+        </div>
+        <FooterArea>
+          <button
+            type="button"
+            className="gk-btn"
+            onClick={onContinueFree}
+            style={{
+              cursor: 'pointer', fontFamily: T.ui,
+              fontSize: 15, fontWeight: 600, letterSpacing: '0.01em',
+              padding: 16, borderRadius: 14, width: '100%',
+              border: 'none', background: T.accent, color: T.bg,
+              boxShadow: '0 10px 30px rgba(167,139,250,0.3)',
+            }}
+          >
+            Open the globe →
+          </button>
+        </FooterArea>
+      </Slide>
+    );
+  }
 
   return (
     <Slide active={active}>

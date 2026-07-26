@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import CheckoutButton from './CheckoutButton';
 import type { PriceDisplay } from '@/lib/stripe-prices';
+import { useIsNative } from '@/lib/useIsNative';
 
 type Interval = 'monthly' | 'yearly';
 
@@ -30,6 +31,34 @@ const T = {
 
 export default function TierGrid({ stripeMonthly, stripeYearly, stripeSavingsPct }: Props) {
   const [interval, setIntervalState] = useState<Interval>('yearly');
+  const isNative = useIsNative();
+
+  if (isNative) {
+    return (
+      <section style={{
+        maxWidth: 720, margin: '48px auto', padding: '48px 32px',
+        textAlign: 'center', color: T.ink, fontFamily: T.ui,
+        border: `1px solid ${T.border}`, borderRadius: 16,
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <h2 style={{ fontFamily: T.serif, fontSize: 28, margin: '0 0 12px' }}>
+          You&rsquo;re all set on the free plan
+        </h2>
+        <p style={{ fontSize: 16, lineHeight: 1.6, color: T.inkDim, margin: '0 0 20px' }}>
+          geknee for iOS ships free-tier only in this release. Every planning
+          feature, the globe, and monument collecting are yours — no subscription
+          needed.
+        </p>
+        <Link href="/plan/location" style={{
+          display: 'inline-block', padding: '12px 24px',
+          background: T.accent, color: '#05050f', borderRadius: 10,
+          fontSize: 14, fontWeight: 700, textDecoration: 'none',
+        }}>
+          Back to the globe
+        </Link>
+      </section>
+    );
+  }
 
   // Display prices — prefer live Stripe, fall back to copy in the design.
   const monthlyPrice = stripeMonthly?.amount ?? '$4.99';

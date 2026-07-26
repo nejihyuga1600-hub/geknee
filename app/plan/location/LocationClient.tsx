@@ -3837,20 +3837,23 @@ export default function LocationPage({ chromeless = false }: { chromeless?: bool
             </button>
 
             {/* Go Pro button — opens the contextual pricing modal. /pricing exists
-                as a standalone SEO/shareable URL but in-app goes through the modal. */}
-            <button
-              onClick={() => { track('upgrade_click', { surface: 'header' }); setUpgradeOpen(true); }}
-              style={{
-                background: "linear-gradient(135deg,#a78bfa,#7dd3fc)",
-                border: "none", borderRadius: 10,
-                color: "#fff", fontSize: 12, fontWeight: 700,
-                padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6,
-                boxShadow: "0 2px 12px rgba(167, 139, 250,0.4)",
-              }}
-            >
-              {String.fromCodePoint(0x2728)} {isMobile ? "Pro" : "Go Pro"}
-            </button>
+                as a standalone SEO/shareable URL but in-app goes through the modal.
+                Hidden on Capacitor (App Store 3.1.1 — no non-IAP upsell). */}
+            {!isCapacitor && (
+              <button
+                onClick={() => { track('upgrade_click', { surface: 'header' }); setUpgradeOpen(true); }}
+                style={{
+                  background: "linear-gradient(135deg,#a78bfa,#7dd3fc)",
+                  border: "none", borderRadius: 10,
+                  color: "#fff", fontSize: 12, fontWeight: 700,
+                  padding: isMobile ? "7px 10px" : "8px 14px", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 6,
+                  boxShadow: "0 2px 12px rgba(167, 139, 250,0.4)",
+                }}
+              >
+                {String.fromCodePoint(0x2728)} {isMobile ? "Pro" : "Go Pro"}
+              </button>
+            )}
 
             {/* Trips & Friends button */}
             <button

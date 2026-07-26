@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { track } from '@/lib/analytics';
+import { useIsNative } from '@/lib/useIsNative';
 
 type Interval = 'monthly' | 'yearly';
 
@@ -15,6 +16,8 @@ export default function CheckoutButton({
 }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const isNative = useIsNative();
+  if (isNative) return null;
 
   async function startCheckout() {
     setLoading(true);

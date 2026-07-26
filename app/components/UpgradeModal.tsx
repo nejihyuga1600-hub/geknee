@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useIsNative } from '@/lib/useIsNative';
 
 interface Props {
   open: boolean;
@@ -22,8 +23,12 @@ export default function UpgradeModal({ open, onClose, feature, reason, generatio
   const [interval, setInterval] = useState<'monthly' | 'yearly'>('yearly');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const isNative = useIsNative();
 
   if (!open) return null;
+  // App Store Guideline 3.1.1: no non-IAP subscription upsell inside the
+  // native app. Hide entirely on Capacitor until StoreKit is wired.
+  if (isNative) return null;
 
   async function startCheckout() {
     setLoading(true);

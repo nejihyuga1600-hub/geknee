@@ -4,6 +4,7 @@ import InstallEntry from "./InstallEntry";
 import { currentIssueYear, isWrapUpWindow, nextRolloverDate } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
 import { CHAT_SUGGESTIONS_ENABLED } from "@/lib/suggestions/featureFlag";
+import { useIsNative } from "@/lib/useIsNative";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -222,6 +223,7 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose, currentTripId, isCurrentUserTripOwner, currentTripVoteMode, showQuickActions, onOpenShop, onOpenUpgrade, sessionUser, onOpenAccount }: Props) {
+  const isNativeApp = useIsNative();
   const [s, setS] = useState<AppSettings>(DEFAULTS);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
@@ -379,7 +381,8 @@ export default function SettingsPanel({ open, onClose, currentTripId, isCurrentU
                   </button>
                 </Row>
               )}
-              {onOpenUpgrade && (
+              {/* Upgrade row hidden on Capacitor (App Store 3.1.1). */}
+              {onOpenUpgrade && !isNativeApp && (
                 <RowLast label="Go Pro" sub="Unlock every skin, tier &amp; perk">
                   <button
                     onClick={() => { onClose(); onOpenUpgrade(); }}
