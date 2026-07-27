@@ -418,11 +418,13 @@ export default function CapacitorGlobe() {
       const loadAllMonuments = async () => {
         markMountPhase("capacitor-globe:monuments-fetch-skins");
         let activeSkins: Record<string, string> = {};
+        let collected = new Set<string>();
         try {
           const res = await fetch("/api/monuments", { credentials: "include" });
           if (res.ok) {
-            const data = await res.json() as { activeSkins?: Record<string, string> };
+            const data = await res.json() as { activeSkins?: Record<string, string>; collected?: string[] };
             if (data.activeSkins) activeSkins = data.activeSkins;
+            if (Array.isArray(data.collected)) collected = new Set(data.collected);
           }
         } catch {
           // Not authed or offline — fall through with empty map.
@@ -447,13 +449,26 @@ export default function CapacitorGlobe() {
 
         markMountPhase("capacitor-globe:monuments-glb-load");
         // Cap monument count on Capacitor. Even fully serialized loads
-        // add up — 26 × ~300ms per parse blows the 10s watchdog. 8 is
-        // enough to sell the "collect 3D monuments" pitch on the initial
-        // view; lazy-load the rest on user interaction (follow-up).
-        const NATIVE_MONUMENT_CAP = 8;
+        // add up — 26 × ~300ms per parse blows the 10s watchdog. 12 is
+        // enough headroom to always include a full collection while
+        // staying under the ~4s worst-case parse budget.
+        //
+        // Priority order: user's collected monuments first (they earned
+        // them, they must see them), then fill remaining slots with
+        // remaining monuments in declaration order. Skiplist filtered
+        // out before the sort so oversized files never make it either
+        // list.
+        const NATIVE_MONUMENT_CAP = 12;
+        const allEntries = Object.entries(MONUMENT_LATLON)
+          .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
+        const orderedEntries = isNative
+          ? [
+              ...allEntries.filter(([mk]) => collected.has(mk)),
+              ...allEntries.filter(([mk]) => !collected.has(mk)),
+            ]
+          : allEntries;
         let loadedThisSession = 0;
-        for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
-          if (isNative && OVERSIZED_SKIPLIST.has(mk)) continue;
+        for (const [mk, latlon] of orderedEntries) {
           if (isNative && loadedThisSession >= NATIVE_MONUMENT_CAP) break;
           loadedThisSession++;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
