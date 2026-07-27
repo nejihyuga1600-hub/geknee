@@ -396,11 +396,36 @@ export default function CapacitorGlobe() {
       // Cluster badge container — HTML DOM, sibling of overlayCanvas.
       // Positioned absolutely; one child .geknee-cluster-badge per
       // active cluster this frame. Populated by updatePositions().
+      // Cluster badge layer: pre-created pool of hidden DIVs, reused
+      // frame-to-frame. Per-frame creation/removal was causing WebKit
+      // layout thrash during spin — a visible "refresh" — and made the
+      // badges flicker in and out. z-index bumped to 100 to sit above
+      // every Mapbox internal layer without ambiguity.
       const clusterBadgeLayer = document.createElement("div");
       clusterBadgeLayer.className = "geknee-cluster-badges";
       clusterBadgeLayer.style.cssText =
-        "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3;";
+        "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;";
       mapContainer.appendChild(clusterBadgeLayer);
+
+      const BADGE_POOL_SIZE = 30;
+      const badgePool: HTMLDivElement[] = [];
+      for (let i = 0; i < BADGE_POOL_SIZE; i++) {
+        const el = document.createElement("div");
+        el.style.cssText = [
+          "position:absolute", "top:0", "left:0",
+          "min-width:22px", "height:22px",
+          "padding:0 7px", "border-radius:11px",
+          "background:linear-gradient(135deg,#a78bfa,#7dd3fc)",
+          "color:#0a0a1f", "font-size:12px", "font-weight:800",
+          "font-family:var(--font-ui),system-ui,sans-serif",
+          "display:none", // shown only when assigned
+          "align-items:center", "justify-content:center",
+          "box-shadow:0 2px 8px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.55)",
+          "pointer-events:none", "will-change:transform",
+        ].join(";");
+        clusterBadgeLayer.appendChild(el);
+        badgePool.push(el);
+      }
 
       (map as unknown as { __geknee_detachOverlay?: () => void }).__geknee_detachOverlay = () => {
         try { ro.disconnect(); } catch {}
@@ -762,8 +787,13 @@ export default function CapacitorGlobe() {
           // existing cover. Greedy but stable per frame — good enough
           // at globe scale.
           const sorted = visible.slice().sort((a, b) => b.priority - a.priority);
+          // Stable sort: priority DESC, then mk lexicographic so ties
+          // resolve identically frame-to-frame. Without this, spin was
+          // reshuffling which monument became the cover on each frame,
+          // causing visible "reset" as the cover swapped mid-motion.
+          sorted.sort((a, b) => b.priority - a.priority || a.mk.localeCompare(b.mk));
           const covers: typeof sorted = [];
-          const memberCounts = new Map<string, number>(); // cover.mk → total members
+          const memberCounts = new Map<string, number>();
           for (const e of sorted) {
             let joined = false;
             for (const cov of covers) {
@@ -779,49 +809,29 @@ export default function CapacitorGlobe() {
             if (!joined) { covers.push(e); memberCounts.set(e.mk, 1); }
           }
           for (const [mk, total] of memberCounts) {
-            if (total > 1) clusterInfo.set(mk, total - 1); // "+N" = hidden count
+            if (total > 1) clusterInfo.set(mk, total - 1);
           }
         }
-        // ─── Badge DOM sync ───────────────────────────────────────────
-        // Re-use existing badges where possible; create/remove diff.
-        const wantedBadges = new Map<string, { x: number; y: number; n: number }>();
+        // ─── Badge pool sync (no node churn) ─────────────────────────
+        // Update at most BADGE_POOL_SIZE badges from the pool: for each
+        // cluster, grab the next pool badge, set text + transform, and
+        // make it visible. All unused badges are hidden. No DOM adds/
+        // removes happen per frame — everything is a transform + text
+        // update, which the compositor handles without layout thrash.
+        let poolIdx = 0;
         for (const [mk, hidden] of clusterInfo) {
+          if (poolIdx >= badgePool.length) break;
           const cov = entries.find((e) => e.mk === mk);
           if (!cov) continue;
-          wantedBadges.set(mk, {
-            x: cov.wrapper.position.x,
-            y: h - cov.wrapper.position.y, // Three Y → CSS Y
-            n: hidden + 1, // include cover in the count so "+3" means 3 total
-          });
+          const el = badgePool[poolIdx++];
+          const x = cov.wrapper.position.x + 22;
+          const y = (h - cov.wrapper.position.y) - 32; // Three Y → CSS Y
+          el.style.transform = `translate(${x}px, ${y}px)`;
+          el.textContent = String(hidden + 1); // total incl cover
+          el.style.display = "flex";
         }
-        const existing = clusterBadgeLayer.querySelectorAll<HTMLDivElement>(":scope > [data-mk]");
-        const seen = new Set<string>();
-        for (const el of Array.from(existing)) {
-          const mk = el.dataset.mk!;
-          const want = wantedBadges.get(mk);
-          if (!want) { el.remove(); continue; }
-          seen.add(mk);
-          el.style.transform = `translate(${want.x + 22}px, ${want.y - 32}px)`;
-          el.textContent = String(want.n);
-        }
-        for (const [mk, want] of wantedBadges) {
-          if (seen.has(mk)) continue;
-          const el = document.createElement("div");
-          el.dataset.mk = mk;
-          el.textContent = String(want.n);
-          el.style.cssText = [
-            "position:absolute", "top:0", "left:0",
-            "min-width:20px", "height:20px",
-            "padding:0 6px", "border-radius:10px",
-            "background:linear-gradient(135deg,#a78bfa,#7dd3fc)",
-            "color:#0a0a1f", "font-size:11px", "font-weight:800",
-            "font-family:var(--font-ui),system-ui,sans-serif",
-            "display:flex", "align-items:center", "justify-content:center",
-            "box-shadow:0 2px 8px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.5)",
-            "pointer-events:none",
-            `transform:translate(${want.x + 22}px, ${want.y - 32}px)`,
-          ].join(";");
-          clusterBadgeLayer.appendChild(el);
+        for (let i = poolIdx; i < badgePool.length; i++) {
+          badgePool[i].style.display = "none";
         }
         // Continuous Y-spin on each loaded model so the 3D form reads
         // unmistakably as 3D. Time-delta based so the spin rate is
