@@ -82,9 +82,22 @@ export default function CapacitorGlobe() {
     // silent style/tile failures show as "black globe with markers", which
     // is identical to a successful mount visually. Route everything to
     // Sentry-equivalent logging and a debug overlay element.
+    // Same HUD gate as reportDiag() — hidden on Capacitor/iOS unless
+    // ?debug=1 is set. Errors still route to Sentry via captureError().
+    const HUD_ENABLED_ERR = (() => {
+      try {
+        if (typeof window === "undefined") return false;
+        const isNative = !!(window as unknown as {
+          Capacitor?: { isNativePlatform?: () => boolean };
+        }).Capacitor?.isNativePlatform?.();
+        const forceDebug = new URLSearchParams(window.location.search).get("debug") === "1";
+        return forceDebug || !isNative;
+      } catch { return false; }
+    })();
     map.on("error", (e) => {
       const msg = (e?.error?.message || String(e?.error) || "unknown").slice(0, 200);
       console.warn("[CapacitorGlobe mapbox error]", msg, e);
+      if (!HUD_ENABLED_ERR) return;
       try {
         const el = document.getElementById("mapbox-err-overlay");
         if (el) {
@@ -218,15 +231,26 @@ export default function CapacitorGlobe() {
       // Diagnostic — surfaces custom layer state in the error overlay so
       // we can see what's actually happening on iOS without a console.
       const diag = { added: false, loaded: 0, errors: 0, lastErr: "", renders: 0 };
+      // Debug HUD gate: show only in web dev / non-native contexts (or when
+      // ?debug=1 is set). On Capacitor (iOS app), errors are routed to
+      // Sentry — the visible banner would leak into App Store screenshots.
+      const HUD_ENABLED = (() => {
+        try {
+          if (typeof window === "undefined") return false;
+          const isNative = !!(window as unknown as {
+            Capacitor?: { isNativePlatform?: () => boolean };
+          }).Capacitor?.isNativePlatform?.();
+          const forceDebug = new URLSearchParams(window.location.search).get("debug") === "1";
+          return forceDebug || !isNative;
+        } catch { return false; }
+      })();
+
       const reportDiag = () => {
         try {
           const el = document.getElementById("mapbox-err-overlay");
           if (!el) return;
-          // Hide the debug HUD unless something's actually wrong. Healthy
-          // renders (added=true, errors=0) don't need a banner — that was
-          // leaking into App Store screenshots.
           const hasIssue = diag.errors > 0 || !!diag.lastErr;
-          if (!hasIssue) {
+          if (!HUD_ENABLED || !hasIssue) {
             el.style.display = "none";
             el.textContent = "";
             return;
