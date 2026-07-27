@@ -59,6 +59,19 @@ export default function CapacitorGlobe() {
       projection: "globe",
       center: initialView.center,
       zoom: initialView.zoom,
+      // Hard zoom cap — protects the WKWebView from Jetsam OOM. Reported
+      // symptom: "globe refreshes when I zoom into a country". Root cause
+      // was flyTo(zoom:14) on monument tap; the tile pyramid explosion at
+      // that zoom combined with the Three.js overlay canvas + monument
+      // GLBs killed the WebView content process on iOS, and Capacitor
+      // auto-reloaded to the initial URL. 8 is enough to see a country's
+      // shape / major landforms; deeper zoom is what the trip-map view
+      // (Google Maps) is for.
+      maxZoom: 8,
+      // Cap Mapbox's in-memory tile cache. Default is unbounded up to
+      // ~500MB on desktop; iOS WKWebView has ~150MB before Jetsam kills.
+      // 60 tiles ≈ 30MB, plenty for cold-globe browsing.
+      maxTileCacheSize: 60,
       // No interaction throttling — Mapbox handles touch on iOS natively.
       pitchWithRotate: true,
       // Faster mount on iOS: don't compute initial fog/atmosphere until
@@ -585,11 +598,25 @@ export default function CapacitorGlobe() {
       };
       window.addEventListener("geknee:globe-pause", onPause);
       window.addEventListener("geknee:globe-resume", onResume);
+      // Auto-pause the Three.js overlay when the map zooms past 5. At
+      // that point every monument sprite is either off-screen or scaled
+      // absurdly large; keeping the WebGL scene rendering just consumes
+      // GPU budget that the Mapbox tile compositor needs. Combined with
+      // the maxZoom:8 cap this keeps iOS Jetsam from ever escalating to
+      // a WebView respawn.
+      const ZOOM_AUTOPAUSE = 5;
+      const onZoomEnd = () => {
+        const z = map.getZoom();
+        if (z >= ZOOM_AUTOPAUSE && !paused) onPause();
+        else if (z < ZOOM_AUTOPAUSE && paused) onResume();
+      };
+      map.on("zoomend", onZoomEnd);
       // Store on the map for cleanup in the useEffect return below.
       (map as unknown as { __geknee_rafId?: number; __geknee_pauseHandlers?: () => void }).__geknee_rafId = rafId;
       (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers = () => {
         window.removeEventListener("geknee:globe-pause", onPause);
         window.removeEventListener("geknee:globe-resume", onResume);
+        map.off("zoomend", onZoomEnd);
       };
       diag.added = true;
       reportDiag();
@@ -625,9 +652,15 @@ export default function CapacitorGlobe() {
           // upper half above the MonumentShop bottom-sheet. MonumentShop
           // also re-issues flyGlobeTo on initialMk for belt-and-braces.
           const paddingBottom = Math.round(window.innerHeight * 0.5);
+          // Tap-zoom lowered 14 → 5.5. Zoom 14 pushed the tile pyramid past
+          // the WKWebView memory ceiling and triggered a WebView respawn on
+          // iOS (which read to users as "the globe just refreshed"). 5.5
+          // centres the monument at country scale, still comfortably framed
+          // above the bottom-sheet shop. Deep zoom into a city/landmark is
+          // what CityMapView is for once the shop opens.
           map.flyTo({
             center: [lon, lat],
-            zoom: 14,
+            zoom: 5.5,
             duration: 1400,
             essential: true,
             padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
