@@ -87,7 +87,10 @@ export default function CapacitorGlobe() {
       console.warn("[CapacitorGlobe mapbox error]", msg, e);
       try {
         const el = document.getElementById("mapbox-err-overlay");
-        if (el) el.textContent = `mapbox: ${msg}`;
+        if (el) {
+          el.style.display = "block";
+          el.textContent = `mapbox: ${msg}`;
+        }
       } catch {}
     });
 
@@ -219,8 +222,18 @@ export default function CapacitorGlobe() {
         try {
           const el = document.getElementById("mapbox-err-overlay");
           if (!el) return;
+          // Hide the debug HUD unless something's actually wrong. Healthy
+          // renders (added=true, errors=0) don't need a banner — that was
+          // leaking into App Store screenshots.
+          const hasIssue = diag.errors > 0 || !!diag.lastErr;
+          if (!hasIssue) {
+            el.style.display = "none";
+            el.textContent = "";
+            return;
+          }
+          el.style.display = "block";
           el.textContent = `3d-layer: added=${diag.added} loaded=${diag.loaded}/31 errs=${diag.errors} renders=${diag.renders}${diag.lastErr ? " | " + diag.lastErr : ""}`;
-          el.style.background = diag.errors > 0 ? "rgba(220,50,50,0.92)" : "rgba(40,140,60,0.85)";
+          el.style.background = "rgba(220,50,50,0.92)";
         } catch {}
       };
       reportDiag();
@@ -695,6 +708,7 @@ export default function CapacitorGlobe() {
           fontFamily: "ui-monospace, monospace",
           pointerEvents: "none",
           opacity: 0.95,
+          display: "none",
         }}
       />
     </>
