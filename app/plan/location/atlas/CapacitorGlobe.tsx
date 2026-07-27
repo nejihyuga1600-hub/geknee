@@ -408,7 +408,25 @@ export default function CapacitorGlobe() {
           // Not authed or offline — fall through with empty map.
         }
 
+        // On Capacitor (iOS WKWebView) skip the 5 oversized monument GLBs.
+        // Each is >10MB; loading them at pageload creates blob URLs that
+        // trip Sentry's "Large HTTP payload" heuristic and drives peak
+        // WebView memory ~55MB higher, contributing to Jetsam OOM crashes
+        // during zoom-in. Web unchanged. Follow-up: compress these five
+        // via glTF-transform then remove from the skiplist.
+        const OVERSIZED_SKIPLIST = new Set([
+          "montSaintMichel",
+          "cologneCathedral",
+          "stBasils",
+          "borobudur",
+          "persepolis",
+        ]);
+        const isNative = typeof window !== "undefined" && !!(window as unknown as {
+          Capacitor?: { isNativePlatform?: () => boolean };
+        }).Capacitor?.isNativePlatform?.();
+
         for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
+          if (isNative && OVERSIZED_SKIPLIST.has(mk)) continue;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
           // Try the user's equipped skin first; on any failure (404 because
