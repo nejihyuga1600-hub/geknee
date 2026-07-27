@@ -393,11 +393,21 @@ export default function CapacitorGlobe() {
       // appended. Without this, every effect re-run (auth flip) leaves a
       // dead WebGL context + canvas behind in the map container, visible
       // as duplicated/stacked monuments on subsequent mounts.
+      // Cluster badge container — HTML DOM, sibling of overlayCanvas.
+      // Positioned absolutely; one child .geknee-cluster-badge per
+      // active cluster this frame. Populated by updatePositions().
+      const clusterBadgeLayer = document.createElement("div");
+      clusterBadgeLayer.className = "geknee-cluster-badges";
+      clusterBadgeLayer.style.cssText =
+        "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3;";
+      mapContainer.appendChild(clusterBadgeLayer);
+
       (map as unknown as { __geknee_detachOverlay?: () => void }).__geknee_detachOverlay = () => {
         try { ro.disconnect(); } catch {}
         try { pmrem.dispose(); } catch {}
         try { overlayRenderer.dispose(); } catch {}
         try { mapContainer.removeChild(overlayCanvas); } catch {}
+        try { mapContainer.removeChild(clusterBadgeLayer); } catch {}
       };
 
       // Models: load all GLBs, attach each to a wrapper Object3D positioned
@@ -733,6 +743,85 @@ export default function CapacitorGlobe() {
               e.wrapper.scale.set(s, s, s);
             }
           }
+        }
+        // ─── Clustering (Mapbox-style + Snap Map cover icon) ─────────
+        // At low zoom, overlapping monuments collapse into groups. The
+        // "cover" (highest priority) monument stays visible; the others
+        // are hidden. A +N badge sits on the cover to signal density.
+        // Tapping any monument flies to zoom 5.5 (existing tap handler)
+        // which is past CLUSTER_ZOOM_THRESHOLD, so the cluster dissolves.
+        const CLUSTER_ZOOM_THRESHOLD = 4.0;
+        const CLUSTER_RADIUS_PX = 90;
+        const currentZoom = map.getZoom();
+        const visible = entries.filter((e) => e.loaded && e.wrapper.visible);
+        const clusterInfo = new Map<string, number>(); // cover mk → hidden count
+        if (currentZoom < CLUSTER_ZOOM_THRESHOLD && visible.length > 1) {
+          // Assign each visible monument to a cluster by scanning in
+          // priority-desc order (rarest first becomes the seed). Any
+          // later monument within CLUSTER_RADIUS_PX joins the nearest
+          // existing cover. Greedy but stable per frame — good enough
+          // at globe scale.
+          const sorted = visible.slice().sort((a, b) => b.priority - a.priority);
+          const covers: typeof sorted = [];
+          const memberCounts = new Map<string, number>(); // cover.mk → total members
+          for (const e of sorted) {
+            let joined = false;
+            for (const cov of covers) {
+              const dx = e.wrapper.position.x - cov.wrapper.position.x;
+              const dy = e.wrapper.position.y - cov.wrapper.position.y;
+              if (Math.hypot(dx, dy) < CLUSTER_RADIUS_PX) {
+                if (e !== cov) e.wrapper.visible = false;
+                memberCounts.set(cov.mk, (memberCounts.get(cov.mk) ?? 1) + 1);
+                joined = true;
+                break;
+              }
+            }
+            if (!joined) { covers.push(e); memberCounts.set(e.mk, 1); }
+          }
+          for (const [mk, total] of memberCounts) {
+            if (total > 1) clusterInfo.set(mk, total - 1); // "+N" = hidden count
+          }
+        }
+        // ─── Badge DOM sync ───────────────────────────────────────────
+        // Re-use existing badges where possible; create/remove diff.
+        const wantedBadges = new Map<string, { x: number; y: number; n: number }>();
+        for (const [mk, hidden] of clusterInfo) {
+          const cov = entries.find((e) => e.mk === mk);
+          if (!cov) continue;
+          wantedBadges.set(mk, {
+            x: cov.wrapper.position.x,
+            y: h - cov.wrapper.position.y, // Three Y → CSS Y
+            n: hidden + 1, // include cover in the count so "+3" means 3 total
+          });
+        }
+        const existing = clusterBadgeLayer.querySelectorAll<HTMLDivElement>(":scope > [data-mk]");
+        const seen = new Set<string>();
+        for (const el of Array.from(existing)) {
+          const mk = el.dataset.mk!;
+          const want = wantedBadges.get(mk);
+          if (!want) { el.remove(); continue; }
+          seen.add(mk);
+          el.style.transform = `translate(${want.x + 22}px, ${want.y - 32}px)`;
+          el.textContent = String(want.n);
+        }
+        for (const [mk, want] of wantedBadges) {
+          if (seen.has(mk)) continue;
+          const el = document.createElement("div");
+          el.dataset.mk = mk;
+          el.textContent = String(want.n);
+          el.style.cssText = [
+            "position:absolute", "top:0", "left:0",
+            "min-width:20px", "height:20px",
+            "padding:0 6px", "border-radius:10px",
+            "background:linear-gradient(135deg,#a78bfa,#7dd3fc)",
+            "color:#0a0a1f", "font-size:11px", "font-weight:800",
+            "font-family:var(--font-ui),system-ui,sans-serif",
+            "display:flex", "align-items:center", "justify-content:center",
+            "box-shadow:0 2px 8px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.5)",
+            "pointer-events:none",
+            `transform:translate(${want.x + 22}px, ${want.y - 32}px)`,
+          ].join(";");
+          clusterBadgeLayer.appendChild(el);
         }
         // Continuous Y-spin on each loaded model so the 3D form reads
         // unmistakably as 3D. Time-delta based so the spin rate is
