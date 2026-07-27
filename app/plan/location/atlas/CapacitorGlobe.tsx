@@ -474,12 +474,18 @@ export default function CapacitorGlobe() {
         markMountPhase("capacitor-globe:monuments-fetch-skins");
         let activeSkins: Record<string, string> = {};
         let collected = new Set<string>();
+        let isDev = false;
         try {
           const res = await fetch("/api/monuments", { credentials: "include" });
           if (res.ok) {
-            const data = await res.json() as { activeSkins?: Record<string, string>; collected?: string[] };
+            const data = await res.json() as {
+              activeSkins?: Record<string, string>;
+              collected?: string[];
+              isDev?: boolean;
+            };
             if (data.activeSkins) activeSkins = data.activeSkins;
             if (Array.isArray(data.collected)) collected = new Set(data.collected);
+            isDev = !!data.isDev;
           }
         } catch {
           // Not authed or offline — fall through with empty map.
@@ -496,20 +502,21 @@ export default function CapacitorGlobe() {
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
-        // No cap — load every monument in MONUMENT_LATLON. Post-
-        // compression pass (443MB → 67MB total, avg 12x smaller),
-        // per-monument parse time dropped from ~300ms to ~25ms.
-        // Cumulative main-thread load work for 90 monuments: ~2.25s
-        // — well below the WebKit watchdog even during interactions.
-        // Collected are sorted first so the user sees THEIR stuff
-        // before the rest.
+        // Game-design rule: only render what the user has EARNED. Regular
+        // accounts see only their `collected` monuments (must be present
+        // + complete quests to unlock). Dev accounts (isDev = true)
+        // render everything for testing.
+        //
+        // Web/non-native still renders all — the marketing web view is
+        // meant to showcase the full catalog. Native app enforces the
+        // collection gate.
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
-        const collectedEntries = allEntries.filter(([mk]) => collected.has(mk));
-        const uncollectedEntries = allEntries.filter(([mk]) => !collected.has(mk));
-        const orderedEntries = isNative
-          ? [...collectedEntries, ...uncollectedEntries]
-          : allEntries;
+        const orderedEntries = !isNative
+          ? allEntries
+          : isDev
+            ? allEntries
+            : allEntries.filter(([mk]) => collected.has(mk));
         for (const [mk, latlon] of orderedEntries) {
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
