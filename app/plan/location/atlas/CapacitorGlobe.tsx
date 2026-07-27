@@ -443,7 +443,7 @@ export default function CapacitorGlobe() {
       //   3 = rare skin equipped (never moves)
       //   2 = collected (moves only to make room for tier 3)
       //   1 = uncollected fill (moves for everyone)
-      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean; priority: number; spawnAt?: number };
+      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean; priority: number; spawnAt?: number; tapEl?: HTMLDivElement };
       const entries: ModelEntry[] = [];
       const RARE_SKINS = new Set(["aurora", "celestial", "diamond"]);
       const loader = new GLTFLoader();
@@ -842,6 +842,22 @@ export default function CapacitorGlobe() {
           for (const [mk, total] of memberCounts) {
             if (total > 1) clusterInfo.set(mk, total - 1);
           }
+          // Tap-target routing: only cluster covers keep their tap zone.
+          // Non-covers (hidden members) get pointer-events:none so a tap
+          // on the visible cover always routes to the cover's shop, not
+          // to a co-located hidden member. Every visible entry is a cover.
+          // At high zoom (no clustering) every entry falls through the
+          // else branch below and gets its tap zone re-enabled.
+          const coverMks = new Set(covers.map((c) => c.mk));
+          for (const e of entries) {
+            if (!e.tapEl) continue;
+            e.tapEl.style.pointerEvents = coverMks.has(e.mk) ? "auto" : "none";
+          }
+        } else {
+          // Non-clustering path: everyone gets their tap zone back.
+          for (const e of entries) {
+            if (e.tapEl) e.tapEl.style.pointerEvents = "auto";
+          }
         }
         // ─── Badge pool sync (no node churn) ─────────────────────────
         // Update at most BADGE_POOL_SIZE badges from the pool: for each
@@ -999,45 +1015,26 @@ export default function CapacitorGlobe() {
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
-        // touchAction:'manipulation' prevents the WKWebView 300ms
-        // double-tap-zoom delay from swallowing the click on iOS.
+        el.dataset.mk = mk;
         el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
         el.addEventListener("click", () => {
-          // Fly the globe IN to the tapped monument so the user sees
-          // the live skin preview at street/landmark level before the
-          // fullscreen shop opens. Zoom 14 lands at landmark scale
-          // (matches the search-bar zoom for landmark mks). The pause
-          // handler kicks in once the shop mounts so the heavy zoom
-          // doesn't compound with the modal backdrop GPU load.
-          //
-          // padding.bottom = 50svh so the monument lands in the visible
-          // upper half above the MonumentShop bottom-sheet. MonumentShop
-          // also re-issues flyGlobeTo on initialMk for belt-and-braces.
-          const paddingBottom = Math.round(window.innerHeight * 0.5);
-          // Tap → immediately pause the load loop + the render loop so
-          // fly + shop-open own the main thread. Resume after the shop
-          // fully mounts (MonumentShop dispatches globe-resume on close).
+          // Pause the load loop + render loop so the fly + shop mount
+          // own the main thread. Zoom lowered 5.5 → 4.0 to cut tile-
+          // pyramid load ~4x — the previous 5.5 was still stressing
+          // WebKit past the watchdog when combined with mid-load shop
+          // mount. 4.0 shows regional context; user can zoom in via
+          // pinch if they want landmark-scale detail.
           window.dispatchEvent(new Event("geknee:globe-pause"));
-          // Tap-zoom lowered 14 → 5.5. Zoom 14 pushed the tile pyramid
-          // past the WKWebView memory ceiling and triggered a WebView
-          // respawn on iOS.
+          const paddingBottom = Math.round(window.innerHeight * 0.5);
           map.flyTo({
             center: [lon, lat],
-            zoom: 5.5,
-            duration: 1400,
+            zoom: 4.0,
+            duration: 900,
             essential: true,
             padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
           });
-          // Existing select event — preserved for any legacy listeners.
-          window.dispatchEvent(
-            new CustomEvent("geknee:monument-select", { detail: { mk } }),
-          );
-          // Surface the collection panel scoped to this mk, matching the
-          // Three.js landmark behavior on web. Without this, iOS Mapbox
-          // taps fire monument-select into the void.
-          window.dispatchEvent(
-            new CustomEvent("geknee:open-monument-shop", { detail: { mk } }),
-          );
+          window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
+          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
         });
         new mapboxgl.Marker({
           element: el,
@@ -1047,6 +1044,22 @@ export default function CapacitorGlobe() {
         })
           .setLngLat([lon, lat])
           .addTo(map);
+        // Stash the marker element on the eventual entry (created by
+        // loadAllMonuments) so the clustering pass in updatePositions
+        // can toggle pointer-events per-frame — non-cover members lose
+        // their tap zone so a tap on a visible cover always routes to
+        // the cover's shop, not to a hidden cluster member's marker.
+        const found = entries.find((e) => e.mk === mk);
+        if (found) found.tapEl = el;
+        else {
+          // Entry not yet created (still loading). Defer via short poll.
+          const attach = () => {
+            const later = entries.find((e) => e.mk === mk);
+            if (later) later.tapEl = el;
+            else setTimeout(attach, 500);
+          };
+          setTimeout(attach, 500);
+        }
       }
     });
 
