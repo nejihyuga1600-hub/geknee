@@ -34,6 +34,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { markMountPhase } from "@/lib/session-continuity";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MONUMENT_LATLON, MONUMENT_FILE_PREFIX } from "../globe/skins";
 
@@ -48,6 +49,7 @@ export default function CapacitorGlobe() {
 
   useEffect(() => {
     if (!containerRef.current || !TOKEN) return;
+    markMountPhase("capacitor-globe:mapbox-init");
     mapboxgl.accessToken = TOKEN;
 
     const map = new mapboxgl.Map({
@@ -175,6 +177,7 @@ export default function CapacitorGlobe() {
     window.addEventListener("geknee:globe-padding-set", onPaddingSet);
 
     map.on("style.load", () => {
+      markMountPhase("capacitor-globe:style-loaded");
       // Atmosphere settings — Mapbox's native rendering, free.
       map.setFog({
         color: "rgb(186, 210, 235)",
@@ -413,6 +416,7 @@ export default function CapacitorGlobe() {
       // by bin/compress-mapbox-skin-variants.mjs; missing ones 404 and
       // the .catch below silently retries with the default.
       const loadAllMonuments = async () => {
+        markMountPhase("capacitor-globe:monuments-fetch-skins");
         let activeSkins: Record<string, string> = {};
         try {
           const res = await fetch("/api/monuments", { credentials: "include" });
@@ -441,6 +445,7 @@ export default function CapacitorGlobe() {
           Capacitor?: { isNativePlatform?: () => boolean };
         }).Capacitor?.isNativePlatform?.();
 
+        markMountPhase("capacitor-globe:monuments-glb-load");
         for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
           if (isNative && OVERSIZED_SKIPLIST.has(mk)) continue;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
@@ -690,6 +695,7 @@ export default function CapacitorGlobe() {
       };
       diag.added = true;
       reportDiag();
+      markMountPhase("capacitor-globe:mount-complete");
 
       // Tap targets — invisible HTML markers over each monument for click
       // handling. Raycasting onto a custom layer is doable but slow on

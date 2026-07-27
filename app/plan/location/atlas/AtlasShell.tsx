@@ -16,6 +16,7 @@ import { useSession } from "next-auth/react";
 import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
 import { MONUMENT_LATLON } from "@/app/plan/location/globe/skins";
 import { detectCrashLoopAndArmFallback } from "@/lib/crash-loop-guard";
+import { initSessionContinuity, markMountPhase } from "@/lib/session-continuity";
 import { INFO } from "@/app/plan/location/globe/info";
 import { currentIssueYear } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
@@ -282,8 +283,13 @@ export default function AtlasShell() {
   // watchdog kills the content process, Capacitor auto-reloads, repeat).
   const [bypassGlobe, setBypassGlobe] = useState(false);
   useEffect(() => {
-    // Run the crash-loop guard synchronously on first mount. If it fires,
-    // it sets FALLBACK_FLAG in sessionStorage before priorFallbackThisSession
+    // Session continuity FIRST — reads the previous beacon, so if the
+    // previous mount died in a crash-reload this fires the Sentry event
+    // with the last known phase before crash-loop-guard clears state.
+    initSessionContinuity();
+    markMountPhase("atlas-shell:mount");
+    // Then the crash-loop guard synchronously. If it fires, it sets
+    // FALLBACK_FLAG in sessionStorage before priorFallbackThisSession
     // reads it, so the same state flip happens without a separate branch.
     detectCrashLoopAndArmFallback();
     if (priorFallbackThisSession()) setBypassGlobe(true);
