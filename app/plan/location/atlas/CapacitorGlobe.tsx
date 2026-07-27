@@ -446,8 +446,16 @@ export default function CapacitorGlobe() {
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
+        // Cap monument count on Capacitor. Even fully serialized loads
+        // add up — 26 × ~300ms per parse blows the 10s watchdog. 8 is
+        // enough to sell the "collect 3D monuments" pitch on the initial
+        // view; lazy-load the rest on user interaction (follow-up).
+        const NATIVE_MONUMENT_CAP = 8;
+        let loadedThisSession = 0;
         for (const [mk, latlon] of Object.entries(MONUMENT_LATLON)) {
           if (isNative && OVERSIZED_SKIPLIST.has(mk)) continue;
+          if (isNative && loadedThisSession >= NATIVE_MONUMENT_CAP) break;
+          loadedThisSession++;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
           // Try the user's equipped skin first; on any failure (404 because
@@ -460,65 +468,56 @@ export default function CapacitorGlobe() {
           overlayScene.add(wrapper);
           const entry: ModelEntry = { mk, latlon, wrapper, loaded: false };
           entries.push(entry);
-          const tryLoad = (url: string, isFallback: boolean) => {
-            loader.load(url, (gltf) => {
-          const obj = gltf.scene;
-          // Normalize the GLB to a unit cube centered at origin, then scale
-          // by base footprint so every monument's coin-ring diameter is
-          // identical on screen. Y-up GLB stands upright in orthographic.
-          const bbox = new THREE.Box3().setFromObject(obj);
-          const size = new THREE.Vector3(); bbox.getSize(size);
-          const center = new THREE.Vector3(); bbox.getCenter(center);
-          obj.position.sub(center);
-          obj.position.y += size.y / 2; // anchor at base
-          // 63px — coin-ring footprint. Was scaling by max(x,y,z) which
-          // shrunk tall thin monuments (Eiffel, Statue of Liberty) so
-          // their bases ended up a fraction of a cubic monument's base
-          // (Taj Mahal, Colosseum). Switch to max(x,z) — the floor
-          // footprint — so every coin ring is the same size; tower
-          // monuments are allowed to extend upward naturally instead.
-          const DISPLAY_PX = 63;
-          const baseDim = Math.max(size.x, size.z) || 1;
-          obj.scale.setScalar(DISPLAY_PX / baseDim);
-          wrapper.add(obj);
-          // Wrapper rotation is set every frame in updatePositions() to
-          // keep each monument laminated to the globe surface — radial Z
-          // alignment + dot-product-based X tilt. Don't set a static value
-          // here.
-          (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
-          entry.loaded = true;
-          diag.loaded++;
-          reportDiag();
-          map.triggerRepaint();
-            }, undefined, (err) => {
-              // Skin variant didn't exist (404) → fall back to default tier.
-              // Other failures (parse/network) → log to diag overlay.
-              if (!isFallback && skinUrl) {
-                tryLoad(defaultUrl, true);
-                return;
-              }
-              diag.errors++;
-              diag.lastErr = `${mk}: ${(err as Error)?.message || err}`.slice(0, 80);
-              reportDiag();
-            });
+          // Serialize monument loading so we never have more than one
+          // parse in flight on the main thread. The prior RAF-yield fix
+          // (d2ff835) only spaced KICKOFFS — all 26 fetches were still
+          // in flight simultaneously, and their sync GLB parses stacked
+          // when the promises resolved. Sentry regression on
+          // JAVASCRIPT-NEXTJS-1K confirmed the same phase died 1817ms
+          // in even with RAF yields.
+          //
+          // loadAsync + await = truly serial: fetch → parse → done →
+          // next iteration. Plus a 120ms sleep between so the WebKit
+          // watchdog gets breathing room even between heavy parses.
+          const applyLoaded = (gltf: { scene: THREE.Object3D }) => {
+            const obj = gltf.scene;
+            const bbox = new THREE.Box3().setFromObject(obj);
+            const size = new THREE.Vector3(); bbox.getSize(size);
+            const center = new THREE.Vector3(); bbox.getCenter(center);
+            obj.position.sub(center);
+            obj.position.y += size.y / 2; // anchor at base
+            const DISPLAY_PX = 63;
+            const baseDim = Math.max(size.x, size.z) || 1;
+            obj.scale.setScalar(DISPLAY_PX / baseDim);
+            wrapper.add(obj);
+            (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
+            entry.loaded = true;
+            diag.loaded++;
+            reportDiag();
+            map.triggerRepaint();
           };
-          tryLoad(skinUrl ?? defaultUrl, !skinUrl);
-          // Yield the main thread between iterations on Capacitor so the
-          // WebKit watchdog doesn't kill the content process during the
-          // GLB fetch-and-parse burst. Confirmed root cause by Sentry
-          // event JAVASCRIPT-NEXTJS-1K:
-          //   "webview_respawn: mount died in phase capacitor-globe:
-          //    monuments-glb-load (gap 3508ms)"
-          // The synchronous for loop was firing 26 loader.load() calls in
-          // one tick; each schedules a fetch + a large sync GLB parse on
-          // the main thread. RAF yield gives ~16ms per iteration for the
-          // browser to service microtasks + tick the watchdog. 26 × 16ms
-          // = ~400ms added to full load, acceptable for stability.
+          try {
+            const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
+            applyLoaded(gltf as { scene: THREE.Object3D });
+          } catch {
+            if (skinUrl) {
+              try {
+                const gltf = await loader.loadAsync(defaultUrl);
+                applyLoaded(gltf as { scene: THREE.Object3D });
+              } catch (err2) {
+                diag.errors++;
+                diag.lastErr = `${mk}: ${(err2 as Error)?.message || err2}`.slice(0, 80);
+                reportDiag();
+              }
+            } else {
+              diag.errors++;
+              reportDiag();
+            }
+          }
           if (isNative) {
-            await new Promise<void>((r) => {
-              if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(() => r());
-              else setTimeout(r, 0);
-            });
+            // 120ms lets the WebKit watchdog tick even after a heavy
+            // parse. Total added time worst-case: 26 × 120ms ≈ 3s.
+            await new Promise<void>((r) => setTimeout(r, 120));
           }
         }
       };
