@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
 import { MONUMENT_LATLON } from "@/app/plan/location/globe/skins";
+import { detectCrashLoopAndArmFallback } from "@/lib/crash-loop-guard";
 import { INFO } from "@/app/plan/location/globe/info";
 import { currentIssueYear } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
@@ -275,9 +276,16 @@ export default function AtlasShell() {
   const [sheet, setSheet] = useState<SheetState>("peek");
   // Globe fallback state — false by default so the WebGL globe mounts.
   // Flips true if (a) sessionStorage flag from a prior crash this session,
-  // or (b) LocationClient dispatches geknee:webgl-fallback at runtime.
+  // or (b) LocationClient dispatches geknee:webgl-fallback at runtime,
+  // or (c) crash-loop-guard detects 2+ mounts within 12s (iOS WKWebView
+  // blink loop — CapacitorGlobe's mount pins the main thread, WebKit
+  // watchdog kills the content process, Capacitor auto-reloads, repeat).
   const [bypassGlobe, setBypassGlobe] = useState(false);
   useEffect(() => {
+    // Run the crash-loop guard synchronously on first mount. If it fires,
+    // it sets FALLBACK_FLAG in sessionStorage before priorFallbackThisSession
+    // reads it, so the same state flip happens without a separate branch.
+    detectCrashLoopAndArmFallback();
     if (priorFallbackThisSession()) setBypassGlobe(true);
     const onFallback = () => {
       try { sessionStorage.setItem(FALLBACK_FLAG, "1"); } catch {}
