@@ -817,9 +817,13 @@ function DetailView({
 
   return (
     <div>
+      {/* Back button + title row keep paddingRight: 56 to clear the
+          absolute-positioned CLOSE pill. The scroll container padding
+          is symmetric now so everything below stays screen-centered. */}
       <button onClick={onBack} style={{
         background: 'none', border: 'none', color: '#a78bfa',
         fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0, fontWeight: 600,
+        paddingRight: 56,
       }}>
         {String.fromCodePoint(0x2190)} Back
       </button>
@@ -829,6 +833,7 @@ function DetailView({
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: 12, marginBottom: 18, paddingBottom: 14,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
+        paddingRight: 56,
       }}>
         <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* Title + rarity + unlocked tick now read as ONE scan instead
@@ -1504,14 +1509,17 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
         )}
 
         {/* ── Body ────────────────────────────────────────────────────────── */}
-        {/* In detail view, the Back button sits on the same horizontal row
-            as the absolute-positioned Close pill (top: 12) — Back left,
-            Close right. Padding-top:14 puts Back's text baseline right at
-            the pill's centerline. Padding-right:80 clears the pill width so
-            the title doesn't slide under it. */}
+        {/* In detail view, the Back button + title row shares horizontal
+            space with the absolute-positioned CLOSE pill (top: 12). Only
+            those two elements need extra right-clearance for the pill —
+            NOT the whole scroll container, which was previously shifting
+            every section below (skin quests grid, badges, etc.) 28px left
+            of screen center. Padding is now symmetric so nothing looks
+            off-axis; the Back button + title get inline paddingRight to
+            clear the pill. */}
         <div style={{
           flex: 1, overflowY: 'auto',
-          padding: selected ? '14px 80px 24px 24px' : '16px 24px 24px',
+          padding: selected ? '14px 24px 24px 24px' : '16px 24px 24px',
         }}>
 
           {pendingMission && (

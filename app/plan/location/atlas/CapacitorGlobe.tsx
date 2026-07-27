@@ -449,6 +449,10 @@ export default function CapacitorGlobe() {
           "stBasils",
           "borobudur",
           "persepolis",
+          // sensoji has no GLB shipped at all (no sensoji.glb, no
+          // senso_ji.glb, no _meshy variant). Every load attempt 404s
+          // silently. Skip everywhere until the asset lands.
+          "sensoji",
         ]);
         const isNative = typeof window !== "undefined" && !!(window as unknown as {
           Capacitor?: { isNativePlatform?: () => boolean };
@@ -610,7 +614,7 @@ export default function CapacitorGlobe() {
         const isNativeNow = typeof window !== "undefined" && !!(window as unknown as {
           Capacitor?: { isNativePlatform?: () => boolean };
         }).Capacitor?.isNativePlatform?.();
-        const OVERSIZED = new Set(["montSaintMichel", "cologneCathedral", "stBasils", "borobudur", "persepolis"]);
+        const OVERSIZED = new Set(["montSaintMichel", "cologneCathedral", "stBasils", "borobudur", "persepolis", "sensoji"]);
         for (const mk of nextCollected) {
           if (isNativeNow && OVERSIZED.has(mk)) continue;
           if (existingByMk.has(mk)) continue;
@@ -626,9 +630,8 @@ export default function CapacitorGlobe() {
           const priority = skin && RARE_SKINS.has(skin) ? 3 : 2;
           const entry: ModelEntry = { mk, latlon, wrapper, loaded: false, priority };
           entries.push(entry);
-          try {
-            const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
-            const obj = (gltf as { scene: THREE.Object3D }).scene;
+          const applyGltf = (gltf: { scene: THREE.Object3D }, appliedSkin: string) => {
+            const obj = gltf.scene;
             const bbox = new THREE.Box3().setFromObject(obj);
             const size = new THREE.Vector3(); bbox.getSize(size);
             const center = new THREE.Vector3(); bbox.getCenter(center);
@@ -638,15 +641,33 @@ export default function CapacitorGlobe() {
             obj.scale.setScalar(63 / baseDim);
             wrapper.add(obj);
             (wrapper as THREE.Object3D & { userData: { mk?: string; skin?: string } }).userData.mk = mk;
-            (wrapper as THREE.Object3D & { userData: { skin?: string } }).userData.skin = skin ?? "default";
+            (wrapper as THREE.Object3D & { userData: { skin?: string } }).userData.skin = appliedSkin;
             entry.loaded = true;
             entry.spawnAt = performance.now(); // trigger scale-in bounce
             diag.loaded++;
             reportDiag();
             map.triggerRepaint();
+          };
+          try {
+            const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
+            applyGltf(gltf as { scene: THREE.Object3D }, skin ?? "default");
           } catch {
-            diag.errors++;
-            reportDiag();
+            // Skin variant 404 — many monuments don't have rare-skin GLBs
+            // shipped yet (e.g. tokyo_skytree_celestial). Fall back to the
+            // default tier GLB so the monument still renders. The rare skin
+            // just doesn't visualize until the variant asset lands.
+            if (skinUrl) {
+              try {
+                const gltf = await loader.loadAsync(defaultUrl);
+                applyGltf(gltf as { scene: THREE.Object3D }, "default");
+              } catch {
+                diag.errors++;
+                reportDiag();
+              }
+            } else {
+              diag.errors++;
+              reportDiag();
+            }
           }
           if (isNativeNow) {
             await new Promise<void>((r) => setTimeout(r, 120));
