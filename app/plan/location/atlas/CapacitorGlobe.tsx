@@ -402,8 +402,15 @@ export default function CapacitorGlobe() {
 
       // Models: load all GLBs, attach each to a wrapper Object3D positioned
       // at projected screen coords each frame.
-      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean };
+      // priority ranks who yields ground when two monuments overlap in
+      // screen space: highest priority stays put, lower priority pushes
+      // outward. See the separation pass in updatePositions().
+      //   3 = rare skin equipped (never moves)
+      //   2 = collected (moves only to make room for tier 3)
+      //   1 = uncollected fill (moves for everyone)
+      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean; priority: number };
       const entries: ModelEntry[] = [];
+      const RARE_SKINS = new Set(["aurora", "celestial", "diamond"]);
       const loader = new GLTFLoader();
       loader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -487,7 +494,8 @@ export default function CapacitorGlobe() {
           const wrapper = new THREE.Object3D();
           wrapper.visible = false;
           overlayScene.add(wrapper);
-          const entry: ModelEntry = { mk, latlon, wrapper, loaded: false };
+          const priority = skin && RARE_SKINS.has(skin) ? 3 : collected.has(mk) ? 2 : 1;
+          const entry: ModelEntry = { mk, latlon, wrapper, loaded: false, priority };
           entries.push(entry);
           // Serialize monument loading so we never have more than one
           // parse in flight on the main thread. The prior RAF-yield fix
@@ -614,6 +622,49 @@ export default function CapacitorGlobe() {
           // monument so spinning the globe doesn't visually rotate them
           // (user feedback: "monuments are spinning as I spin the globe").
           e.wrapper.rotation.set(0.9, 0, 0);
+        }
+        // ─── Overlap separation ────────────────────────────────────
+        // Screen-space O(n²) pass — for each visible pair whose coin
+        // rings overlap, push the lower-priority one outward along the
+        // pair axis. Two passes handle chains (A pushes B into C).
+        // Recomputed from scratch each frame so pan/zoom don't drift.
+        // Cost at n=40 visible = 1600 pair checks × 2 passes = 3200 ops
+        // per frame, negligible next to the WebGL draw.
+        const MIN_SEP = 63 * 0.9; // = DISPLAY_PX * 0.9, coin ring diameter
+        const visible = entries.filter((e) => e.loaded && e.wrapper.visible);
+        for (let pass = 0; pass < 2; pass++) {
+          for (let i = 0; i < visible.length; i++) {
+            for (let j = i + 1; j < visible.length; j++) {
+              const a = visible[i], b = visible[j];
+              const dx = b.wrapper.position.x - a.wrapper.position.x;
+              const dy = b.wrapper.position.y - a.wrapper.position.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist >= MIN_SEP) continue;
+              const overlap = MIN_SEP - dist + 1;
+              // Direction: axis of the pair. If perfectly co-located,
+              // fall back to a stable per-monument radial angle.
+              let ux: number, uy: number;
+              if (dist > 0.01) { ux = dx / dist; uy = dy / dist; }
+              else {
+                const angle = (a.mk.charCodeAt(0) * 0.37) % (Math.PI * 2);
+                ux = Math.cos(angle); uy = Math.sin(angle);
+              }
+              // Lower priority yields ground; equal priorities split it.
+              if (a.priority < b.priority) {
+                a.wrapper.position.x -= ux * overlap;
+                a.wrapper.position.y -= uy * overlap;
+              } else if (b.priority < a.priority) {
+                b.wrapper.position.x += ux * overlap;
+                b.wrapper.position.y += uy * overlap;
+              } else {
+                const half = overlap * 0.5;
+                a.wrapper.position.x -= ux * half;
+                a.wrapper.position.y -= uy * half;
+                b.wrapper.position.x += ux * half;
+                b.wrapper.position.y += uy * half;
+              }
+            }
+          }
         }
         // Continuous Y-spin on each loaded model so the 3D form reads
         // unmistakably as 3D. Time-delta based so the spin rate is
