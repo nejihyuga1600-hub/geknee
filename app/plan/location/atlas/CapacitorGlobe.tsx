@@ -408,7 +408,7 @@ export default function CapacitorGlobe() {
       //   3 = rare skin equipped (never moves)
       //   2 = collected (moves only to make room for tier 3)
       //   1 = uncollected fill (moves for everyone)
-      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean; priority: number };
+      type ModelEntry = { mk: string; latlon: { lat: number; lon: number }; wrapper: THREE.Object3D; loaded: boolean; priority: number; spawnAt?: number };
       const entries: ModelEntry[] = [];
       const RARE_SKINS = new Set(["aurora", "celestial", "diamond"]);
       const loader = new GLTFLoader();
@@ -551,12 +551,36 @@ export default function CapacitorGlobe() {
         }
       };
 
-      // In-place reload triggered by `geknee:monuments-updated`. Tears down
-      // existing wrappers (and disposes their GPU resources) so the next
-      // loadAllMonuments() doesn't stack a second copy of every monument
-      // on top of the first — that was the visible duplication bug.
-      refreshMonuments = () => {
-        for (const e of entries) {
+      // Incremental refresh — fires on `geknee:monuments-updated` after
+      // the user unlocks or equips a skin in MonumentShop. The prior
+      // teardown-and-reload path blanked every monument off the globe
+      // for ~5-10s during serial loadAllMonuments(), which made the
+      // just-collected one arrive well after the UnlockCeremony orb had
+      // faded. Now:
+      //
+      //   1. Re-fetch /api/monuments to see who's newly collected + who
+      //      has a different skin equipped
+      //   2. For each NEW mk (not yet in entries): serial-load, stamp
+      //      spawnAt so updatePositions() plays the scale-in bounce
+      //   3. For each mk with a changed skin: tear down that ONE entry
+      //      and reload it (with spawn animation so the skin swap reads)
+      //   4. Existing untouched monuments stay put — no visual blank
+      //
+      // Rare-skin unlock path (celestial/aurora/diamond) also updates
+      // priority so the separation pass promotes it to "never moves".
+      refreshMonuments = async () => {
+        let nextSkins: Record<string, string> = {};
+        let nextCollected = new Set<string>();
+        try {
+          const res = await fetch("/api/monuments", { credentials: "include" });
+          if (res.ok) {
+            const data = await res.json() as { activeSkins?: Record<string, string>; collected?: string[] };
+            if (data.activeSkins) nextSkins = data.activeSkins;
+            if (Array.isArray(data.collected)) nextCollected = new Set(data.collected);
+          }
+        } catch { /* ignore */ }
+
+        const disposeEntry = (e: ModelEntry) => {
           overlayScene.remove(e.wrapper);
           e.wrapper.traverse((node) => {
             const mesh = node as THREE.Mesh;
@@ -565,11 +589,69 @@ export default function CapacitorGlobe() {
             if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
             else if (mat && typeof (mat as THREE.Material).dispose === "function") (mat as THREE.Material).dispose();
           });
+        };
+
+        // Pick up skin changes on existing loaded monuments — dispose +
+        // reload just those. Skin swap is intentional user action so a
+        // brief pop is fine.
+        const existingByMk = new Map(entries.map((e) => [e.mk, e]));
+        for (const e of entries.slice()) {
+          const wantSkin = nextSkins[e.mk];
+          const currentInfo = (e.wrapper.userData as { skin?: string }).skin;
+          if (wantSkin && wantSkin !== currentInfo) {
+            disposeEntry(e);
+            const idx = entries.indexOf(e);
+            if (idx >= 0) entries.splice(idx, 1);
+          }
         }
-        entries.length = 0;
-        diag.loaded = 0;
-        reportDiag();
-        loadAllMonuments();
+
+        // Add newly-collected monuments that we haven't loaded yet.
+        // Skiplist still applies (oversized files stay off Capacitor).
+        const isNativeNow = typeof window !== "undefined" && !!(window as unknown as {
+          Capacitor?: { isNativePlatform?: () => boolean };
+        }).Capacitor?.isNativePlatform?.();
+        const OVERSIZED = new Set(["montSaintMichel", "cologneCathedral", "stBasils", "borobudur", "persepolis"]);
+        for (const mk of nextCollected) {
+          if (isNativeNow && OVERSIZED.has(mk)) continue;
+          if (existingByMk.has(mk)) continue;
+          const latlon = MONUMENT_LATLON[mk as keyof typeof MONUMENT_LATLON];
+          if (!latlon) continue;
+          const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
+          const skin = nextSkins[mk];
+          const skinUrl = skin && skin !== "default" ? `/models/mapbox/${file}_${skin}.glb` : null;
+          const defaultUrl = `/models/mapbox/${file}.glb`;
+          const wrapper = new THREE.Object3D();
+          wrapper.visible = false;
+          overlayScene.add(wrapper);
+          const priority = skin && RARE_SKINS.has(skin) ? 3 : 2;
+          const entry: ModelEntry = { mk, latlon, wrapper, loaded: false, priority };
+          entries.push(entry);
+          try {
+            const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
+            const obj = (gltf as { scene: THREE.Object3D }).scene;
+            const bbox = new THREE.Box3().setFromObject(obj);
+            const size = new THREE.Vector3(); bbox.getSize(size);
+            const center = new THREE.Vector3(); bbox.getCenter(center);
+            obj.position.sub(center);
+            obj.position.y += size.y / 2;
+            const baseDim = Math.max(size.x, size.z) || 1;
+            obj.scale.setScalar(63 / baseDim);
+            wrapper.add(obj);
+            (wrapper as THREE.Object3D & { userData: { mk?: string; skin?: string } }).userData.mk = mk;
+            (wrapper as THREE.Object3D & { userData: { skin?: string } }).userData.skin = skin ?? "default";
+            entry.loaded = true;
+            entry.spawnAt = performance.now(); // trigger scale-in bounce
+            diag.loaded++;
+            reportDiag();
+            map.triggerRepaint();
+          } catch {
+            diag.errors++;
+            reportDiag();
+          }
+          if (isNativeNow) {
+            await new Promise<void>((r) => setTimeout(r, 120));
+          }
+        }
       };
 
       loadAllMonuments();
@@ -622,6 +704,28 @@ export default function CapacitorGlobe() {
           // monument so spinning the globe doesn't visually rotate them
           // (user feedback: "monuments are spinning as I spin the globe").
           e.wrapper.rotation.set(0.9, 0, 0);
+          // Scale-in bounce for a monument that was JUST added via the
+          // incremental refresh (unlock flow). 700ms total:
+          //   0 → 350ms: cubic ease-out to 1.15 (overshoot)
+          //   350 → 700ms: relax back to 1.0
+          // Applied as a wrapper.scale multiplier so it composes with
+          // the base 63/baseDim scale set at load time.
+          if (e.spawnAt) {
+            const dt = performance.now() - e.spawnAt;
+            const DUR = 700;
+            if (dt >= DUR) {
+              e.wrapper.scale.set(1, 1, 1);
+              e.spawnAt = undefined;
+            } else if (dt < 350) {
+              const t = dt / 350;
+              const s = 1.15 * (1 - Math.pow(1 - t, 3));
+              e.wrapper.scale.set(s, s, s);
+            } else {
+              const t = (dt - 350) / 350;
+              const s = 1.15 - 0.15 * t;
+              e.wrapper.scale.set(s, s, s);
+            }
+          }
         }
         // ─── Overlap separation ────────────────────────────────────
         // Screen-space O(n²) pass — for each visible pair whose coin
