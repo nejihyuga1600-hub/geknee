@@ -1436,23 +1436,27 @@ function NavPill({
     minHeight: iconOnly ? 40 : undefined,
     justifyContent: "center" as const,
     borderRadius: 999,
+    // Background opacity bumped 0.28 → 0.62 (non-accent) and 0.18 → 0.38
+    // (accent) so pill labels stay legible when the globe rotates over
+    // bright regions (Sahara, Antarctica) — the 28% glass was reported as
+    // unreadable on iOS TestFlight against yellow continents.
     background: accent
-      ? "rgba(167, 139, 250, 0.18)"
-      : "rgba(14, 16, 32, 0.28)",
+      ? "rgba(167, 139, 250, 0.38)"
+      : "rgba(14, 16, 32, 0.62)",
     WebkitBackdropFilter: "blur(32px) saturate(200%)",
     backdropFilter: "blur(32px) saturate(200%)",
-    border: `1px solid ${accent ? "rgba(196, 181, 253, 0.55)" : "rgba(255, 255, 255, 0.18)"}`,
-    // Top-edge highlight reads as light catching the rim of glass. Skill
-    // recommended bumping this so the chip actually looks glassy against
-    // the dark globe behind it. Press-scale handled via :active in the
-    // press-feedback rule below — adds 100ms tactile cue per HIG.
+    border: `1px solid ${accent ? "rgba(196, 181, 253, 0.70)" : "rgba(255, 255, 255, 0.24)"}`,
     boxShadow: accent
       ? "inset 0 1.5px 0 rgba(255,255,255,0.40), inset 0 -1px 0 rgba(0,0,0,0.22), 0 10px 28px rgba(167,139,250,0.32)"
       : "inset 0 1.5px 0 rgba(255,255,255,0.24), inset 0 -1px 0 rgba(0,0,0,0.20), 0 10px 28px rgba(0,0,0,0.40)",
     transition: "transform 150ms ease, box-shadow 150ms ease",
-    color: accent ? "#e9d5ff" : "var(--brand-ink)",
-    fontSize: 11,
-    fontWeight: accent ? 700 : 500,
+    color: accent ? "#f3e8ff" : "#ffffff",
+    // Text shadow is the final safety net — even if a bright hotspot
+    // manages to leak through the glass, the shadow keeps the character
+    // shape readable.
+    textShadow: "0 1px 2px rgba(0,0,0,0.55)",
+    fontSize: 12,
+    fontWeight: accent ? 700 : 600,
     letterSpacing: "0.02em",
     textDecoration: "none",
     cursor: "pointer",
