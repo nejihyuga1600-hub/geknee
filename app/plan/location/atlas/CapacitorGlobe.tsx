@@ -485,35 +485,24 @@ export default function CapacitorGlobe() {
           // Not authed or offline — fall through with empty map.
         }
 
-        // On Capacitor (iOS WKWebView) skip the 5 oversized monument GLBs.
-        // Each is >10MB; loading them at pageload creates blob URLs that
-        // trip Sentry's "Large HTTP payload" heuristic and drives peak
-        // WebView memory ~55MB higher, contributing to Jetsam OOM crashes
-        // during zoom-in. Web unchanged. Follow-up: compress these five
-        // via glTF-transform then remove from the skiplist.
-        const OVERSIZED_SKIPLIST = new Set([
-          "montSaintMichel",
-          "cologneCathedral",
-          "stBasils",
-          "borobudur",
-          "persepolis",
-          // sensoji has no GLB shipped at all (no sensoji.glb, no
-          // senso_ji.glb, no _meshy variant). Every load attempt 404s
-          // silently. Skip everywhere until the asset lands.
-          "sensoji",
-        ]);
+        // Only sensoji is still skiplisted — the GLB was never generated
+        // and every load attempt 404s. The 5 formerly-oversized files
+        // (montSaintMichel, cologneCathedral, stBasils, borobudur,
+        // persepolis) are now sub-1MB after the glTF-transform pass,
+        // safe to load everywhere.
+        const OVERSIZED_SKIPLIST = new Set(["sensoji"]);
         const isNative = typeof window !== "undefined" && !!(window as unknown as {
           Capacitor?: { isNativePlatform?: () => boolean };
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
-        // No cap — load every monument in MONUMENT_LATLON. Sentry has
-        // confirmed zero webview_respawn events over 14+ hours on the
-        // serial-await + 120ms-sleep implementation, so total load
-        // time N × ~420ms is bounded, no watchdog risk. Collected are
-        // sorted first so the user sees THEIR stuff before the rest.
-        // OVERSIZED_SKIPLIST still filters the 5 monuments (>10MB each)
-        // that would blow WKWebView memory even fully-serialized.
+        // No cap — load every monument in MONUMENT_LATLON. Post-
+        // compression pass (443MB → 67MB total, avg 12x smaller),
+        // per-monument parse time dropped from ~300ms to ~25ms.
+        // Cumulative main-thread load work for 90 monuments: ~2.25s
+        // — well below the WebKit watchdog even during interactions.
+        // Collected are sorted first so the user sees THEIR stuff
+        // before the rest.
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
         const collectedEntries = allEntries.filter(([mk]) => collected.has(mk));
@@ -654,7 +643,7 @@ export default function CapacitorGlobe() {
         const isNativeNow = typeof window !== "undefined" && !!(window as unknown as {
           Capacitor?: { isNativePlatform?: () => boolean };
         }).Capacitor?.isNativePlatform?.();
-        const OVERSIZED = new Set(["montSaintMichel", "cologneCathedral", "stBasils", "borobudur", "persepolis", "sensoji"]);
+        const OVERSIZED = new Set(["sensoji"]);
         for (const mk of nextCollected) {
           if (isNativeNow && OVERSIZED.has(mk)) continue;
           if (existingByMk.has(mk)) continue;
