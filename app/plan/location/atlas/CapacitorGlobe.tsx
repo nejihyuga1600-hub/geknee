@@ -503,6 +503,23 @@ export default function CapacitorGlobe() {
             });
           };
           tryLoad(skinUrl ?? defaultUrl, !skinUrl);
+          // Yield the main thread between iterations on Capacitor so the
+          // WebKit watchdog doesn't kill the content process during the
+          // GLB fetch-and-parse burst. Confirmed root cause by Sentry
+          // event JAVASCRIPT-NEXTJS-1K:
+          //   "webview_respawn: mount died in phase capacitor-globe:
+          //    monuments-glb-load (gap 3508ms)"
+          // The synchronous for loop was firing 26 loader.load() calls in
+          // one tick; each schedules a fetch + a large sync GLB parse on
+          // the main thread. RAF yield gives ~16ms per iteration for the
+          // browser to service microtasks + tick the watchdog. 26 × 16ms
+          // = ~400ms added to full load, acceptable for stability.
+          if (isNative) {
+            await new Promise<void>((r) => {
+              if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(() => r());
+              else setTimeout(r, 0);
+            });
+          }
         }
       };
 
