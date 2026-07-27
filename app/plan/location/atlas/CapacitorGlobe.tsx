@@ -313,12 +313,28 @@ export default function CapacitorGlobe() {
       });
       mapContainer.appendChild(overlayCanvas);
 
+      // Capacitor iOS branch: cheaper renderer to keep the WKWebView from
+      // slow-drift-OOM. Reported: "globe refreshes every minute" — the
+      // 60fps rAF + 3x devicePixelRatio + 4x MSAA compounded into a
+      // linear-growth memory pressure that Jetsam eventually snaps.
+      const IS_NATIVE_WV = typeof window !== "undefined" && !!(window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      }).Capacitor?.isNativePlatform?.();
       const overlayRenderer = new THREE.WebGLRenderer({
         canvas: overlayCanvas,
         alpha: true,
-        antialias: true,
+        // 4x MSAA is one of the biggest WebGL memory sinks on mobile. The
+        // monument sprites are ~60px on screen — AA has vanishing ROI here.
+        antialias: !IS_NATIVE_WV,
+        // Hints iOS to schedule on the low-power GPU instead of the
+        // discrete one; halves the sustained thermal envelope.
+        powerPreference: IS_NATIVE_WV ? "low-power" : "high-performance",
       });
-      overlayRenderer.setPixelRatio(window.devicePixelRatio);
+      // Cap DPR at 2 on Capacitor — iPhone 15/16/17 report 3, which means
+      // each pixel is 9 shaded pixels. Cap at 2 saves ~55% GPU per frame.
+      overlayRenderer.setPixelRatio(
+        IS_NATIVE_WV ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio,
+      );
       overlayRenderer.setClearColor(0x000000, 0);
       // sRGB output + ACES tone mapping so Meshy PBR materials don't
       // render as dark silhouettes. Without sRGB conversion, embedded
@@ -616,6 +632,39 @@ export default function CapacitorGlobe() {
       };
       window.addEventListener("geknee:globe-pause", onPause);
       window.addEventListener("geknee:globe-resume", onResume);
+
+      // ─── Visibility gate ────────────────────────────────────────────
+      // When the tab is hidden (app backgrounded via Home button, task
+      // switcher, or notification pull-down), iOS still ticks the rAF for
+      // a short grace period before throttling — and our render loop keeps
+      // burning WebGL memory the whole time. Explicit pause on hide + resume
+      // on show is the single biggest fix for the "refreshes every minute"
+      // symptom: without it, a user who backgrounds the app for a bit comes
+      // back to a Jetsam-killed WebView.
+      const onVisibility = () => {
+        if (document.hidden) onPause();
+        else onResume();
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+
+      // ─── Idle timeout (Capacitor only) ─────────────────────────────
+      // After 6s of no user interaction with the globe, pause the render
+      // loop. Nothing visible changes during idle (auto-spin sacrificed —
+      // acceptable trade for a stable session). Any pointer/touch resumes
+      // instantly. Web keeps its previous 60fps behavior.
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      const IDLE_MS = 6000;
+      const kickIdle = () => {
+        if (!IS_NATIVE_WV) return;
+        if (idleTimer) clearTimeout(idleTimer);
+        // Resume immediately (in case we were idle-paused) — user is here.
+        if (paused) onResume();
+        idleTimer = setTimeout(onPause, IDLE_MS);
+      };
+      const idleEvents: (keyof WindowEventMap)[] = ["pointerdown", "touchstart", "wheel", "keydown"];
+      for (const ev of idleEvents) window.addEventListener(ev, kickIdle, { passive: true });
+      kickIdle(); // arm the first timer
+
       // Auto-pause the Three.js overlay when the map zooms past 5. At
       // that point every monument sprite is either off-screen or scaled
       // absurdly large; keeping the WebGL scene rendering just consumes
@@ -634,6 +683,9 @@ export default function CapacitorGlobe() {
       (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers = () => {
         window.removeEventListener("geknee:globe-pause", onPause);
         window.removeEventListener("geknee:globe-resume", onResume);
+        document.removeEventListener("visibilitychange", onVisibility);
+        for (const ev of idleEvents) window.removeEventListener(ev, kickIdle);
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         map.off("zoomend", onZoomEnd);
       };
       diag.added = true;
