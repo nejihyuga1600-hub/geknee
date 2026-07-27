@@ -459,38 +459,21 @@ export default function CapacitorGlobe() {
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
-        // On Capacitor: load EVERY collected monument first (uncapped),
-        // then fill up to CAPACITOR_FILL_TOTAL with uncollected in
-        // declaration order. Cap raised 12 → 30 now that Sentry has
-        // confirmed zero webview_respawn events over 14 hours on the
-        // serial-load + 120ms-sleep implementation — the WebKit watchdog
-        // is comfortably clear even at higher counts.
-        //
-        // Rationale for the raise: user reported Japan monuments not
-        // showing (Tokyo Skytree, Fushimi Inari, Mount Fuji sit at
-        // positions ~19-21 in MONUMENT_LATLON declaration order — below
-        // the previous 12 cutoff for accounts with 5-11 collected).
-        // 30 covers all currently-shipped bases (57) minus the rare
-        // ones the user hasn't earned yet; enough for a lively globe
-        // from any starting camera angle.
-        const CAPACITOR_FILL_TOTAL = 30;
+        // No cap — load every monument in MONUMENT_LATLON. Sentry has
+        // confirmed zero webview_respawn events over 14+ hours on the
+        // serial-await + 120ms-sleep implementation, so total load
+        // time N × ~420ms is bounded, no watchdog risk. Collected are
+        // sorted first so the user sees THEIR stuff before the rest.
+        // OVERSIZED_SKIPLIST still filters the 5 monuments (>10MB each)
+        // that would blow WKWebView memory even fully-serialized.
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
         const collectedEntries = allEntries.filter(([mk]) => collected.has(mk));
         const uncollectedEntries = allEntries.filter(([mk]) => !collected.has(mk));
-        // Non-collected fill only counts toward the cap; collected always
-        // renders. Fill target = whatever it takes to reach the total,
-        // never negative.
-        const uncollectedBudget = Math.max(0, CAPACITOR_FILL_TOTAL - collectedEntries.length);
         const orderedEntries = isNative
-          ? [
-              ...collectedEntries,
-              ...uncollectedEntries.slice(0, uncollectedBudget),
-            ]
+          ? [...collectedEntries, ...uncollectedEntries]
           : allEntries;
-        let loadedThisSession = 0;
         for (const [mk, latlon] of orderedEntries) {
-          loadedThisSession++;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
           // Try the user's equipped skin first; on any failure (404 because
