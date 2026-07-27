@@ -72,6 +72,52 @@ export const MONUMENT_FILE_PREFIX: Record<string, string> = {
   cologneCathedral: 'cologne_cathedral',
   persepolis: 'persepolis',
   trulli: 'trulli',
+  // Batch 0 — wire the 39 monuments that had lat/lon but no prefix
+  // mapping. Every fetch was silently 404'ing against camelCase URLs
+  // (e.g. /models/mapbox/mountEverest.glb instead of mount_everest.glb).
+  // Base GLBs still don't exist for these — meshy Batches 1-4 will
+  // generate them — but at least the URL paths now target the right
+  // future filenames.
+  mountEverest: 'mount_everest',
+  kaaba: 'kaaba',
+  charlesBridge: 'charles_bridge',
+  grandCanyon: 'grand_canyon',
+  kilimanjaro: 'kilimanjaro',
+  matterhorn: 'matterhorn',
+  halongBay: 'halong_bay',
+  cappadocia: 'cappadocia',
+  chateauChambord: 'chateau_chambord',
+  tableMountain: 'table_mountain',
+  goldenTemple: 'golden_temple',
+  watArun: 'wat_arun',
+  prambanan: 'prambanan',
+  ayutthaya: 'ayutthaya',
+  konarkTemple: 'konark_temple',
+  devilsTower: 'devils_tower',
+  monumentValley: 'monument_valley',
+  milfordSound: 'milford_sound',
+  palenque: 'palenque',
+  lakeBled: 'lake_bled',
+  terracottaArmy: 'terracotta_army',
+  sensoji: 'sensoji', // stays skiplisted until GLB ships
+  meenakshiTemple: 'meenakshi_temple',
+  branCastle: 'bran_castle',
+  alcatraz: 'alcatraz',
+  treviFountain: 'trevi_fountain',
+  pantheonRome: 'pantheon_rome',
+  leaningTower: 'leaning_tower',
+  versailles: 'versailles',
+  kinkakuji: 'kinkakuji',
+  himejiCastle: 'himeji_castle',
+  abuSimbel: 'abu_simbel',
+  karnakTemple: 'karnak_temple',
+  greatSphinx: 'great_sphinx',
+  genghisKhanStatue: 'genghis_khan_statue',
+  torresDelPaine: 'torres_del_paine',
+  peritoMoreno: 'perito_moreno',
+  halfDome: 'half_dome',
+  delicateArch: 'delicate_arch',
+  giantsCauseway: 'giants_causeway',
 };
 
 // Skins actually uploaded to Vercel Blob. Requesting a skin not in this map

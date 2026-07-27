@@ -459,18 +459,21 @@ export default function CapacitorGlobe() {
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
-        // On Capacitor: load EVERY collected monument first, no cap. The
-        // user earned them and must see them — that's the whole product
-        // pitch. The cap only applies to the fill-in non-collected slots
-        // (up to CAPACITOR_FILL_TOTAL of everything visible, so a fresh
-        // account without a collection still sees a full-ish globe).
+        // On Capacitor: load EVERY collected monument first (uncapped),
+        // then fill up to CAPACITOR_FILL_TOTAL with uncollected in
+        // declaration order. Cap raised 12 → 30 now that Sentry has
+        // confirmed zero webview_respawn events over 14 hours on the
+        // serial-load + 120ms-sleep implementation — the WebKit watchdog
+        // is comfortably clear even at higher counts.
         //
-        // Serial-await + 120ms sleep means N collected monuments cost
-        // N × (~300 + 120)ms total. Even 40 monuments = ~17s cumulative,
-        // safe because no SINGLE parse crosses the watchdog. If a future
-        // user has a truly huge collection, the visible-monuments cap
-        // needs a redesign (probably: lazy-load beyond N, on tap/pan).
-        const CAPACITOR_FILL_TOTAL = 12;
+        // Rationale for the raise: user reported Japan monuments not
+        // showing (Tokyo Skytree, Fushimi Inari, Mount Fuji sit at
+        // positions ~19-21 in MONUMENT_LATLON declaration order — below
+        // the previous 12 cutoff for accounts with 5-11 collected).
+        // 30 covers all currently-shipped bases (57) minus the rare
+        // ones the user hasn't earned yet; enough for a lively globe
+        // from any starting camera angle.
+        const CAPACITOR_FILL_TOTAL = 30;
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
         const collectedEntries = allEntries.filter(([mk]) => collected.has(mk));
