@@ -448,28 +448,34 @@ export default function CapacitorGlobe() {
         }).Capacitor?.isNativePlatform?.();
 
         markMountPhase("capacitor-globe:monuments-glb-load");
-        // Cap monument count on Capacitor. Even fully serialized loads
-        // add up — 26 × ~300ms per parse blows the 10s watchdog. 12 is
-        // enough headroom to always include a full collection while
-        // staying under the ~4s worst-case parse budget.
+        // On Capacitor: load EVERY collected monument first, no cap. The
+        // user earned them and must see them — that's the whole product
+        // pitch. The cap only applies to the fill-in non-collected slots
+        // (up to CAPACITOR_FILL_TOTAL of everything visible, so a fresh
+        // account without a collection still sees a full-ish globe).
         //
-        // Priority order: user's collected monuments first (they earned
-        // them, they must see them), then fill remaining slots with
-        // remaining monuments in declaration order. Skiplist filtered
-        // out before the sort so oversized files never make it either
-        // list.
-        const NATIVE_MONUMENT_CAP = 12;
+        // Serial-await + 120ms sleep means N collected monuments cost
+        // N × (~300 + 120)ms total. Even 40 monuments = ~17s cumulative,
+        // safe because no SINGLE parse crosses the watchdog. If a future
+        // user has a truly huge collection, the visible-monuments cap
+        // needs a redesign (probably: lazy-load beyond N, on tap/pan).
+        const CAPACITOR_FILL_TOTAL = 12;
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
+        const collectedEntries = allEntries.filter(([mk]) => collected.has(mk));
+        const uncollectedEntries = allEntries.filter(([mk]) => !collected.has(mk));
+        // Non-collected fill only counts toward the cap; collected always
+        // renders. Fill target = whatever it takes to reach the total,
+        // never negative.
+        const uncollectedBudget = Math.max(0, CAPACITOR_FILL_TOTAL - collectedEntries.length);
         const orderedEntries = isNative
           ? [
-              ...allEntries.filter(([mk]) => collected.has(mk)),
-              ...allEntries.filter(([mk]) => !collected.has(mk)),
+              ...collectedEntries,
+              ...uncollectedEntries.slice(0, uncollectedBudget),
             ]
           : allEntries;
         let loadedThisSession = 0;
         for (const [mk, latlon] of orderedEntries) {
-          if (isNative && loadedThisSession >= NATIVE_MONUMENT_CAP) break;
           loadedThisSession++;
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
