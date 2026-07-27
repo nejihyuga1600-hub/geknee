@@ -457,6 +457,19 @@ export default function CapacitorGlobe() {
       // ships pre-compressed for everyone. Skin variants are compressed
       // by bin/compress-mapbox-skin-variants.mjs; missing ones 404 and
       // the .catch below silently retries with the default.
+      // Shared pause flag — wired below to geknee:globe-pause events
+      // (fired by MonumentShop on open + our own zoom-in autopause).
+      // The load loop awaits until this flips false so heavy GLB parses
+      // never overlap with modal transitions or fly animations.
+      let loadPaused = false;
+      const waitUntilResumed = async () => {
+        while (loadPaused) {
+          await new Promise<void>((r) => setTimeout(r, 250));
+        }
+      };
+      window.addEventListener("geknee:globe-pause", () => { loadPaused = true; });
+      window.addEventListener("geknee:globe-resume", () => { loadPaused = false; });
+
       const loadAllMonuments = async () => {
         markMountPhase("capacitor-globe:monuments-fetch-skins");
         let activeSkins: Record<string, string> = {};
@@ -572,6 +585,12 @@ export default function CapacitorGlobe() {
             // 120ms lets the WebKit watchdog tick even after a heavy
             // parse. Total added time worst-case: 26 × 120ms ≈ 3s.
             await new Promise<void>((r) => setTimeout(r, 120));
+            // Yield to user interactions — MonumentShop open or fly.
+            // Prior behavior: mid-load, a tap kicked off flyTo + shop
+            // mount while GLB parses were still stacking → combined
+            // main-thread work killed the WebView. Now we pause the
+            // load loop until any active pause signal clears.
+            await waitUntilResumed();
           }
         }
       };
@@ -696,7 +715,23 @@ export default function CapacitorGlobe() {
         }
       };
 
-      loadAllMonuments();
+      // Defer monument loading until the map is fully idle AND after a
+      // 1s stabilization buffer. Prior behavior: loadAllMonuments started
+      // immediately after style.load, keeping the main thread busy for
+      // ~40s while the user might tap/spin — which combined with any
+      // interaction (fly + shop mount + backdrop blur) tripped the
+      // WebKit watchdog and killed the WebView.
+      //
+      // Now we wait for map.on('idle') (paint complete + no pending
+      // tiles) THEN 1s extra breathing room, so the app is stable
+      // before we start heavy work. Also, when a pause signal fires
+      // (MonumentShop opens, user taps a monument), the load loop
+      // yields until resume — no piling work during interactions.
+      const startLoad = () => {
+        setTimeout(() => { loadAllMonuments(); }, 1000);
+      };
+      if (map.loaded()) startLoad();
+      else map.once("idle", startLoad);
 
       // Each frame: project each lat/lon to screen pixels, hide back-of-globe
       // models, and orient each so it appears LAMINATED to the globe surface
@@ -983,12 +1018,13 @@ export default function CapacitorGlobe() {
           // upper half above the MonumentShop bottom-sheet. MonumentShop
           // also re-issues flyGlobeTo on initialMk for belt-and-braces.
           const paddingBottom = Math.round(window.innerHeight * 0.5);
-          // Tap-zoom lowered 14 → 5.5. Zoom 14 pushed the tile pyramid past
-          // the WKWebView memory ceiling and triggered a WebView respawn on
-          // iOS (which read to users as "the globe just refreshed"). 5.5
-          // centres the monument at country scale, still comfortably framed
-          // above the bottom-sheet shop. Deep zoom into a city/landmark is
-          // what CityMapView is for once the shop opens.
+          // Tap → immediately pause the load loop + the render loop so
+          // fly + shop-open own the main thread. Resume after the shop
+          // fully mounts (MonumentShop dispatches globe-resume on close).
+          window.dispatchEvent(new Event("geknee:globe-pause"));
+          // Tap-zoom lowered 14 → 5.5. Zoom 14 pushed the tile pyramid
+          // past the WKWebView memory ceiling and triggered a WebView
+          // respawn on iOS.
           map.flyTo({
             center: [lon, lat],
             zoom: 5.5,
