@@ -15,7 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
 import { MONUMENT_LATLON } from "@/app/plan/location/globe/skins";
-import { detectCrashLoopAndArmFallback } from "@/lib/crash-loop-guard";
+import { detectCrashLoopAndArmFallback, escapeCrashLoop } from "@/lib/crash-loop-guard";
 import { initSessionContinuity, markMountPhase } from "@/lib/session-continuity";
 import { INFO } from "@/app/plan/location/globe/info";
 import { currentIssueYear } from "@/lib/issue-year";
@@ -752,12 +752,22 @@ export default function AtlasShell() {
       }}>
         <button
           onClick={() => {
+            // If we're stuck in the crash-loop bypass state, INITIALIZE
+            // becomes an escape hatch: clear the fallback flag + remount
+            // the interactive globe. Prior behavior left the button dead
+            // (CapacitorGlobe wasn't mounted, so nothing listened for
+            // the globe-initialize event). Now it always does something.
+            if (bypassGlobe) {
+              escapeCrashLoop();
+              setBypassGlobe(false);
+              return;
+            }
             // Three.js globe (web) listens through resetGlobeTilt;
             // Mapbox globe (Capacitor) listens for the custom event.
             resetGlobeTilt();
             window.dispatchEvent(new Event("geknee:globe-initialize"));
           }}
-          title="Reset globe orientation"
+          title={bypassGlobe ? "Retry the interactive globe" : "Reset globe orientation"}
           style={{
             background: "rgba(14, 16, 32, 0.28)",
             border: "1px solid rgba(196, 181, 253, 0.45)",

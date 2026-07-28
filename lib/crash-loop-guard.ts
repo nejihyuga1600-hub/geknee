@@ -29,6 +29,21 @@ const CRASH_LOOP_THRESHOLD = 2;
  * When it returns true, the caller should also observe that FALLBACK_FLAG
  * has been set in sessionStorage — AtlasShell reads that on next render.
  */
+/**
+ * Manual escape hatch — clears the crash-loop state so the next mount
+ * gets a fresh chance at the interactive globe. Called by the INITIALIZE
+ * button + the fallback-screen "Try again" button. If the underlying
+ * crash cause hasn't been fixed, the user just re-arms the fallback on
+ * the next crash — no worse off, but at least not stuck.
+ */
+export function escapeCrashLoop(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(MOUNT_TIMESTAMPS_KEY);
+    sessionStorage.removeItem(FALLBACK_FLAG);
+  } catch { /* ignore */ }
+}
+
 export function detectCrashLoopAndArmFallback(): boolean {
   if (typeof window === "undefined") return false;
   try {

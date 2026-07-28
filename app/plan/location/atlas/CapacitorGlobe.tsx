@@ -1039,27 +1039,46 @@ export default function CapacitorGlobe() {
         el.dataset.mk = mk;
         el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
         el.addEventListener("click", async () => {
-          // Pause the load loop + render loop so the fly + shop mount
-          // own the main thread. Zoom lowered 5.5 → 4.0 to cut tile-
-          // pyramid load ~4x. Then wait up to 800ms for any in-flight
-          // GLB parse to complete — the historic `webview_respawn`
-          // (Sentry JAVASCRIPT-NEXTJS-1K, phase `monuments-glb-load`)
-          // was caused by flyTo + shop mount + backdrop-blur stacking
-          // on top of a live GLB parse, saturating the WKWebView main
-          // thread past the watchdog. loadPaused=true stops new parses
-          // starting; waitForLoadIdle bounds the drain of whatever's
-          // in flight. 800ms cap ensures a stuck parse can't strand the
-          // user — the animation fires anyway.
+          // Anti-crash tap sequence for iOS WKWebView. The historic
+          // `webview_respawn` (Sentry JAVASCRIPT-NEXTJS-1K, phase
+          // `monuments-glb-load`) fires when the tap triggers a
+          // flyTo animation + shop mount + backdrop-blur compositing
+          // on top of a still-live mapbox+overlay GL pair. The prior
+          // c2675b9 fix only drained the GLB parse; a 900ms flyTo
+          // animation STILL keeps mapbox tiles + overlay painting,
+          // and backdrop-filter blur composites those live surfaces
+          // → OOM.
+          //
+          // Bulletproof sequence:
+          //  1. Pause everything (rAF cancel, map.stop, load loop yield).
+          //  2. Drain any in-flight GLB parse (up to 2000ms cap).
+          //  3. Small settle delay so pause has propagated visually.
+          //  4. On native: jumpTo (INSTANT — no animation, no live GL).
+          //     On web:    flyTo (smooth animation is safe with plenty
+          //                of GPU headroom on desktop / mobile Safari).
+          //  5. Only THEN mount the shop.
+          const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
+            Capacitor?: { isNativePlatform?: () => boolean };
+          }).Capacitor?.isNativePlatform?.();
           window.dispatchEvent(new Event("geknee:globe-pause"));
-          await waitForLoadIdle(800);
+          await waitForLoadIdle(2000);
+          await new Promise<void>((r) => setTimeout(r, 100));
           const paddingBottom = Math.round(window.innerHeight * 0.5);
-          map.flyTo({
-            center: [lon, lat],
-            zoom: 4.0,
-            duration: 900,
-            essential: true,
-            padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
-          });
+          if (IS_NATIVE) {
+            map.jumpTo({
+              center: [lon, lat],
+              zoom: 4.0,
+              padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
+            });
+          } else {
+            map.flyTo({
+              center: [lon, lat],
+              zoom: 4.0,
+              duration: 900,
+              essential: true,
+              padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
+            });
+          }
           window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
           window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
         });
