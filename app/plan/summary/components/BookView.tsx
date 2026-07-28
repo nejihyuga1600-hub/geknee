@@ -724,14 +724,28 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
       setSortDir(DEFAULT_DIR[k]);
     }
   }
+  const [query, setQuery] = useState('');
   const sortedHotels = useMemo(() => {
-    if (!sortKey) return hotels;
+    const q = query.trim().toLowerCase();
+    let list = q
+      ? hotels.filter((h) =>
+          h.name.toLowerCase().includes(q) ||
+          h.district.toLowerCase().includes(q) ||
+          h.tag.toLowerCase().includes(q),
+        )
+      : hotels;
+    if (!sortKey) return list;
     const sign = sortDir === 'asc' ? 1 : -1;
     const get = sortKey === 'price' ? (h: Hotel) => h.price : (h: Hotel) => h.rating;
-    return [...hotels].sort((a, b) => sign * (get(a) - get(b)));
-  }, [hotels, sortKey, sortDir]);
+    return [...list].sort((a, b) => sign * (get(a) - get(b)));
+  }, [hotels, sortKey, sortDir, query]);
   return (
     <section>
+      <SectionSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search hotels by name, neighborhood, or type"
+      />
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: 14, gap: 12, flexWrap: 'wrap',
@@ -1683,82 +1697,89 @@ function FlightsSection({ flight, startDate, endDate }: {
       <div style={{
         background: 'rgba(255,255,255,0.03)',
         border: `1px solid ${flight.status === 'CONFIRMED' ? 'var(--brand-border-hi)' : 'var(--brand-border)'}`,
-        borderRadius: 14, padding: '20px 22px',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto', gap: 24, alignItems: 'center',
+        borderRadius: 14, padding: '18px 18px 16px',
+        display: 'flex', flexDirection: 'column', gap: 16,
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {flight.segments.map((s, i) => (
-            <div key={i} style={{
+        {/* Header row — carrier + status left, price right (same mobile
+            stacking pattern as FlightOptionCard). Prior "1fr auto" grid
+            with a 24px-padded rail was crowding out the leg rows. */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          justifyContent: 'space-between',
+        }}>
+          <div style={{
+            fontFamily: MONO, fontSize: 10, letterSpacing: '0.16em',
+            color: flight.status === 'CONFIRMED' ? 'var(--brand-success)' : 'var(--brand-ink-mute)',
+            fontWeight: 700, textTransform: 'uppercase', minWidth: 0, flex: 1,
+          }}>
+            {flight.carrier} · {flight.status}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 26, fontWeight: 400,
+              letterSpacing: '-0.015em', color: 'var(--brand-ink)', lineHeight: 1,
+            }}>
+              {flight.currency}{flight.total.toLocaleString()}
+            </div>
+            <div style={{
+              fontFamily: MONO, fontSize: 8, letterSpacing: '0.16em',
+              color: 'var(--brand-ink-mute)', marginTop: 4, fontWeight: 700,
+            }}>
+              TOTAL
+            </div>
+          </div>
+        </div>
+
+        {flight.segments.map((s, i) => (
+          <div key={i}>
+            <div style={{
+              fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
+              color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 4,
+            }}>
+              {flight.date.split('–')[i]?.trim() ?? flight.date} · {i === 0 ? 'OUTBOUND' : 'RETURN'}
+            </div>
+            <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr auto 1fr',
-              alignItems: 'center', gap: 18,
+              alignItems: 'center', gap: 12,
             }}>
-              {/* From */}
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{
-                  fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-                  color: 'var(--brand-ink-mute)', fontWeight: 700,
-                }}>
-                  {flight.date.split('–')[i]?.trim() ?? flight.date} · {i === 0 ? 'OUTBOUND' : 'RETURN'}
-                </div>
-                <div style={{
-                  fontFamily: DISPLAY, fontSize: 32, fontWeight: 400,
-                  letterSpacing: '-0.02em', color: 'var(--brand-ink)', marginTop: 4,
+                  fontFamily: DISPLAY, fontSize: 22, fontWeight: 400,
+                  letterSpacing: '-0.02em', color: 'var(--brand-ink)', lineHeight: 1,
                 }}>
                   {s.from}
                 </div>
                 <div style={{
-                  fontFamily: MONO, fontSize: 11,
-                  color: 'var(--brand-ink-dim)', marginTop: 2,
+                  fontFamily: MONO, fontSize: 10,
+                  color: 'var(--brand-ink-dim)', marginTop: 4,
                 }}>
                   {s.departTime}
                 </div>
               </div>
-
-              {/* Center: arrow + via city or "Direct" + duration */}
-              <div style={{ textAlign: 'center', color: 'var(--brand-ink-mute)' }}>
-                <div style={{ fontSize: 14 }}>
+              <div style={{ textAlign: 'center', color: 'var(--brand-ink-mute)', minWidth: 0 }}>
+                <div style={{ fontSize: 11, letterSpacing: '0.06em' }}>
                   {String.fromCodePoint(0x2192)} {s.via && s.via.trim() ? s.via : 'Direct'} · {s.duration}
                 </div>
                 <div style={{ height: 1, background: 'var(--brand-border)', marginTop: 6 }} />
               </div>
-
-              {/* To */}
-              <div style={{ textAlign: 'right' }}>
+              <div style={{ textAlign: 'right', minWidth: 0 }}>
                 <div style={{
-                  fontFamily: DISPLAY, fontSize: 32, fontWeight: 400,
-                  letterSpacing: '-0.02em', color: 'var(--brand-ink)',
+                  fontFamily: DISPLAY, fontSize: 22, fontWeight: 400,
+                  letterSpacing: '-0.02em', color: 'var(--brand-ink)', lineHeight: 1,
                 }}>
                   {s.to}
                 </div>
                 <div style={{
-                  fontFamily: MONO, fontSize: 11,
-                  color: 'var(--brand-ink-dim)', marginTop: 2,
+                  fontFamily: MONO, fontSize: 10,
+                  color: 'var(--brand-ink-dim)', marginTop: 4,
                 }}>
                   {s.arriveTime}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Total + status */}
-        <div style={{ textAlign: 'right', borderLeft: '1px solid var(--brand-border)', paddingLeft: 24, alignSelf: 'stretch', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
-          <div style={{
-            fontFamily: DISPLAY, fontSize: 28, fontWeight: 400,
-            letterSpacing: '-0.015em', color: 'var(--brand-ink)', lineHeight: 1,
-          }}>
-            {flight.currency}{flight.total.toLocaleString()}
           </div>
-          <div style={{
-            fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-            color: flight.status === 'CONFIRMED' ? 'var(--brand-success)' : 'var(--brand-ink-mute)',
-            fontWeight: 700,
-          }}>
-            {flight.carrier} · {flight.status}
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Aggregator search row — like Wanderlog/TripAdvisor patterns,
@@ -1890,8 +1911,25 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
   onChangeHome: (rec: { iata: string; city: string; country: string; countryCode: string; lat: number; lng: number }) => void;
   tripId?: string;
 }) {
+  const [query, setQuery] = useState('');
+  const filteredOptions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) =>
+      o.carrier.toLowerCase().includes(q) ||
+      (o.flightNumbers ?? []).some((n) => n.toLowerCase().includes(q)) ||
+      (o.dealBadge ?? '').toLowerCase().includes(q) ||
+      o.outbound.from.toLowerCase().includes(q) ||
+      o.outbound.to.toLowerCase().includes(q),
+    );
+  }, [options, query]);
   return (
     <section>
+      <SectionSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search flights by airline, flight number, or airport code"
+      />
       <div style={{
         fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
         color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
@@ -1923,7 +1961,7 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
         />
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
-        {options.map((o, i) => (
+        {filteredOptions.map((o, i) => (
           <FlightOptionCard key={i} option={o} startDate={startDate} endDate={endDate} tripId={tripId} />
         ))}
       </div>
@@ -2783,105 +2821,106 @@ function FlightOptionCard({ option, startDate, endDate, tripId }: {
 }) {
   const badgeColor = option.dealBadge ? DEAL_BADGE_COLOR[option.dealBadge] : null;
   const co2 = typeof option.co2Kg === 'number' ? Math.round(option.co2Kg) : null;
+  // Mobile-first stack: price + carrier at the top-right (no separate rail),
+  // legs flow full-width beneath, chips + aggregator row at the bottom.
+  // Prior 2-column grid ("1fr auto" + minWidth:180 right rail) starved the
+  // leg column on 375-430px viewports, forcing 32px airport codes to wrap
+  // and the aggregator chips to overlap the "Direct both ways" pill.
   return (
     <div style={{
       background: 'rgba(255,255,255,0.03)',
       border: `1px solid ${badgeColor ?? 'var(--brand-border)'}`,
-      borderRadius: 14, padding: '20px 22px',
-      display: 'grid',
-      gridTemplateColumns: '1fr auto',
-      gap: 24, alignItems: 'stretch',
+      borderRadius: 14, padding: '18px 18px 16px',
+      display: 'flex', flexDirection: 'column', gap: 14,
     }}>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Top metadata strip */}
+      {/* Top row — carrier meta left, price right */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+        justifyContent: 'space-between',
+      }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          fontFamily: MONO, fontSize: 10, letterSpacing: '0.16em',
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
           color: 'var(--brand-ink-mute)', fontWeight: 700, textTransform: 'uppercase',
+          minWidth: 0, flex: 1,
         }}>
           <span style={{ color: 'var(--brand-ink)' }}>{option.carrier}</span>
-          {option.flightNumbers?.length ? <span>· {option.flightNumbers.join(' / ')}</span> : null}
+          {option.flightNumbers?.length ? (
+            <span>· {option.flightNumbers.join(' / ')}</span>
+          ) : null}
           {option.cabin && <span>· {option.cabin}</span>}
           {option.dealBadge && (
             <span style={{
-              padding: '3px 10px', borderRadius: 4,
+              padding: '3px 8px', borderRadius: 4,
               background: 'rgba(10,10,31,0.7)',
               color: badgeColor!, border: `1px solid ${badgeColor!}`,
-              fontSize: 9, letterSpacing: '0.18em',
+              fontSize: 9, letterSpacing: '0.16em',
             }}>
               {option.dealBadge}
             </span>
           )}
         </div>
-
-        {/* Outbound + Return legs */}
-        <FlightLegRow label="OUTBOUND" leg={option.outbound} />
-        <FlightLegRow label="RETURN"   leg={option.return} />
-
-        {/* Bottom chips strip */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-          <FlightChip icon="⏱" label={option.totalDuration} />
-          {co2 !== null && (
-            <FlightChip
-              icon="🌱"
-              label={`${co2} kg CO₂`}
-              accent={co2 < 400 ? '#86efac' : co2 < 900 ? '#fbbf24' : '#fb7185'}
-              hint="Estimated round-trip emissions per passenger"
-            />
-          )}
-          <FlightChip
-            icon={layoverCount(option) === 0 ? '✈' : '🔁'}
-            label={layoverSummary(option)}
-            accent={layoverCount(option) === 0 ? '#86efac' : undefined}
-          />
-        </div>
-      </div>
-
-      {/* Right rail: price + book button + aggregator search */}
-      <div style={{
-        textAlign: 'right',
-        borderLeft: '1px solid var(--brand-border)',
-        paddingLeft: 24,
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        gap: 12, minWidth: 180,
-      }}>
-        <div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 32, fontWeight: 400,
+            fontFamily: DISPLAY, fontSize: 26, fontWeight: 400,
             letterSpacing: '-0.015em', color: 'var(--brand-ink)', lineHeight: 1,
           }}>
             {option.currency}{option.totalPrice.toLocaleString()}
           </div>
           <div style={{
-            fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-            color: 'var(--brand-ink-mute)', marginTop: 6, fontWeight: 700,
+            fontFamily: MONO, fontSize: 8, letterSpacing: '0.16em',
+            color: 'var(--brand-ink-mute)', marginTop: 4, fontWeight: 700,
           }}>
-            ROUND TRIP · TOTAL
+            ROUND TRIP
           </div>
         </div>
-        <FlightOptionAggregator option={option} startDate={startDate} endDate={endDate} tripId={tripId} />
       </div>
+
+      {/* Legs (each row is now full-width) */}
+      <FlightLegRow label="OUTBOUND" leg={option.outbound} />
+      <FlightLegRow label="RETURN"   leg={option.return} />
+
+      {/* Chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <FlightChip icon="⏱" label={option.totalDuration} />
+        {co2 !== null && (
+          <FlightChip
+            icon="🌱"
+            label={`${co2} kg CO₂`}
+            accent={co2 < 400 ? '#86efac' : co2 < 900 ? '#fbbf24' : '#fb7185'}
+            hint="Estimated round-trip emissions per passenger"
+          />
+        )}
+        <FlightChip
+          icon={layoverCount(option) === 0 ? '✈' : '🔁'}
+          label={layoverSummary(option)}
+          accent={layoverCount(option) === 0 ? '#86efac' : undefined}
+        />
+      </div>
+
+      {/* Book + aggregators — full-width row of its own so nothing overlaps chips above */}
+      <FlightOptionAggregator option={option} startDate={startDate} endDate={endDate} tripId={tripId} />
     </div>
   );
 }
 
 function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) {
+  // Compact mobile layout: label sits ABOVE the route as a small tag,
+  // route line uses full card width. Prior 110px inline label column
+  // ate 30% of a 375px viewport, forcing the 22px airport codes to
+  // stack awkwardly under each other.
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '110px 1fr auto',
-      alignItems: 'center', gap: 14,
-    }}>
+    <div>
       <div style={{
         fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-        color: 'var(--brand-ink-mute)', fontWeight: 700,
+        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 4,
       }}>
         {label}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 22, fontWeight: 400,
+            fontFamily: DISPLAY, fontSize: 20, fontWeight: 400,
             color: 'var(--brand-ink)', lineHeight: 1,
           }}>
             {leg.from}
@@ -2891,7 +2930,7 @@ function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) {
           </div>
         </div>
         {/* Arrow + layovers visualization */}
-        <div style={{ flex: 1, position: 'relative', minWidth: 60, paddingTop: 6 }}>
+        <div style={{ flex: 1, position: 'relative', minWidth: 40, paddingTop: 6 }}>
           <div style={{ height: 1, background: 'var(--brand-border)' }} />
           {leg.layovers && leg.layovers.length > 0 && (
             <div style={{
@@ -2922,9 +2961,9 @@ function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) {
             )}
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', minWidth: 0 }}>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 22, fontWeight: 400,
+            fontFamily: DISPLAY, fontSize: 20, fontWeight: 400,
             color: 'var(--brand-ink)', lineHeight: 1,
           }}>
             {leg.to}
@@ -2934,7 +2973,6 @@ function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) {
           </div>
         </div>
       </div>
-      <div />
     </div>
   );
 }
@@ -3091,8 +3129,23 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const filteredActivities = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return activities;
+    return activities.filter((a) =>
+      a.name.toLowerCase().includes(q) ||
+      a.meta.toLowerCase().includes(q) ||
+      a.tag.toLowerCase().includes(q),
+    );
+  }, [activities, query]);
   return (
     <section>
+      <SectionSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search activities by name, category, or detail"
+      />
       <div style={{
         fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
         color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
@@ -3113,7 +3166,7 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
         gap: 14,
         marginTop: 18,
       }}>
-        {activities.map((a, i) => (
+        {filteredActivities.map((a, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ActivityCard activity={a} location={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
             {tripId && (
@@ -3359,8 +3412,23 @@ function InsuranceSection({
   location: string; startDate: string; endDate: string; travelingFrom?: string;
 }) {
   const providers = buildInsuranceProviders(location, startDate, endDate, travelingFrom);
+  const [query, setQuery] = useState('');
+  const filteredProviders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return providers;
+    return providers.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      p.tag.toLowerCase().includes(q) ||
+      p.blurb.toLowerCase().includes(q),
+    );
+  }, [providers, query]);
   return (
     <section>
+      <SectionSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search insurance by provider, tier, or coverage type"
+      />
       <div style={{
         fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
         color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
@@ -3385,7 +3453,7 @@ function InsuranceSection({
         display: 'grid', gap: 14,
         gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
       }}>
-        {providers.map(p => (
+        {filteredProviders.map(p => (
           <a
             key={p.name}
             href={p.href}
@@ -3688,6 +3756,15 @@ function TransportSection({ location, startDate, endDate, tripId, homeAirport }:
     },
   ];
   const options = [...universal, ...regionalTransportOptions(location, startDate, endDate)];
+  const [query, setQuery] = useState('');
+  const filteredOptions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) =>
+      o.name.toLowerCase().includes(q) ||
+      o.description.toLowerCase().includes(q),
+    );
+  }, [options, query]);
   // Hotelbeds Transfers — only renders if user has a home airport set
   // AND the secret is configured. Shows above the affiliate tile grid.
   const transferOriginIata = homeAirport?.iata ?? null;
@@ -3696,6 +3773,11 @@ function TransportSection({ location, startDate, endDate, tripId, homeAirport }:
     : 'dates not set';
   return (
     <section>
+      <SectionSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search transport by provider, mode, or detail"
+      />
       <div style={{
         fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
         color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
@@ -3723,7 +3805,7 @@ function TransportSection({ location, startDate, endDate, tripId, homeAirport }:
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
         gap: 14,
       }}>
-        {options.map((opt) => (
+        {filteredOptions.map((opt) => (
           <a
             key={opt.name}
             href={opt.href}
@@ -3785,5 +3867,68 @@ function PlaceholderSection({ title, detail }: { title: string; detail: string }
         </p>
       </div>
     </section>
+  );
+}
+
+// Compact filter input used at the top of every booking sub-tab section.
+// Each Section owns its own query state and passes value + onChange here;
+// filter logic (which fields to match against) stays in the parent.
+function SectionSearchBar({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder: string;
+}) {
+  return (
+    <div style={{
+      position: 'relative', marginBottom: 16,
+    }}>
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          padding: '11px 14px 11px 38px',
+          borderRadius: 12,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid var(--brand-border)',
+          color: 'var(--brand-ink)',
+          fontFamily: 'inherit', fontSize: 14,
+          outline: 'none',
+        }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--brand-border-hi)'; }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--brand-border)'; }}
+      />
+      <svg
+        width="16" height="16" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        aria-hidden
+        style={{
+          position: 'absolute', left: 12, top: '50%',
+          transform: 'translateY(-50%)',
+          color: 'var(--brand-ink-mute)', pointerEvents: 'none',
+        }}
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          aria-label="Clear search"
+          style={{
+            position: 'absolute', right: 8, top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'transparent', border: 'none',
+            color: 'var(--brand-ink-mute)', cursor: 'pointer',
+            padding: 6, borderRadius: 8, fontFamily: 'inherit',
+            fontSize: 12,
+          }}
+        >
+          ✕
+        </button>
+      )}
+    </div>
   );
 }
