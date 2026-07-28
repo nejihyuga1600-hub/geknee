@@ -1039,30 +1039,25 @@ export default function CapacitorGlobe() {
         el.dataset.mk = mk;
         el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
         el.addEventListener("click", async () => {
-          // Anti-crash tap sequence for iOS WKWebView. The historic
-          // `webview_respawn` (Sentry JAVASCRIPT-NEXTJS-1K, phase
-          // `monuments-glb-load`) fires when the tap triggers a
-          // flyTo animation + shop mount + backdrop-blur compositing
-          // on top of a still-live mapbox+overlay GL pair. The prior
-          // c2675b9 fix only drained the GLB parse; a 900ms flyTo
-          // animation STILL keeps mapbox tiles + overlay painting,
-          // and backdrop-filter blur composites those live surfaces
-          // → OOM.
+          // Tap sequence — the crash risk is stacking flyTo animation +
+          // shop mount + backdrop-filter blur on a still-live mapbox +
+          // Three.js overlay pair. But blocking on drain BEFORE any
+          // visible response makes the tap feel dead ("unresponsive to
+          // my touch"). So we split it: instant visual feedback first,
+          // then drain, then shop.
           //
-          // Bulletproof sequence:
-          //  1. Pause everything (rAF cancel, map.stop, load loop yield).
-          //  2. Drain any in-flight GLB parse (up to 2000ms cap).
-          //  3. Small settle delay so pause has propagated visually.
-          //  4. On native: jumpTo (INSTANT — no animation, no live GL).
-          //     On web:    flyTo (smooth animation is safe with plenty
-          //                of GPU headroom on desktop / mobile Safari).
-          //  5. Only THEN mount the shop.
+          //   1. Instant: pause + jumpTo (native) / flyTo (web). jumpTo
+          //      repaints once and stops → user sees the camera cut to
+          //      the monument immediately. flyTo on web still animates
+          //      smoothly (desktop GPUs handle it fine).
+          //   2. Drain any in-flight GLB parse (up to 1500ms cap) so
+          //      the shop mount doesn't stack backdrop-blur composites
+          //      on top of a live parse.
+          //   3. Fire monument-select + open-monument-shop.
           const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
             Capacitor?: { isNativePlatform?: () => boolean };
           }).Capacitor?.isNativePlatform?.();
           window.dispatchEvent(new Event("geknee:globe-pause"));
-          await waitForLoadIdle(2000);
-          await new Promise<void>((r) => setTimeout(r, 100));
           const paddingBottom = Math.round(window.innerHeight * 0.5);
           if (IS_NATIVE) {
             map.jumpTo({
@@ -1079,7 +1074,14 @@ export default function CapacitorGlobe() {
               padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
             });
           }
+          // Fire monument-select right away — other listeners (analytics,
+          // pin-focus) don't care about GL state.
           window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
+          // Now drain parse before mounting the heavy shop modal. The
+          // 1500ms cap is high enough for a typical GLB parse to finish
+          // (~600-1200ms on iPhone 14) but low enough that a stuck parse
+          // doesn't strand the user.
+          await waitForLoadIdle(1500);
           window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
         });
         new mapboxgl.Marker({
