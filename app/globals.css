@@ -184,6 +184,13 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Hide scrollbar chrome on horizontal image strips (hotel cards etc.)
+   while preserving native touch momentum + wheel scrolling. Consistent
+   with the day-filter / tab-bar pattern which uses `scrollbarWidth:
+   'thin'` — image strips look cleaner without any track visible. */
+.geknee-hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.geknee-hide-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Accessibility: respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

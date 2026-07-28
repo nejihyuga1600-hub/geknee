@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BookTabProps } from '../lib/types';
 import { fetchPlaceImage, imgCache } from '../lib/places';
@@ -1332,11 +1332,31 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
   const currentImg = gallery && gallery.length > 0 ? gallery[galleryIdx % gallery.length] : null;
   const hasMultiple = !!gallery && gallery.length > 1;
 
+  // Ref to the horizontal scroll strip. Arrows call scrollTo on it;
+  // scroll events (touch swipe + arrow click) drive galleryIdx via
+  // rounded scrollLeft / cardWidth. Keeping the index in state lets the
+  // dot indicators + lightbox stay in sync with whatever the user swipes to.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const onGalleryScroll = () => {
+    const el = scrollerRef.current;
+    if (!el || !gallery || gallery.length < 2) return;
+    const w = el.clientWidth;
+    if (w <= 0) return;
+    const i = Math.round(el.scrollLeft / w);
+    if (i !== galleryIdx && i >= 0 && i < gallery.length) setGalleryIdx(i);
+  };
   function nudge(delta: number, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (!gallery || gallery.length < 2) return;
-    setGalleryIdx(i => (i + delta + gallery.length) % gallery.length);
+    const el = scrollerRef.current;
+    if (el) {
+      const w = el.clientWidth;
+      const next = (galleryIdx + delta + gallery.length) % gallery.length;
+      el.scrollTo({ left: next * w, behavior: 'smooth' });
+    } else {
+      setGalleryIdx(i => (i + delta + gallery.length) % gallery.length);
+    }
   }
   function openLightbox() {
     if (!currentImg) return;
@@ -1362,44 +1382,78 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
           : 'linear-gradient(135deg, rgba(167,139,250,0.10), rgba(125,211,252,0.06))',
         overflow: 'hidden',
       }}>
-        <button
-          type="button"
-          onClick={openLightbox}
-          disabled={!currentImg}
-          aria-label={currentImg ? `View photos of ${hotel.name}` : hotel.name}
-          style={{
-            position: 'absolute', inset: 0,
-            display: 'grid', placeItems: 'center',
-            color: 'rgba(167,139,250,0.4)', fontSize: 28,
-            fontFamily: DISPLAY,
-            padding: 0, border: 'none',
-            background: 'transparent',
-            cursor: currentImg ? 'zoom-in' : 'default',
-          }}
-        >
-          {currentImg ? (
-            <img
-              key={currentImg}
-              src={currentImg} alt={hotel.name} loading="lazy"
-              style={{
-                position: 'absolute', inset: 0,
-                width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-                transition: 'opacity 200ms ease',
-              }}
-            />
-          ) : svCoord ? (
-            <div style={{ position: 'absolute', inset: 0 }}>
-              <StreetViewThumb
-                lat={svCoord.lat}
-                lng={svCoord.lng}
-                alt={hotel.name}
-                aspectRatio="16/10"
-              />
-            </div>
-          ) : (
-            String.fromCodePoint(0x25EC)
-          )}
-        </button>
+        {gallery && gallery.length > 0 ? (
+          // Swipeable strip — same overflowX + scroll-snap pattern used
+          // by the day-filter pills and tab bar so scroll feel is
+          // consistent across the app. Each image occupies the full
+          // card width; native iOS momentum + snap-align handles the
+          // paging. Dots + arrows track/drive scrollLeft.
+          <div
+            ref={scrollerRef}
+            onScroll={onGalleryScroll}
+            style={{
+              display: 'flex',
+              width: '100%', height: '100%',
+              overflowX: 'auto', overflowY: 'hidden',
+              scrollSnapType: 'x mandatory',
+              scrollbarWidth: 'none',
+              WebkitOverflowScrolling: 'touch',
+            }}
+            className="geknee-hide-scrollbar"
+          >
+            {gallery.map((src, i) => (
+              <button
+                key={src + i}
+                type="button"
+                onClick={openLightbox}
+                aria-label={`Photo ${i + 1} of ${hotel.name}`}
+                style={{
+                  flex: '0 0 100%',
+                  width: '100%', height: '100%',
+                  scrollSnapAlign: 'start', scrollSnapStop: 'always',
+                  padding: 0, border: 'none', background: '#0a0a1f',
+                  cursor: 'zoom-in',
+                }}
+              >
+                <img
+                  src={src} alt={`${hotel.name} — photo ${i + 1}`} loading="lazy"
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={openLightbox}
+            disabled={!currentImg}
+            aria-label={currentImg ? `View photos of ${hotel.name}` : hotel.name}
+            style={{
+              position: 'absolute', inset: 0,
+              display: 'grid', placeItems: 'center',
+              color: 'rgba(167,139,250,0.4)', fontSize: 28,
+              fontFamily: DISPLAY,
+              padding: 0, border: 'none',
+              background: 'transparent',
+              cursor: currentImg ? 'zoom-in' : 'default',
+            }}
+          >
+            {svCoord ? (
+              <div style={{ position: 'absolute', inset: 0 }}>
+                <StreetViewThumb
+                  lat={svCoord.lat}
+                  lng={svCoord.lng}
+                  alt={hotel.name}
+                  aspectRatio="16/10"
+                />
+              </div>
+            ) : (
+              String.fromCodePoint(0x25EC)
+            )}
+          </button>
+        )}
 
         {/* Tier pill */}
         <div style={{
