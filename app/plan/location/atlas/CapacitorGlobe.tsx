@@ -462,9 +462,24 @@ export default function CapacitorGlobe() {
       // The load loop awaits until this flips false so heavy GLB parses
       // never overlap with modal transitions or fly animations.
       let loadPaused = false;
+      // loadInFlight = true from the moment a loader.loadAsync() promise
+      // starts until applyGltf finishes. The tap handler waits for this
+      // to be false (with a hard cap) before firing flyTo + shop mount —
+      // stacking those on top of a live GLB parse is what was killing
+      // WKWebView (Sentry `webview_respawn`, phase `monuments-glb-load`).
+      let loadInFlight = false;
       const waitUntilResumed = async () => {
         while (loadPaused) {
           await new Promise<void>((r) => setTimeout(r, 250));
+        }
+      };
+      // Wait until the load loop drains any in-flight parse. Called from
+      // the tap handler with a hard cap so a stuck parse can't strand the
+      // user staring at an unmoving map.
+      const waitForLoadIdle = async (capMs: number) => {
+        const deadline = Date.now() + capMs;
+        while (loadInFlight && Date.now() < deadline) {
+          await new Promise<void>((r) => setTimeout(r, 50));
         }
       };
       window.addEventListener("geknee:globe-pause", () => { loadPaused = true; });
@@ -559,6 +574,7 @@ export default function CapacitorGlobe() {
             reportDiag();
             map.triggerRepaint();
           };
+          loadInFlight = true;
           try {
             const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
             applyLoaded(gltf as { scene: THREE.Object3D });
@@ -576,6 +592,8 @@ export default function CapacitorGlobe() {
               diag.errors++;
               reportDiag();
             }
+          } finally {
+            loadInFlight = false;
           }
           if (isNative) {
             // 120ms lets the WebKit watchdog tick even after a heavy
@@ -684,6 +702,7 @@ export default function CapacitorGlobe() {
             reportDiag();
             map.triggerRepaint();
           };
+          loadInFlight = true;
           try {
             const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
             applyGltf(gltf as { scene: THREE.Object3D }, skin ?? "default");
@@ -704,6 +723,8 @@ export default function CapacitorGlobe() {
               diag.errors++;
               reportDiag();
             }
+          } finally {
+            loadInFlight = false;
           }
           if (isNativeNow) {
             await new Promise<void>((r) => setTimeout(r, 120));
@@ -1017,14 +1038,20 @@ export default function CapacitorGlobe() {
         el.setAttribute("aria-label", mk);
         el.dataset.mk = mk;
         el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
-        el.addEventListener("click", () => {
+        el.addEventListener("click", async () => {
           // Pause the load loop + render loop so the fly + shop mount
           // own the main thread. Zoom lowered 5.5 → 4.0 to cut tile-
-          // pyramid load ~4x — the previous 5.5 was still stressing
-          // WebKit past the watchdog when combined with mid-load shop
-          // mount. 4.0 shows regional context; user can zoom in via
-          // pinch if they want landmark-scale detail.
+          // pyramid load ~4x. Then wait up to 800ms for any in-flight
+          // GLB parse to complete — the historic `webview_respawn`
+          // (Sentry JAVASCRIPT-NEXTJS-1K, phase `monuments-glb-load`)
+          // was caused by flyTo + shop mount + backdrop-blur stacking
+          // on top of a live GLB parse, saturating the WKWebView main
+          // thread past the watchdog. loadPaused=true stops new parses
+          // starting; waitForLoadIdle bounds the drain of whatever's
+          // in flight. 800ms cap ensures a stuck parse can't strand the
+          // user — the animation fires anyway.
           window.dispatchEvent(new Event("geknee:globe-pause"));
+          await waitForLoadIdle(800);
           const paddingBottom = Math.round(window.innerHeight * 0.5);
           map.flyTo({
             center: [lon, lat],
