@@ -153,6 +153,7 @@ export const AVAILABLE_SKINS: Record<string, Set<string>> = {
   burjKhalifa:    new Set(['bronze']),
   hagiaSophia:    new Set(['bronze', 'meshy']),
   notreDameF:     new Set(['bronze']),
+  notreDame:      new Set(['bronze']),
   forbiddenCity:  new Set(['bronze']),
   uluru:          new Set(['bronze']),
   mtRushmore:     new Set(['bronze']),
