@@ -171,7 +171,7 @@ Create a complete day-by-day itinerary. Format your response clearly with:
 HEADING FORMAT (critical): Use "## " (double hash + space) for every section heading. Example: ## Day 1: Arrival & First Impressions, ## Day 2: City Highlights, ## Practical Tips. Do NOT use bold text (**Day 1:**) or triple-hash (###) for headings.
 
 1. A brief trip overview (## Overview heading) explaining why this destination and this itinerary match the traveler's personality and purpose
-2. A full day-by-day schedule, each day as its own ## Day N: [Title] heading (Day 1 through Day ${p.nights}), where EVERY activity has:
+2. A full day-by-day schedule, each day as its own ## Day N: [Title] heading. You MUST emit exactly ${p.nights} day headings numbered CONSECUTIVELY: ## Day 1, ## Day 2, … ## Day ${p.nights}. Never skip a day number. Every day must have between 4 and 7 timed activities (a 24-hour day cannot contain 14 activities — that reads as 90 minutes of sightseeing per activity with no rest). Distribute the traveler's must-see stops evenly across every day, not front-loaded into Day 1. Each activity has:
    - A precise start time (e.g. **9:00 AM**)
    - The activity name in bold with approximate duration *(~X hrs)*
    - A transit segment immediately after showing how to reach the next stop: mode token + travel time + route/line name
