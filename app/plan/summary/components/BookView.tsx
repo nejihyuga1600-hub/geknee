@@ -689,6 +689,135 @@ export default function BookView(props: BookTabProps) {
   );
 }
 
+// ─── Price meter ──────────────────────────────────────────────────────────
+//
+// Compares an item's price against its peers in the current result set
+// (percentile), and against the destination's month-of-year seasonality.
+// Renders a compact horizontal gauge + label — "Great deal", "Fair",
+// "Above typical" — plus an optional seasonality chip (peak/shoulder/off).
+//
+// Peer signal is real (percentile in current query). Seasonality is a
+// curated month-of-year map for the top destinations; unknown cities
+// fall through as "typical". Neither depends on a historical-price API
+// (Google Flights insights, Kayak Trends, etc. — all closed/paid) so
+// this can ship with the data we already have.
+
+type PriceVerdict = 'great' | 'fair' | 'high';
+type Seasonality = 'peak' | 'shoulder' | 'off-peak' | null;
+
+interface PeerStats { min: number; median: number; max: number; count: number }
+
+function priceStats(prices: number[]): PeerStats {
+  const valid = prices.filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+  if (valid.length === 0) return { min: 0, median: 0, max: 0, count: 0 };
+  const mid = Math.floor(valid.length / 2);
+  const median = valid.length % 2 === 0 ? (valid[mid - 1] + valid[mid]) / 2 : valid[mid];
+  return { min: valid[0], median, max: valid[valid.length - 1], count: valid.length };
+}
+
+function verdictFor(price: number, stats: PeerStats): PriceVerdict {
+  if (stats.count < 2 || !Number.isFinite(price)) return 'fair';
+  if (price <= stats.median * 0.85) return 'great';
+  if (price >= stats.median * 1.20) return 'high';
+  return 'fair';
+}
+
+// Rough peak-season map keyed by lowercased city / country substring.
+// Values are the peak months (1-12). Second array is shoulder months.
+// Anything else is off-peak. Missing city → null seasonality.
+const SEASON_TABLE: Array<{ match: RegExp; peak: number[]; shoulder: number[] }> = [
+  { match: /iceland|reykjav/i,     peak: [6, 7, 8],       shoulder: [5, 9] },
+  { match: /japan|tokyo|kyoto/i,   peak: [3, 4, 5, 10, 11], shoulder: [9] },
+  { match: /paris|france|italy|rome|barcelona|london|spain/i, peak: [6, 7, 8], shoulder: [4, 5, 9, 10] },
+  { match: /thailand|bali|vietnam|cambodia/i, peak: [12, 1, 2], shoulder: [11, 3] },
+  { match: /new zealand|australia|sydney/i, peak: [12, 1, 2], shoulder: [11, 3] },
+  { match: /caribbean|mexico|cancun|maldives/i, peak: [12, 1, 2, 3], shoulder: [4, 11] },
+  { match: /alaska|norway|finland|sweden|greenland/i, peak: [6, 7, 8], shoulder: [5, 9] },
+  { match: /india|nepal|himalaya/i, peak: [10, 11, 2, 3], shoulder: [9, 4] },
+  { match: /peru|machu|patagonia|chile|argentina/i, peak: [12, 1, 2], shoulder: [11, 3] },
+  { match: /egypt|jordan|petra/i,  peak: [10, 11, 2, 3, 4], shoulder: [9, 5] },
+  { match: /new york|nyc|boston|dc|washington/i, peak: [5, 6, 9, 10], shoulder: [4, 11] },
+  { match: /hawaii|hawaiian/i,     peak: [12, 1, 2, 3, 6, 7], shoulder: [4, 5, 9] },
+];
+
+function seasonalityFor(city: string, dateISO: string | undefined): Seasonality {
+  if (!dateISO) return null;
+  const m = Number(dateISO.slice(5, 7));
+  if (!(m >= 1 && m <= 12)) return null;
+  const row = SEASON_TABLE.find((r) => r.match.test(city));
+  if (!row) return null;
+  if (row.peak.includes(m)) return 'peak';
+  if (row.shoulder.includes(m)) return 'shoulder';
+  return 'off-peak';
+}
+
+const VERDICT_META: Record<PriceVerdict, { label: string; color: string }> = {
+  great: { label: 'Great deal',    color: '#86efac' },
+  fair:  { label: 'Fair price',    color: '#fbbf24' },
+  high:  { label: 'Above typical', color: '#fb7185' },
+};
+
+const SEASON_META: Record<'peak' | 'shoulder' | 'off-peak', { label: string; color: string; tone: string }> = {
+  peak:       { label: 'Peak season',      color: '#fb7185', tone: 'expect elevated prices' },
+  shoulder:   { label: 'Shoulder season',  color: '#fbbf24', tone: 'moderate pricing window' },
+  'off-peak': { label: 'Off-peak',         color: '#86efac', tone: 'best value window' },
+};
+
+function PriceMeter({ price, stats, seasonality, currency = '$', compact = false }: {
+  price: number;
+  stats: PeerStats;
+  seasonality?: Seasonality;
+  currency?: string;
+  compact?: boolean;
+}) {
+  if (stats.count < 2 || !Number.isFinite(price) || price <= 0) return null;
+  const verdict = verdictFor(price, stats);
+  const meta = VERDICT_META[verdict];
+  const range = Math.max(1, stats.max - stats.min);
+  const pct = Math.max(0, Math.min(1, (price - stats.min) / range));
+  const seasonMeta = seasonality ? SEASON_META[seasonality] : null;
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: compact ? '6px 8px' : '8px 10px',
+      borderRadius: 10,
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid var(--brand-border)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+        color: 'var(--brand-ink-mute)', fontWeight: 700, textTransform: 'uppercase',
+      }}>
+        <span style={{ color: meta.color }}>● {meta.label}</span>
+        <span title={`Peers: ${currency}${Math.round(stats.min).toLocaleString()} – ${currency}${Math.round(stats.max).toLocaleString()} · median ${currency}${Math.round(stats.median).toLocaleString()}`}>
+          vs {stats.count} option{stats.count === 1 ? '' : 's'}
+        </span>
+      </div>
+      {/* Gauge bar — background is the peer min→max range, dot marks
+          this item's position. Not a chart, just a positional cue. */}
+      <div style={{
+        position: 'relative', height: 4, borderRadius: 2,
+        background: 'linear-gradient(90deg, rgba(134,239,172,0.35), rgba(251,191,36,0.35), rgba(251,113,133,0.35))',
+      }}>
+        <div style={{
+          position: 'absolute', top: -3, left: `calc(${pct * 100}% - 5px)`,
+          width: 10, height: 10, borderRadius: '50%',
+          background: meta.color, border: '2px solid var(--brand-bg)',
+        }} />
+      </div>
+      {seasonMeta && (
+        <div style={{
+          fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+          color: seasonMeta.color, fontWeight: 700, textTransform: 'uppercase',
+        }} title={seasonMeta.tone}>
+          {seasonMeta.label} · {seasonMeta.tone}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Stays ─────────────────────────────────────────────────────────────────
 
 type SortKey = 'price' | 'rating';
@@ -739,6 +868,10 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
     const get = sortKey === 'price' ? (h: Hotel) => h.price : (h: Hotel) => h.rating;
     return [...list].sort((a, b) => sign * (get(a) - get(b)));
   }, [hotels, sortKey, sortDir, query]);
+  // Peer stats span the FULL hotel set (not the search-filtered subset)
+  // so the "vs 12 options" verdict stays stable while the user types.
+  const hotelPeerStats = useMemo(() => priceStats(hotels.map((h) => h.price)), [hotels]);
+  const hotelSeasonality = useMemo(() => seasonalityFor(location, startDate), [location, startDate]);
   return (
     <section>
       <SectionSearchBar
@@ -787,7 +920,7 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
       }}>
         {sortedHotels.map((h, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} guests={guests} rooms={rooms} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} emailConfirmation={emailHotels.find(eh => eh.hotelName.toLowerCase().includes(h.name.toLowerCase()) || h.name.toLowerCase().includes(eh.hotelName.toLowerCase())) ?? null} />
+            <HotelCard hotel={h} city={location} startDate={startDate} endDate={endDate} guests={guests} rooms={rooms} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} emailConfirmation={emailHotels.find(eh => eh.hotelName.toLowerCase().includes(h.name.toLowerCase()) || h.name.toLowerCase().includes(eh.hotelName.toLowerCase())) ?? null} peerStats={hotelPeerStats} seasonality={hotelSeasonality} />
             {tripId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
                 <VoteButtons tripId={tripId} itemKey={`hotel:${h.name}`} kind="booking" label={`Hotel: ${h.name}`} compact />
@@ -1194,13 +1327,15 @@ const TIER_COLOR: Record<Hotel['tier'], string> = {
 // session doesn't re-hit /api/place-images. Keyed on "<name>||<city>".
 const galleryCache = new Map<string, string[]>();
 
-function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tripId, onItineraryAdjusted, emailConfirmation = null }: {
+function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tripId, onItineraryAdjusted, emailConfirmation = null, peerStats, seasonality }: {
   hotel: Hotel; city: string; startDate?: string; endDate?: string;
   guests?: number;
   rooms?: number;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
   emailConfirmation?: EmailHotelConfirmation | null;
+  peerStats?: PeerStats;
+  seasonality?: Seasonality;
 }) {
   // Slot-in to itinerary state. fromItinerary cards already match
   // something in the plan so the button hides; everything else can
@@ -1643,6 +1778,17 @@ function HotelCard({ hotel, city, startDate, endDate, guests = 2, rooms = 1, tri
             </li>
           ))}
         </ul>
+        {peerStats && peerStats.count > 1 && (
+          <div style={{ marginTop: 4 }}>
+            <PriceMeter
+              price={hotel.price}
+              stats={peerStats}
+              seasonality={seasonality}
+              currency={hotel.currency}
+              compact
+            />
+          </div>
+        )}
         <div style={{
           marginTop: 4, paddingTop: 12,
           borderTop: '1px solid var(--brand-border)',
@@ -1977,6 +2123,13 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
       o.outbound.to.toLowerCase().includes(q),
     );
   }, [options, query]);
+  const flightPeerStats = useMemo(() => priceStats(options.map((o) => o.totalPrice)), [options]);
+  // Seasonality keyed to destination airport city — approximate; we
+  // pass the airport IATA-derived city context down via the trip's
+  // start date. Users planning to a location in high season see
+  // "elevated prices expected" context alongside the peer meter.
+  const destCity = options[0]?.outbound.to ?? '';
+  const flightSeasonality = useMemo(() => seasonalityFor(destCity, startDate), [destCity, startDate]);
   return (
     <section>
       <SectionSearchBar
@@ -2016,7 +2169,7 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
         {filteredOptions.map((o, i) => (
-          <FlightOptionCard key={i} option={o} startDate={startDate} endDate={endDate} tripId={tripId} />
+          <FlightOptionCard key={i} option={o} startDate={startDate} endDate={endDate} tripId={tripId} peerStats={flightPeerStats} seasonality={flightSeasonality} />
         ))}
       </div>
     </section>
@@ -2870,8 +3023,10 @@ function OriginPicker({ homeAirport, onChange }: {
   );
 }
 
-function FlightOptionCard({ option, startDate, endDate, tripId }: {
+function FlightOptionCard({ option, startDate, endDate, tripId, peerStats, seasonality }: {
   option: FlightOption; startDate?: string; endDate?: string; tripId?: string;
+  peerStats?: PeerStats;
+  seasonality?: Seasonality;
 }) {
   const badgeColor = option.dealBadge ? DEAL_BADGE_COLOR[option.dealBadge] : null;
   const co2 = typeof option.co2Kg === 'number' ? Math.round(option.co2Kg) : null;
@@ -2952,6 +3107,18 @@ function FlightOptionCard({ option, startDate, endDate, tripId }: {
         />
       </div>
 
+      {/* Peer-comparison price meter — reads percentile within current
+          result set and optional destination-month seasonality. Hidden
+          on single-option searches (nothing to compare). */}
+      {peerStats && peerStats.count > 1 && (
+        <PriceMeter
+          price={option.totalPrice}
+          stats={peerStats}
+          seasonality={seasonality}
+          currency={option.currency}
+          compact
+        />
+      )}
       {/* Book + aggregators — full-width row of its own so nothing overlaps chips above */}
       <FlightOptionAggregator option={option} startDate={startDate} endDate={endDate} tripId={tripId} />
     </div>
@@ -3193,6 +3360,8 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
       a.tag.toLowerCase().includes(q),
     );
   }, [activities, query]);
+  const activityPeerStats = useMemo(() => priceStats(activities.map((a) => a.price)), [activities]);
+  const activitySeasonality = useMemo(() => seasonalityFor(location, startDate), [location, startDate]);
   return (
     <section>
       <SectionSearchBar
@@ -3222,7 +3391,7 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
       }}>
         {filteredActivities.map((a, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <ActivityCard activity={a} location={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} />
+            <ActivityCard activity={a} location={location} startDate={startDate} endDate={endDate} tripId={tripId} onItineraryAdjusted={onItineraryAdjusted} peerStats={activityPeerStats} seasonality={activitySeasonality} />
             {tripId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px' }}>
                 <VoteButtons tripId={tripId} itemKey={`activity:${a.name}`} kind="booking" label={`Activity: ${a.name}`} compact />
@@ -3237,13 +3406,15 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
 
 // Per-card slot-in handler. Extracted from the inline render so each
 // card can carry its own adjusting/adjusted/error state.
-function ActivityCard({ activity: a, location, startDate, endDate, tripId, onItineraryAdjusted }: {
+function ActivityCard({ activity: a, location, startDate, endDate, tripId, onItineraryAdjusted, peerStats, seasonality }: {
   activity: Activity;
   location: string;
   startDate: string;
   endDate: string;
   tripId?: string;
   onItineraryAdjusted?: (next: string) => void;
+  peerStats?: PeerStats;
+  seasonality?: Seasonality;
 }) {
   // GetYourGuide search URL: pre-fills the activity name + destination
   // city so the user lands on a result list scoped to their trip. Date
@@ -3325,6 +3496,15 @@ function ActivityCard({ activity: a, location, startDate, endDate, tripId, onIti
       <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', lineHeight: 1.5 }}>
         {a.meta}
       </div>
+      {peerStats && peerStats.count > 1 && (
+        <PriceMeter
+          price={a.price}
+          stats={peerStats}
+          seasonality={seasonality}
+          currency={a.currency}
+          compact
+        />
+      )}
       <div style={{
         marginTop: 6, paddingTop: 10,
         borderTop: '1px solid var(--brand-border)',
