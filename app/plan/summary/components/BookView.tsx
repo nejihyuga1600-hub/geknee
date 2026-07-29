@@ -564,35 +564,36 @@ export default function BookView(props: BookTabProps) {
       color: 'var(--brand-ink)',
       fontFamily: 'var(--font-ui), system-ui, sans-serif',
     }}>
-      {/* Top status strip */}
+      {/* Compact header — merged the old kicker + "Pin it down." title +
+          status strip into a single row. Trip dates live inline so the
+          user always sees WHEN they're planning without scrolling. */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 16, gap: 12, flexWrap: 'wrap',
+        marginBottom: 20, gap: 12, flexWrap: 'wrap',
       }}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{
-            fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
-            color: 'var(--brand-accent-2)', fontWeight: 600,
+            fontFamily: DISPLAY, fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 400,
+            letterSpacing: '-0.02em', lineHeight: 1.1,
+            color: 'var(--brand-ink)',
           }}>
-            {String.fromCodePoint(0x00A7)} BOOKING · {(props.location || 'TRIP').toUpperCase()}
+            {props.location || 'Trip'}
           </div>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 400,
-            letterSpacing: '-0.025em', lineHeight: 1.05, marginTop: 6,
+            fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+            color: 'var(--brand-ink-mute)', fontWeight: 700, marginTop: 6,
+            textTransform: 'uppercase',
           }}>
-            Pin it down.
+            {props.startDate && props.endDate
+              ? `${formatLongDate(props.startDate)} – ${formatLongDate(props.endDate)}`
+              : 'Dates not set'}
+            {' · '}{headerCurrency}{totalSpent.toLocaleString()} · {totalBookings}/5 booked
           </div>
         </div>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           justifyContent: 'flex-end',
         }}>
-          <div style={{
-            fontFamily: MONO, fontSize: 11, letterSpacing: '0.18em',
-            color: 'var(--brand-ink-dim)', fontWeight: 700,
-          }}>
-            {headerCurrency}{totalSpent.toLocaleString()} · {totalBookings} OF 5 BOOKED
-          </div>
           {props.tripId && (
             <>
               <ScanInboxPill tripId={props.tripId} onConfirmationsChange={setEmailConfirmations} />
@@ -884,10 +885,10 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
         marginBottom: 14, gap: 12, flexWrap: 'wrap',
       }}>
         <div style={{
-          fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
           color: 'var(--brand-ink-mute)', fontWeight: 700,
         }}>
-          {String.fromCodePoint(0x00A7)} {(location || 'STAYS').toUpperCase()} · {nights || '–'} NIGHT{nights === '1' ? '' : 'S'} · {datesLabel} · {guests} GUEST{guests === 1 ? '' : 'S'} · {rooms} ROOM{rooms === 1 ? '' : 'S'}
+          {nights || '–'} NIGHT{nights === '1' ? '' : 'S'} · {guests} GUEST{guests === 1 ? '' : 'S'} · {rooms} ROOM{rooms === 1 ? '' : 'S'}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <StepperChip label="Guests" value={guests} min={1} max={8} onChange={setGuests} />
@@ -896,13 +897,6 @@ function StaysSection({ hotels, location, startDate, endDate, nights, tripId, on
           <SortChip label="Rating" active={sortKey === 'rating'} dir={sortDir} onClick={() => toggleSort('rating')} />
         </div>
       </div>
-
-      <h2 style={{
-        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
-        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 20px',
-      }}>
-        Where will you sleep?
-      </h2>
 
       <HotelbedsLiveRooms
         location={location}
@@ -2137,26 +2131,10 @@ function FlightOptionsSection({ options, startDate, endDate, homeAirport, onChan
         onChange={setQuery}
         placeholder="Search flights by airline, flight number, or airport code"
       />
-      <div style={{
-        fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
-        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
-      }}>
-        {String.fromCodePoint(0x00A7)} FLIGHTS · {options.length} OPTIONS · ROUND TRIP
-      </div>
-      <h2 style={{
-        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
-        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 8px',
-      }}>
-        How will you get there?
-      </h2>
-      <p style={{
-        fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.55,
-        maxWidth: 640, margin: '0 0 18px',
-      }}>
-        Three options ranked on the trade-offs that matter — price,
-        speed, and emissions. Click any card to compare live fares
-        across Google Flights, Skyscanner, Kayak, or Expedia.
-      </p>
+      {/* Removed the "§ FLIGHTS · N OPTIONS · ROUND TRIP" kicker + "How
+          will you get there?" title + descriptive paragraph. The tab bar
+          already tells the user they picked Flights, and the option
+          count is right on the tab pill. Cleaner header. */}
       <OriginPicker homeAirport={homeAirport} onChange={onChangeHome} />
       {homeAirport?.iata && options[0]?.outbound?.to && (
         <FlightLiveOffers
@@ -3369,18 +3347,6 @@ function ActivitiesSection({ activities, location, startDate, endDate, tripId, o
         onChange={setQuery}
         placeholder="Search activities by name, category, or detail"
       />
-      <div style={{
-        fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
-        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
-      }}>
-        {String.fromCodePoint(0x00A7)} ACTIVITIES · {activities.filter(a => a.booked).length} OF {activities.length} BOOKED
-      </div>
-      <h2 style={{
-        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
-        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 20px',
-      }}>
-        What will you do?
-      </h2>
       <HotelbedsLiveActivities location={location} from={startDate} to={endDate} />
       <ViatorLiveProducts location={location} startDate={startDate} endDate={endDate} />
       <div style={{
@@ -3663,26 +3629,6 @@ function InsuranceSection({
         onChange={setQuery}
         placeholder="Search insurance by provider, tier, or coverage type"
       />
-      <div style={{
-        fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
-        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
-      }}>
-        {String.fromCodePoint(0x00A7)} INSURANCE · {(location || 'TRIP').toUpperCase()} · {startDate || '—'} → {endDate || '—'}
-      </div>
-      <h2 style={{
-        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
-        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 8px',
-      }}>
-        Got you covered.
-      </h2>
-      <p style={{
-        fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.55,
-        maxWidth: 640, margin: '0 0 22px',
-      }}>
-        Quotes pre-filled with your destination and dates. Each link opens
-        the provider&apos;s site in a new tab — review the policy details
-        before you buy.
-      </p>
       <div style={{
         display: 'grid', gap: 14,
         gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -4012,25 +3958,6 @@ function TransportSection({ location, startDate, endDate, tripId, homeAirport }:
         onChange={setQuery}
         placeholder="Search transport by provider, mode, or detail"
       />
-      <div style={{
-        fontFamily: MONO, fontSize: 10, letterSpacing: '0.22em',
-        color: 'var(--brand-ink-mute)', fontWeight: 700, marginBottom: 14,
-      }}>
-        {String.fromCodePoint(0x00A7)} TRANSPORT · {options.length} OPTIONS · {dateLabel}
-      </div>
-      <h2 style={{
-        fontFamily: DISPLAY, fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 400,
-        letterSpacing: '-0.02em', lineHeight: 1.1, margin: '0 0 8px',
-      }}>
-        How will you get around?
-      </h2>
-      <p style={{
-        fontSize: 13, color: 'var(--brand-ink-dim)', lineHeight: 1.55,
-        margin: '0 0 20px', maxWidth: 540,
-      }}>
-        Tap-to-ride IC cards, multi-day passes, and intercity rail — links pre-fill with your destination
-        {startDate && endDate ? ` and travel dates` : ''}.
-      </p>
       {transferOriginIata && (
         <HotelbedsLiveTransfers location={location} fromIata={transferOriginIata} pickupDate={startDate} />
       )}

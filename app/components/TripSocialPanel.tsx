@@ -844,11 +844,33 @@ export default function TripSocialPanel({
                         <div style={{ fontSize: 12, color: '#a8a8c0', marginTop: 2 }}>
                           {trip.location}
                         </div>
-                        {trip.startDate && (
-                          <div style={{ fontSize: 11, color: '#6b6b85', marginTop: 6, letterSpacing: '0.02em' }}>
-                            {fmtDate(trip.startDate)}{trip.endDate ? ` \u2013 ${fmtDate(trip.endDate)}` : ''}{trip.nights ? ` \u00B7 ${trip.nights} nights` : ''}
-                          </div>
-                        )}
+                        {trip.startDate && (() => {
+                          const today = new Date().toISOString().slice(0, 10);
+                          const isLive = !!trip.endDate && today >= trip.startDate && today <= trip.endDate;
+                          const isPast = !!trip.endDate && today > trip.endDate;
+                          const isFuture = today < trip.startDate;
+                          return (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                              <div style={{ fontSize: 11, color: '#6b6b85', letterSpacing: '0.02em' }}>
+                                {fmtDate(trip.startDate)}{trip.endDate ? ` \u2013 ${fmtDate(trip.endDate)}` : ''}{trip.nights ? ` \u00B7 ${trip.nights} nights` : ''}
+                              </div>
+                              {(isLive || isPast || isFuture) && (
+                                <span style={{
+                                  padding: '2px 8px', borderRadius: 999,
+                                  fontSize: 9, fontWeight: 700, letterSpacing: '0.14em',
+                                  textTransform: 'uppercase',
+                                  color: isLive ? '#86efac' : isPast ? '#94a3b8' : '#a78bfa',
+                                  background: isLive ? 'rgba(134,239,172,0.14)'
+                                    : isPast ? 'rgba(148,163,184,0.14)'
+                                    : 'rgba(167,139,250,0.14)',
+                                  border: `1px solid ${isLive ? 'rgba(134,239,172,0.35)' : isPast ? 'rgba(148,163,184,0.35)' : 'rgba(167,139,250,0.35)'}`,
+                                }}>
+                                  {isLive ? 'Live now' : isPast ? 'Dates passed' : 'Upcoming'}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {(() => {
                           const today = new Date().toISOString().slice(0, 10);
                           const isLiveNow = !!trip.startDate && !!trip.endDate && today >= trip.startDate && today <= trip.endDate;
