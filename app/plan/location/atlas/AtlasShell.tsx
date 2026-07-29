@@ -418,12 +418,12 @@ export default function AtlasShell() {
   // at bottom-center — tap opens the shop grid so users have a visible
   // "here are the monuments in this area" affordance even when direct
   // tap on globe markers is flaky.
-  const [inView, setInView] = useState<{ count: number; zoom: number } | null>(null);
+  const [inView, setInView] = useState<{ count: number; zoom: number; mks: string[] }>({ count: 0, zoom: 0, mks: [] });
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ count: number; zoom: number; mks: string[] }>).detail;
       if (!d) return;
-      setInView({ count: d.count, zoom: d.zoom });
+      setInView({ count: d.count, zoom: d.zoom, mks: d.mks ?? [] });
     };
     window.addEventListener('geknee:monuments-in-view', h);
     return () => window.removeEventListener('geknee:monuments-in-view', h);
@@ -799,15 +799,6 @@ export default function AtlasShell() {
             <SparkleIcon /> <span>Go Pro</span>
           </NavPill>
           )}
-          {/* Direct entry to the monument shop grid view. Parallel path
-              to the globe-tap → monument-shop flow (which has been
-              flaky on WKWebView for a week). This button is always
-              visible, always dispatches, has no dependency on the globe
-              being interactive. It's the "I need to see my monuments
-              RIGHT NOW" escape hatch. */}
-          <NavPill onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))} title="Open monument collection">
-            <span>✦ Monuments</span>
-          </NavPill>
           {/* Elongated Trips button on mobile — user feedback wanted this
               given more space/view. Shows icon + text instead of icon-only. */}
           <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends">
@@ -832,40 +823,80 @@ export default function AtlasShell() {
       {/* Vertical zoom indicator — sits just under the hamburger Menu pill. */}
       <ZoomIndicator />
 
-      {/* Monuments-in-view pill — floats above the bottom sheet when the
-          user is zoomed in on a region with ≥1 monument. Bypasses the
-          per-monument tap flow entirely: opens the shop grid so users
-          can pick from just the monuments in their current view. Only
-          renders when zoom >= 3 (past hemisphere view) AND count > 0. */}
-      {inView && inView.count > 0 && inView.zoom >= 3 && (
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))}
-          style={{
-            position: 'fixed',
-            left: '50%',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
-            transform: 'translateX(-50%)',
-            zIndex: 40,
-            background: 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.95))',
-            color: '#0a0a1f',
-            border: 'none',
-            borderRadius: 999,
-            padding: '12px 22px',
-            fontSize: 13,
-            fontWeight: 700,
-            letterSpacing: '0.04em',
-            boxShadow: '0 10px 28px rgba(167,139,250,0.5)',
-            cursor: 'pointer',
-            fontFamily: 'var(--font-ui), system-ui, sans-serif',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <span>✦ {inView.count} monument{inView.count === 1 ? '' : 's'} here</span>
-          <span style={{ opacity: 0.7, fontSize: 11 }}>Tap to open</span>
-        </button>
+      {/* Per-monument pill stack — top-left, under the leftmost two
+          top-nav pills (✦ + 🏠). One pill per monument in the current
+          camera view. Tapping opens the shop directly to that
+          monument's detail view. Bypasses the flaky per-marker tap
+          entirely. Capped at 6 to avoid overwhelming the column. */}
+      {inView.mks.length > 0 && inView.zoom >= 3 && (
+        <div style={{
+          position: 'fixed',
+          left: 12,
+          top: 'calc(env(safe-area-inset-top, 0px) + 68px)',
+          zIndex: 40,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          maxWidth: '58vw',
+          pointerEvents: 'none',
+        }}>
+          {inView.mks.slice(0, 6).map((mk) => {
+            const name = INFO[mk as keyof typeof INFO]?.name ?? mk;
+            return (
+              <button
+                key={mk}
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: { mk } }))}
+                style={{
+                  pointerEvents: 'auto',
+                  background: 'rgba(14, 16, 32, 0.72)',
+                  border: '1px solid rgba(196, 181, 253, 0.4)',
+                  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                  backdropFilter: 'blur(20px) saturate(180%)',
+                  borderRadius: 999,
+                  color: '#f0e7ff',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: '7px 12px',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-ui), system-ui, sans-serif',
+                  boxShadow: '0 4px 12px rgba(10,10,31,0.4)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  textAlign: 'left',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+              >
+                <span style={{ color: '#a78bfa' }}>✦</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+              </button>
+            );
+          })}
+          {inView.mks.length > 6 && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))}
+              style={{
+                pointerEvents: 'auto',
+                background: 'rgba(14, 16, 32, 0.5)',
+                border: '1px dashed rgba(196, 181, 253, 0.3)',
+                borderRadius: 999,
+                color: '#c4b5fd',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '5px 12px',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-ui), system-ui, sans-serif',
+              }}
+            >
+              +{inView.mks.length - 6} more
+            </button>
+          )}
+        </div>
       )}
 
       {/* Initialize / Home — top-center, prominent. Same affordance the

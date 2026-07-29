@@ -1023,17 +1023,32 @@ export default function CapacitorGlobe() {
       let inViewTimer: ReturnType<typeof setTimeout> | null = null;
       const emitInView = () => {
         try {
-          const b = map.getBounds();
-          if (!b) return;
-          const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-          // Handle antimeridian: mapbox can wrap so w > e.
-          const inLon = (lon: number) => (w <= e ? lon >= w && lon <= e : lon >= w || lon <= e);
-          const mks: string[] = [];
+          const canvas = map.getCanvas();
+          const cw = canvas.width / (window.devicePixelRatio || 1);
+          const ch = canvas.height / (window.devicePixelRatio || 1);
+          const cameraLatLng = map.getCenter();
+          const cameraLng = cameraLatLng.lng;
+          const mks: { mk: string; distSq: number }[] = [];
           for (const [mk, ll] of Object.entries(MONUMENT_LATLON)) {
-            if (ll.lat >= s && ll.lat <= n && inLon(ll.lon)) mks.push(mk);
+            // Back-hemisphere cull via camera-relative dot product (same
+            // check the render loop uses for wrapper.visible). Prevents
+            // monuments on the far side of the globe from being counted.
+            const dLon = ll.lon - cameraLng;
+            const wrapped = ((dLon + 540) % 360) - 180;
+            if (Math.abs(wrapped) > 90) continue; // more than a quarter turn away
+            const pt = map.project([ll.lon, ll.lat]);
+            // Must land inside the actual viewport (small margin to catch
+            // monuments straddling the fold).
+            if (pt.x < 0 || pt.x > cw || pt.y < 0 || pt.y > ch) continue;
+            // Sort by distance to camera center so the pill stack shows
+            // the "most in-view" monuments first when we cap.
+            const dx = pt.x - cw / 2, dy = pt.y - ch / 2;
+            mks.push({ mk, distSq: dx * dx + dy * dy });
           }
+          mks.sort((a, b) => a.distSq - b.distSq);
+          const list = mks.slice(0, 12).map((m) => m.mk);
           window.dispatchEvent(new CustomEvent("geknee:monuments-in-view", {
-            detail: { count: mks.length, mks: mks.slice(0, 40), zoom: map.getZoom() },
+            detail: { count: mks.length, mks: list, zoom: map.getZoom() },
           }));
         } catch { /* ignore */ }
       };
