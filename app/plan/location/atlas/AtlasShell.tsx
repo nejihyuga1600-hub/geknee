@@ -413,14 +413,15 @@ export default function AtlasShell() {
   const [shopInitialMk, setShopInitialMk] = useState<string | null>(null);
   useEffect(() => {
     const h = (e: Event) => {
-      const d = (e as CustomEvent<{ mk: string }>).detail;
-      if (!d?.mk) return;
-      // Beacon so Sentry can prove the shop-open event was received —
-      // if a user reports "tap did nothing" and Sentry shows
-      // tap:mk:dispatched but no shop:mk:opened, the event listener
-      // isn't attached (component tree unmounted).
-      markMountPhase(`shop:${d.mk}:opened`);
-      setShopInitialMk(d.mk);
+      const d = (e as CustomEvent<{ mk?: string }>).detail;
+      // With mk: open detail view for that monument. Without mk: open
+      // grid view (the top-nav MONUMENTS button dispatches with no mk).
+      // Prior behavior early-returned on missing mk, meaning the grid
+      // view had no direct entry — user could only reach monuments via
+      // globe tap, which was the whole broken path.
+      const mk = d?.mk ?? null;
+      markMountPhase(`shop:${mk ?? 'grid'}:opened`);
+      setShopInitialMk(mk);
       setShopOpen(true);
     };
     window.addEventListener('geknee:open-monument-shop', h);
@@ -781,6 +782,15 @@ export default function AtlasShell() {
             <SparkleIcon /> <span>Go Pro</span>
           </NavPill>
           )}
+          {/* Direct entry to the monument shop grid view. Parallel path
+              to the globe-tap → monument-shop flow (which has been
+              flaky on WKWebView for a week). This button is always
+              visible, always dispatches, has no dependency on the globe
+              being interactive. It's the "I need to see my monuments
+              RIGHT NOW" escape hatch. */}
+          <NavPill onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))} title="Open monument collection">
+            <span>✦ Monuments</span>
+          </NavPill>
           {/* Elongated Trips button on mobile — user feedback wanted this
               given more space/view. Shows icon + text instead of icon-only. */}
           <NavPill onClick={() => { if (session?.user) setTripsOpen(true); else setAuthOpen(true); }} title="Trips & Friends">
