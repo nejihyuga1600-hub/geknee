@@ -292,7 +292,19 @@ export default function AtlasShell() {
     // FALLBACK_FLAG in sessionStorage before priorFallbackThisSession
     // reads it, so the same state flip happens without a separate branch.
     detectCrashLoopAndArmFallback();
-    if (priorFallbackThisSession()) setBypassGlobe(true);
+    if (priorFallbackThisSession()) {
+      setBypassGlobe(true);
+      // Auto-recover: if the user survives 20s in bypass with no fresh
+      // crash-loop signal, clear the bypass so future mounts try the
+      // interactive globe again. Without this, ANY historical crash-
+      // loop leaves the user stuck on the static fallback forever
+      // (until hard-quit) even after the underlying bug is fixed.
+      const t = setTimeout(() => {
+        escapeCrashLoop();
+        setBypassGlobe(false);
+      }, 20_000);
+      return () => clearTimeout(t);
+    }
     const onFallback = () => {
       try { sessionStorage.setItem(FALLBACK_FLAG, "1"); } catch {}
       setBypassGlobe(true);

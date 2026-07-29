@@ -789,6 +789,14 @@ export default function CapacitorGlobe() {
             e.wrapper.visible = false; continue;
           }
           e.wrapper.visible = true;
+          // Defensive re-enable: if the clustering pass left this
+          // tap zone at pointer-events:none in a prior frame AND we're
+          // now visible + not currently clustered (that path is
+          // handled below), guarantee it's clickable. Belt-and-
+          // suspenders against the "monuments unresponsive" bug.
+          if (e.tapEl && e.tapEl.style.pointerEvents === "none") {
+            e.tapEl.style.pointerEvents = "auto";
+          }
           // Y-up camera → flip CSS y to Three y.
           e.wrapper.position.set(pt.x, h - pt.y, 0);
           // Eagle-view tilt: every visible monument leans 52° toward the
@@ -1037,23 +1045,37 @@ export default function CapacitorGlobe() {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
         el.dataset.mk = mk;
-        el.style.cssText = "width:120px;height:120px;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation;";
-        el.addEventListener("click", async () => {
-          // Tap sequence — the crash risk is stacking flyTo animation +
-          // shop mount + backdrop-filter blur on a still-live mapbox +
-          // Three.js overlay pair. But blocking on drain BEFORE any
-          // visible response makes the tap feel dead ("unresponsive to
-          // my touch"). So we split it: instant visual feedback first,
-          // then drain, then shop.
-          //
-          //   1. Instant: pause + jumpTo (native) / flyTo (web). jumpTo
-          //      repaints once and stops → user sees the camera cut to
-          //      the monument immediately. flyTo on web still animates
-          //      smoothly (desktop GPUs handle it fine).
-          //   2. Drain any in-flight GLB parse (up to 1500ms cap) so
-          //      the shop mount doesn't stack backdrop-blur composites
-          //      on top of a live parse.
-          //   3. Fire monument-select + open-monument-shop.
+        // 140x140 (was 120): 20% larger fingertip zone — mobile
+        // usability research suggests 44-48pt minimum, 140 covers a
+        // Fitts-comfortable tap area even at the globe's edge.
+        // touch-action:manipulation disables the WKWebView 300ms
+        // click-delay AND scroll-recognition on this element.
+        el.style.cssText = [
+          "width:140px", "height:140px", "background:transparent",
+          "cursor:pointer", "pointer-events:auto",
+          "touch-action:manipulation",
+          "transition:transform 120ms ease",
+        ].join(";") + ";";
+        // Explicit pressed-state visual: brief scale-down on press so
+        // the user gets an INSTANT "tap registered" cue even before
+        // any camera or shop movement. Was: nothing visible until
+        // camera moved (took 1-2 frames).
+        const showPressed = () => { el.style.transform = "scale(0.92)"; };
+        const clearPressed = () => { el.style.transform = "scale(1)"; };
+        el.addEventListener("pointerdown", showPressed, { passive: true });
+        el.addEventListener("pointerup", clearPressed, { passive: true });
+        el.addEventListener("pointercancel", clearPressed, { passive: true });
+        el.addEventListener("pointerleave", clearPressed, { passive: true });
+
+        const handleTap = (mkFired: string) => {
+          // Instant response path — no awaits, no waits. Every side
+          // effect that runs here MUST be either synchronous or
+          // fire-and-forget. The drain-then-shop pattern from earlier
+          // revisions made every tap feel dead for up to 1.5s while it
+          // waited on GLB parse to finish; instant jumpTo + immediate
+          // shop mount is the correct trade — the crash risk is
+          // mitigated by the load-loop's own pause + jumpTo replacing
+          // flyTo's rolling GL work (native path).
           const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
             Capacitor?: { isNativePlatform?: () => boolean };
           }).Capacitor?.isNativePlatform?.();
@@ -1074,15 +1096,31 @@ export default function CapacitorGlobe() {
               padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
             });
           }
-          // Fire monument-select right away — other listeners (analytics,
-          // pin-focus) don't care about GL state.
-          window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
-          // Now drain parse before mounting the heavy shop modal. The
-          // 1500ms cap is high enough for a typical GLB parse to finish
-          // (~600-1200ms on iPhone 14) but low enough that a stuck parse
-          // doesn't strand the user.
-          await waitForLoadIdle(1500);
-          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
+          window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk: mkFired } }));
+          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk: mkFired } }));
+        };
+        // Fire on pointerup (fastest reliable "tap complete" signal on
+        // WKWebView) with a click fallback for keyboard/AT users.
+        let tapArmed = false;
+        el.addEventListener("pointerdown", () => { tapArmed = true; }, { passive: true });
+        el.addEventListener("pointerup", (e) => {
+          clearPressed();
+          if (!tapArmed) return;
+          tapArmed = false;
+          e.preventDefault();
+          e.stopPropagation();
+          handleTap(mk);
+        });
+        el.addEventListener("pointercancel", () => { tapArmed = false; clearPressed(); }, { passive: true });
+        el.addEventListener("click", (e) => {
+          // Skip if pointerup already handled — but pointerup only fires
+          // on pointer-aware browsers; keyboard Enter/Space fire click.
+          if (!tapArmed) {
+            const isKeyboardish = e.detail === 0; // synthesized keyboard click
+            if (!isKeyboardish) return;
+          }
+          tapArmed = false;
+          handleTap(mk);
         });
         new mapboxgl.Marker({
           element: el,
