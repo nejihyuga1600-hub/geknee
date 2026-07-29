@@ -411,6 +411,23 @@ export default function AtlasShell() {
   const { data: session } = useSession();
   const [shopOpen,     setShopOpen]     = useState(false);
   const [shopInitialMk, setShopInitialMk] = useState<string | null>(null);
+  // Monuments-in-view pill state. CapacitorGlobe dispatches
+  // `geknee:monuments-in-view` on move/zoom with the count of monuments
+  // within the current camera bounds. When user is zoomed in enough
+  // (zoom >= 3) AND ≥1 monument is visible, we show a floating pill
+  // at bottom-center — tap opens the shop grid so users have a visible
+  // "here are the monuments in this area" affordance even when direct
+  // tap on globe markers is flaky.
+  const [inView, setInView] = useState<{ count: number; zoom: number } | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ count: number; zoom: number; mks: string[] }>).detail;
+      if (!d) return;
+      setInView({ count: d.count, zoom: d.zoom });
+    };
+    window.addEventListener('geknee:monuments-in-view', h);
+    return () => window.removeEventListener('geknee:monuments-in-view', h);
+  }, []);
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ mk?: string }>).detail;
@@ -814,6 +831,42 @@ export default function AtlasShell() {
 
       {/* Vertical zoom indicator — sits just under the hamburger Menu pill. */}
       <ZoomIndicator />
+
+      {/* Monuments-in-view pill — floats above the bottom sheet when the
+          user is zoomed in on a region with ≥1 monument. Bypasses the
+          per-monument tap flow entirely: opens the shop grid so users
+          can pick from just the monuments in their current view. Only
+          renders when zoom >= 3 (past hemisphere view) AND count > 0. */}
+      {inView && inView.count > 0 && inView.zoom >= 3 && (
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))}
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+            transform: 'translateX(-50%)',
+            zIndex: 40,
+            background: 'linear-gradient(135deg, rgba(167,139,250,0.95), rgba(125,211,252,0.95))',
+            color: '#0a0a1f',
+            border: 'none',
+            borderRadius: 999,
+            padding: '12px 22px',
+            fontSize: 13,
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            boxShadow: '0 10px 28px rgba(167,139,250,0.5)',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-ui), system-ui, sans-serif',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>✦ {inView.count} monument{inView.count === 1 ? '' : 's'} here</span>
+          <span style={{ opacity: 0.7, fontSize: 11 }}>Tap to open</span>
+        </button>
+      )}
 
       {/* Initialize / Home — top-center, prominent. Same affordance the
           legacy planner had: tap to reset the globe orientation. Top respects

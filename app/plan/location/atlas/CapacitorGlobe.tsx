@@ -1014,6 +1014,38 @@ export default function CapacitorGlobe() {
         else if (z < ZOOM_AUTOPAUSE && paused) onResume();
       };
       map.on("zoomend", onZoomEnd);
+
+      // Emit `geknee:monuments-in-view` on move + zoom. AtlasShell renders
+      // a floating "★ N monuments here" pill from this — parallel entry
+      // point to the shop for users when the on-globe monument tap is
+      // flaky. Debounced to fire at most once per 250ms so panning doesn't
+      // spam re-renders on the shell.
+      let inViewTimer: ReturnType<typeof setTimeout> | null = null;
+      const emitInView = () => {
+        try {
+          const b = map.getBounds();
+          if (!b) return;
+          const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+          // Handle antimeridian: mapbox can wrap so w > e.
+          const inLon = (lon: number) => (w <= e ? lon >= w && lon <= e : lon >= w || lon <= e);
+          const mks: string[] = [];
+          for (const [mk, ll] of Object.entries(MONUMENT_LATLON)) {
+            if (ll.lat >= s && ll.lat <= n && inLon(ll.lon)) mks.push(mk);
+          }
+          window.dispatchEvent(new CustomEvent("geknee:monuments-in-view", {
+            detail: { count: mks.length, mks: mks.slice(0, 40), zoom: map.getZoom() },
+          }));
+        } catch { /* ignore */ }
+      };
+      const scheduleEmit = () => {
+        if (inViewTimer) clearTimeout(inViewTimer);
+        inViewTimer = setTimeout(emitInView, 250);
+      };
+      map.on("moveend", scheduleEmit);
+      map.on("zoomend", scheduleEmit);
+      // Fire once on load so the pill can appear immediately if user
+      // arrives already zoomed in (e.g. deep-link).
+      setTimeout(emitInView, 500);
       // Store on the map for cleanup in the useEffect return below.
       (map as unknown as { __geknee_rafId?: number; __geknee_pauseHandlers?: () => void }).__geknee_rafId = rafId;
       (map as unknown as { __geknee_pauseHandlers?: () => void }).__geknee_pauseHandlers = () => {
