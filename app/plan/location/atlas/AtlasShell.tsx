@@ -433,11 +433,17 @@ export default function AtlasShell() {
       const d = (e as CustomEvent<{ mk?: string }>).detail;
       // With mk: open detail view for that monument. Without mk: open
       // grid view (the top-nav MONUMENTS button dispatches with no mk).
-      // Prior behavior early-returned on missing mk, meaning the grid
-      // view had no direct entry — user could only reach monuments via
-      // globe tap, which was the whole broken path.
       const mk = d?.mk ?? null;
       markMountPhase(`shop:${mk ?? 'grid'}:opened`);
+      // CRITICAL: pause the globe SYNCHRONOUSLY before triggering the
+      // shop mount. MonumentShop uses backdrop-filter blur which
+      // composites over whatever's below — if mapbox + Three.js overlay
+      // are still painting when shop mounts, WKWebView OOMs. The
+      // shopOpen useEffect below also fires pause, but that runs
+      // POST-render — the composite already happened. Firing here
+      // synchronously guarantees pause propagates before React reconcile
+      // schedules the modal DOM.
+      window.dispatchEvent(new Event('geknee:globe-pause'));
       setShopInitialMk(mk);
       setShopOpen(true);
     };
