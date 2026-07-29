@@ -614,7 +614,54 @@ export default function AtlasShell() {
         willChange: "transform",
       }}>
         {bypassGlobe ? (
-          <StaticGlobeBackdrop />
+          <>
+            <StaticGlobeBackdrop />
+            {/* Big obvious escape hatch — without this the user sees a
+                static planet and has no idea why nothing responds to
+                tap. INITIALIZE at the top does the same thing but it's
+                not visually connected to "the globe is dead". */}
+            <div style={{
+              position: "fixed",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+              zIndex: 50,
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  escapeCrashLoop();
+                  setBypassGlobe(false);
+                }}
+                style={{
+                  pointerEvents: "auto",
+                  background: "linear-gradient(135deg, #a78bfa 0%, #7dd3fc 100%)",
+                  color: "#0a0a1f",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "18px 36px",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  boxShadow: "0 12px 40px rgba(167,139,250,0.55)",
+                  cursor: "pointer",
+                  fontFamily: "var(--font-ui), system-ui, sans-serif",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                  maxWidth: "80vw",
+                }}
+              >
+                <span>↻ Retry the interactive globe</span>
+                <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8, letterSpacing: "0.06em" }}>
+                  A prior mount hit an error — safe to try again
+                </span>
+              </button>
+            </div>
+          </>
         ) : !globeMountReady ? (
           <>
             <StaticGlobeBackdrop />
