@@ -1265,11 +1265,17 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
     if (!target) return;
     setTab(inAnimals ? 'animals' : 'monuments');
     setSelected(target);
-    // Re-issue the fly-to with paddingBottom so the monument lands in the
-    // visible upper half, not behind the bottom sheet. CapacitorGlobe's
-    // marker-click flyTo doesn't pass padding — without this second call
-    // the monument visually offsets to the side of the screen.
-    flyGlobeTo(target.id);
+    // Web only: re-fly with padding so the monument sits in the visible
+    // upper half above the bottom sheet. On native (Capacitor iOS) we
+    // SKIP this fly — the caller (globe tap, per-monument pill) already
+    // dispatched globe-pause + jumpTo before the shop mounted, and firing
+    // another map animation here restarts the mapbox render loop after
+    // pause, which composites under the shop's backdrop-blur and OOMs
+    // the WebView. The globe stays where the caller put it.
+    const IS_NATIVE = typeof window !== 'undefined' && !!(window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    }).Capacitor?.isNativePlatform?.();
+    if (!IS_NATIVE) flyGlobeTo(target.id);
   }, [open, initialMk]);
 
   // Reset selected when switching tabs
