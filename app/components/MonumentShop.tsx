@@ -788,6 +788,97 @@ type MissionItem   = { missionId: string; photoUrl?: string | null };
 
 // ─── Sub-component: Detail view for a single collectible ──────────────────────
 
+// Renders the current user's uploaded trip photos matching a monument's
+// destination as a horizontal swipe strip. Hidden entirely if there are
+// no matches — the empty state would just be noise on uncollected
+// monuments. Same overflowX + scroll-snap pattern as the hotel photo
+// gallery so scroll feel is consistent app-wide.
+function UserTripPhotosStrip({ cityKeys, monumentName }: {
+  cityKeys: string[]; monumentName: string;
+}) {
+  const [photos, setPhotos] = useState<Array<{
+    id: string; url: string; tripTitle: string; tripLocation: string; byMe: boolean;
+  }> | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const q = new URLSearchParams({ cityKeys: cityKeys.join(",") });
+    fetch(`/api/monuments/user-photos?${q}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { photos: [] }))
+      .then((d: { photos: typeof photos }) => { if (!cancelled) setPhotos(d.photos ?? []); })
+      .catch(() => { if (!cancelled) setPhotos([]); });
+    return () => { cancelled = true; };
+  }, [cityKeys]);
+  if (photos === null || photos.length === 0) return null;
+  return (
+    <div style={{ margin: '0 0 18px' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
+        color: 'rgba(255,255,255,0.42)',
+        fontSize: 10, fontWeight: 600, letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        fontFamily: 'var(--font-mono-display), ui-monospace, monospace',
+      }}>
+        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} aria-hidden />
+        <span>Your photos · {photos.length}</span>
+        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} aria-hidden />
+      </div>
+      <div
+        className="geknee-hide-scrollbar"
+        style={{
+          display: 'flex', gap: 8,
+          overflowX: 'auto', overflowY: 'hidden',
+          scrollSnapType: 'x mandatory',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: 2,
+        }}
+      >
+        {photos.map((p, i) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setLightboxIdx(i)}
+            aria-label={`Photo from ${p.tripTitle}`}
+            title={`${p.tripTitle} · ${p.tripLocation}${p.byMe ? '' : ' · shared'}`}
+            style={{
+              flex: '0 0 auto',
+              width: 108, height: 108,
+              scrollSnapAlign: 'start',
+              padding: 0, border: 'none', background: '#0a0a1f',
+              borderRadius: 10, overflow: 'hidden',
+              cursor: 'zoom-in',
+            }}
+          >
+            <img
+              src={p.url} alt={`${monumentName} — ${p.tripTitle}`} loading="lazy"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          </button>
+        ))}
+      </div>
+      {lightboxIdx !== null && (
+        <div
+          onClick={() => setLightboxIdx(null)}
+          role="dialog"
+          aria-label="Photo"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 12000,
+            background: 'rgba(0,0,0,0.94)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '5vh 5vw', cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={photos[lightboxIdx].url} alt={photos[lightboxIdx].tripTitle}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetailView({
   item, collected, missions, tripLocs, loading, isDev,
   onUnlock, onMission, onBack, onEquipSkin,
@@ -919,6 +1010,13 @@ function DetailView({
           <span aria-hidden style={{ fontSize: 18, color: 'var(--brand-accent-2, #7dd3fc)' }}>→</span>
         </Link>
       )}
+
+      {/* Your trip photos to this destination — pulled from the trip
+          vault, matched via monument cityKeys against the user's trip
+          locations. Renders as a horizontal swipe strip consistent with
+          the hotel-photo gallery pattern. Hidden entirely when there
+          are none so uncollected monuments don't show an empty state. */}
+      <UserTripPhotosStrip cityKeys={item.cityKeys} monumentName={item.name} />
 
       {/* Missions divider — quieter than the previous heavy mono caps which
           were competing with the title. Skill §6: section headings should
