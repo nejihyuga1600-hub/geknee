@@ -1056,26 +1056,25 @@ export default function CapacitorGlobe() {
           "touch-action:manipulation",
           "transition:transform 120ms ease",
         ].join(";") + ";";
-        // Explicit pressed-state visual: brief scale-down on press so
-        // the user gets an INSTANT "tap registered" cue even before
-        // any camera or shop movement. Was: nothing visible until
-        // camera moved (took 1-2 frames).
-        const showPressed = () => { el.style.transform = "scale(0.92)"; };
-        const clearPressed = () => { el.style.transform = "scale(1)"; };
-        el.addEventListener("pointerdown", showPressed, { passive: true });
-        el.addEventListener("pointerup", clearPressed, { passive: true });
-        el.addEventListener("pointercancel", clearPressed, { passive: true });
-        el.addEventListener("pointerleave", clearPressed, { passive: true });
+        // Visual-only press feedback via pointerdown/up. NEVER fires
+        // the tap — that's the click handler's job. Prior revision
+        // stacked pointerdown + pointerup + pointercancel listeners
+        // both for visual AND for firing, and the WKWebView pointer-
+        // capture semantics caused every tap anywhere on the globe
+        // to route to whichever monument's tapArmed flag was still
+        // set from a prior drift. Back to a single click listener.
+        const setScale = (s: string) => { el.style.transform = s; };
+        el.addEventListener("pointerdown", () => setScale("scale(0.92)"), { passive: true });
+        el.addEventListener("pointerup",   () => setScale("scale(1)"),    { passive: true });
+        el.addEventListener("pointercancel", () => setScale("scale(1)"),  { passive: true });
+        el.addEventListener("pointerleave",  () => setScale("scale(1)"),  { passive: true });
 
-        const handleTap = (mkFired: string) => {
-          // Instant response path — no awaits, no waits. Every side
-          // effect that runs here MUST be either synchronous or
-          // fire-and-forget. The drain-then-shop pattern from earlier
-          // revisions made every tap feel dead for up to 1.5s while it
-          // waited on GLB parse to finish; instant jumpTo + immediate
-          // shop mount is the correct trade — the crash risk is
-          // mitigated by the load-loop's own pause + jumpTo replacing
-          // flyTo's rolling GL work (native path).
+        el.addEventListener("click", () => {
+          // Instant, synchronous. Prior revision awaited a 1500ms
+          // drain here; removed — jumpTo (native) is one repaint and
+          // globe-pause stops the overlay rAF immediately, which is
+          // enough. Crash risk is mitigated by the load-loop's own
+          // pause flag + the crash-loop-guard safety net.
           const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
             Capacitor?: { isNativePlatform?: () => boolean };
           }).Capacitor?.isNativePlatform?.();
@@ -1096,31 +1095,8 @@ export default function CapacitorGlobe() {
               padding: { top: 0, bottom: paddingBottom, left: 0, right: 0 },
             });
           }
-          window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk: mkFired } }));
-          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk: mkFired } }));
-        };
-        // Fire on pointerup (fastest reliable "tap complete" signal on
-        // WKWebView) with a click fallback for keyboard/AT users.
-        let tapArmed = false;
-        el.addEventListener("pointerdown", () => { tapArmed = true; }, { passive: true });
-        el.addEventListener("pointerup", (e) => {
-          clearPressed();
-          if (!tapArmed) return;
-          tapArmed = false;
-          e.preventDefault();
-          e.stopPropagation();
-          handleTap(mk);
-        });
-        el.addEventListener("pointercancel", () => { tapArmed = false; clearPressed(); }, { passive: true });
-        el.addEventListener("click", (e) => {
-          // Skip if pointerup already handled — but pointerup only fires
-          // on pointer-aware browsers; keyboard Enter/Space fire click.
-          if (!tapArmed) {
-            const isKeyboardish = e.detail === 0; // synthesized keyboard click
-            if (!isKeyboardish) return;
-          }
-          tapArmed = false;
-          handleTap(mk);
+          window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
+          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
         });
         new mapboxgl.Marker({
           element: el,
