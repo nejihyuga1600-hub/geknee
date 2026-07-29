@@ -415,6 +415,11 @@ export default function AtlasShell() {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ mk: string }>).detail;
       if (!d?.mk) return;
+      // Beacon so Sentry can prove the shop-open event was received —
+      // if a user reports "tap did nothing" and Sentry shows
+      // tap:mk:dispatched but no shop:mk:opened, the event listener
+      // isn't attached (component tree unmounted).
+      markMountPhase(`shop:${d.mk}:opened`);
       setShopInitialMk(d.mk);
       setShopOpen(true);
     };

@@ -1075,6 +1075,13 @@ export default function CapacitorGlobe() {
           // globe-pause stops the overlay rAF immediately, which is
           // enough. Crash risk is mitigated by the load-loop's own
           // pause flag + the crash-loop-guard safety net.
+          //
+          // Beacon each step of the tap chain so Sentry can tell us
+          // which step failed if a user reports "tap did nothing" —
+          // it'll be the LAST phase logged before mount-complete or a
+          // respawn. Cheap: markMountPhase is a single sessionStorage
+          // write.
+          markMountPhase(`tap:${mk}:click`);
           const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
             Capacitor?: { isNativePlatform?: () => boolean };
           }).Capacitor?.isNativePlatform?.();
@@ -1097,6 +1104,7 @@ export default function CapacitorGlobe() {
           }
           window.dispatchEvent(new CustomEvent("geknee:monument-select", { detail: { mk } }));
           window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
+          markMountPhase(`tap:${mk}:dispatched`);
         });
         new mapboxgl.Marker({
           element: el,
