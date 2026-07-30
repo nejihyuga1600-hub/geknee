@@ -1016,6 +1016,20 @@ export default function CapacitorGlobe() {
       };
       map.on("zoomend", onZoomEnd);
 
+      // Toggle name-pill visibility off/on based on zoom. Threshold
+      // matches NAME_PILL_MIN_ZOOM = 3.5 in the marker loop (kept in
+      // sync manually — small enough duplication to inline).
+      const toggleNamePills = () => {
+        const z = map.getZoom();
+        const shown = z >= 3.5;
+        for (const n of nameEls) n.style.display = shown ? "inline-flex" : "none";
+      };
+      map.on("zoomend", toggleNamePills);
+      map.on("moveend", toggleNamePills); // fires after zoom-driven flyTo too
+      // Initial call: pills stay hidden until user zooms past the
+      // hemisphere view.
+      toggleNamePills();
+
       // Emit `geknee:monuments-in-view` on move + zoom. AtlasShell renders
       // a floating "★ N monuments here" pill from this — parallel entry
       // point to the shop for users when the on-globe monument tap is
@@ -1089,6 +1103,9 @@ export default function CapacitorGlobe() {
       // 3D shape were missing the box. Fix: anchor 'bottom' so the
       // element sits above the ground point (matches where the sprite
       // is rendered), and bump to 120x120 for finger tolerance.
+      // Shared list of monument name-label DOM nodes so a single
+      // zoom handler can show/hide them in bulk (see below).
+      const nameEls: HTMLDivElement[] = [];
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
@@ -1164,34 +1181,36 @@ export default function CapacitorGlobe() {
           .addTo(map);
 
         // Name-label pill anchored TOP at the same ground point, so it
-        // hangs BELOW the monument (whose sprite sits above the ground).
-        // Translucent + blurred so map labels underneath still read.
-        // Same click semantics as the tap zone so users can also tap the
-        // label to open the shop.
+        // hangs BELOW the monument. Compact styling (9px, tight padding,
+        // near-fully transparent bg) so it reads as an unobtrusive map
+        // label. Hidden by default; the zoomend listener toggles
+        // display based on zoom >= NAME_PILL_MIN_ZOOM. That way pills
+        // only clutter the view when the user actually zoomed in on
+        // a region.
+        const NAME_PILL_MIN_ZOOM = 3.5;
         const nameEl = document.createElement("div");
         const monName = INFO[mk as keyof typeof INFO]?.name ?? mk;
         nameEl.dataset.mk = mk;
         nameEl.setAttribute("aria-label", monName);
         nameEl.style.cssText = [
-          "margin-top:4px",
-          "padding:4px 10px",
+          "margin-top:2px",
+          "padding:2px 7px",
           "border-radius:999px",
-          // Very light bg so map labels bleed through, blur softens the
-          // land/sea contrast under the text without hiding it.
-          "background:rgba(10,10,31,0.35)",
-          "-webkit-backdrop-filter:blur(6px) saturate(160%)",
-          "backdrop-filter:blur(6px) saturate(160%)",
-          "border:1px solid rgba(196,181,253,0.30)",
+          "background:rgba(10,10,31,0.28)",
+          "-webkit-backdrop-filter:blur(4px)",
+          "backdrop-filter:blur(4px)",
+          "border:1px solid rgba(196,181,253,0.22)",
           "color:#f0e7ff",
-          "font-size:11px", "font-weight:600",
+          "font-size:9px", "font-weight:600",
           "font-family:var(--font-ui), system-ui, sans-serif",
           "letter-spacing:0.02em",
-          "text-shadow:0 1px 3px rgba(0,0,0,0.65)",
+          "text-shadow:0 1px 2px rgba(0,0,0,0.7)",
           "white-space:nowrap",
           "cursor:pointer", "pointer-events:auto",
           "touch-action:manipulation",
-          "box-shadow:0 2px 8px rgba(10,10,31,0.35)",
-          "max-width:180px", "overflow:hidden", "text-overflow:ellipsis",
+          "max-width:130px", "overflow:hidden", "text-overflow:ellipsis",
+          // Hidden until zoom-toggle sets display:inline-flex.
+          "display:none",
         ].join(";") + ";";
         nameEl.textContent = monName;
         nameEl.addEventListener("click", () => {
@@ -1203,10 +1222,13 @@ export default function CapacitorGlobe() {
           anchor: "top",
           rotationAlignment: "viewport",
           pitchAlignment: "viewport",
-          offset: [0, 8],
+          offset: [0, 6],
         })
           .setLngLat([lon, lat])
           .addTo(map);
+        // Register with a shared list so a single zoomend listener can
+        // toggle all pills at once — avoids adding 97 individual listeners.
+        (nameEls as HTMLDivElement[]).push(nameEl);
         // Stash the marker element on the eventual entry (created by
         // loadAllMonuments) so the clustering pass in updatePositions
         // can toggle pointer-events per-frame — non-cover members lose
