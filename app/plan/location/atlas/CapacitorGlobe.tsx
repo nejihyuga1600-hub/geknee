@@ -37,6 +37,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { markMountPhase } from "@/lib/session-continuity";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MONUMENT_LATLON, MONUMENT_FILE_PREFIX } from "../globe/skins";
+import { INFO } from "../globe/info";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -1158,6 +1159,51 @@ export default function CapacitorGlobe() {
           anchor: "bottom",
           rotationAlignment: "viewport",
           pitchAlignment: "viewport",
+        })
+          .setLngLat([lon, lat])
+          .addTo(map);
+
+        // Name-label pill anchored TOP at the same ground point, so it
+        // hangs BELOW the monument (whose sprite sits above the ground).
+        // Translucent + blurred so map labels underneath still read.
+        // Same click semantics as the tap zone so users can also tap the
+        // label to open the shop.
+        const nameEl = document.createElement("div");
+        const monName = INFO[mk as keyof typeof INFO]?.name ?? mk;
+        nameEl.dataset.mk = mk;
+        nameEl.setAttribute("aria-label", monName);
+        nameEl.style.cssText = [
+          "margin-top:4px",
+          "padding:4px 10px",
+          "border-radius:999px",
+          // Very light bg so map labels bleed through, blur softens the
+          // land/sea contrast under the text without hiding it.
+          "background:rgba(10,10,31,0.35)",
+          "-webkit-backdrop-filter:blur(6px) saturate(160%)",
+          "backdrop-filter:blur(6px) saturate(160%)",
+          "border:1px solid rgba(196,181,253,0.30)",
+          "color:#f0e7ff",
+          "font-size:11px", "font-weight:600",
+          "font-family:var(--font-ui), system-ui, sans-serif",
+          "letter-spacing:0.02em",
+          "text-shadow:0 1px 3px rgba(0,0,0,0.65)",
+          "white-space:nowrap",
+          "cursor:pointer", "pointer-events:auto",
+          "touch-action:manipulation",
+          "box-shadow:0 2px 8px rgba(10,10,31,0.35)",
+          "max-width:180px", "overflow:hidden", "text-overflow:ellipsis",
+        ].join(";") + ";";
+        nameEl.textContent = monName;
+        nameEl.addEventListener("click", () => {
+          markMountPhase(`tap:${mk}:pill`);
+          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
+        });
+        new mapboxgl.Marker({
+          element: nameEl,
+          anchor: "top",
+          rotationAlignment: "viewport",
+          pitchAlignment: "viewport",
+          offset: [0, 8],
         })
           .setLngLat([lon, lat])
           .addTo(map);

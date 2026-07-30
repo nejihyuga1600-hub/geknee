@@ -829,81 +829,12 @@ export default function AtlasShell() {
       {/* Vertical zoom indicator — sits just under the hamburger Menu pill. */}
       <ZoomIndicator />
 
-      {/* Per-monument pill stack — top-left, under the leftmost two
-          top-nav pills (✦ + 🏠). One pill per monument in the current
-          camera view. Tapping opens the shop directly to that
-          monument's detail view. Bypasses the flaky per-marker tap
-          entirely. Capped at 6 to avoid overwhelming the column. */}
-      {inView.mks.length > 0 && inView.zoom >= 3 && (
-        <div style={{
-          position: 'fixed',
-          left: 12,
-          top: 'calc(env(safe-area-inset-top, 0px) + 68px)',
-          zIndex: 40,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          maxWidth: '58vw',
-          pointerEvents: 'none',
-        }}>
-          {inView.mks.slice(0, 6).map((mk) => {
-            const name = INFO[mk as keyof typeof INFO]?.name ?? mk;
-            return (
-              <button
-                key={mk}
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: { mk } }))}
-                style={{
-                  pointerEvents: 'auto',
-                  background: 'rgba(14, 16, 32, 0.72)',
-                  border: '1px solid rgba(196, 181, 253, 0.4)',
-                  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                  backdropFilter: 'blur(20px) saturate(180%)',
-                  borderRadius: 999,
-                  color: '#f0e7ff',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: '7px 12px',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-ui), system-ui, sans-serif',
-                  boxShadow: '0 4px 12px rgba(10,10,31,0.4)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  textAlign: 'left',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: '100%',
-                }}
-              >
-                <span style={{ color: '#a78bfa' }}>✦</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-              </button>
-            );
-          })}
-          {inView.mks.length > 6 && (
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('geknee:open-monument-shop', { detail: {} }))}
-              style={{
-                pointerEvents: 'auto',
-                background: 'rgba(14, 16, 32, 0.5)',
-                border: '1px dashed rgba(196, 181, 253, 0.3)',
-                borderRadius: 999,
-                color: '#c4b5fd',
-                fontSize: 11,
-                fontWeight: 600,
-                padding: '5px 12px',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-ui), system-ui, sans-serif',
-              }}
-            >
-              +{inView.mks.length - 6} more
-            </button>
-          )}
-        </div>
-      )}
+      {/* Per-monument pills are now rendered by CapacitorGlobe as
+          mapbox markers anchored under each monument's ground point —
+          keeps them attached to the monument visually and lets map
+          labels pass through their translucent background. The
+          in-view state stays around so future features can use it
+          (e.g. "you have N monuments in this view" analytics). */}
 
       {/* Initialize / Home — top-center, prominent. Same affordance the
           legacy planner had: tap to reset the globe orientation. Top respects
