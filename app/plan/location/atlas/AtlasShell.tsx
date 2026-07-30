@@ -17,6 +17,7 @@ import { resetGlobeTilt, flyToGlobe, zoomCamera } from "@/lib/globeAnim";
 import { MONUMENT_LATLON } from "@/app/plan/location/globe/skins";
 import { detectCrashLoopAndArmFallback, escapeCrashLoop } from "@/lib/crash-loop-guard";
 import { initSessionContinuity, markMountPhase } from "@/lib/session-continuity";
+import { captureError } from "@/lib/sentry";
 import { INFO } from "@/app/plan/location/globe/info";
 import { currentIssueYear } from "@/lib/issue-year";
 import { Sparkle } from "@/lib/icons";
@@ -446,6 +447,29 @@ export default function AtlasShell() {
       window.dispatchEvent(new Event('geknee:globe-pause'));
       setShopInitialMk(mk);
       setShopOpen(true);
+      // Mount watchdog. MonumentShop's initialMk useEffect writes
+      // `shop:<mk>:mounted` as its first act. If that phase isn't set 1500ms
+      // after we dispatched setShopOpen(true), the shop never mounted —
+      // dynamic-import failure, unmount race, or error boundary swallowed
+      // the mount. This is the specific "globe flies but no shop" bug.
+      // Capture a Sentry error so we can see it in the dashboard without a
+      // webview_respawn crash to piggyback on.
+      const mountKey = mk ?? 'grid';
+      setTimeout(() => {
+        try {
+          const lastMounted = (window as unknown as { __geknee_shop_last_mounted?: string }).__geknee_shop_last_mounted;
+          if (lastMounted !== mountKey) {
+            const raw = sessionStorage.getItem('geknee:continuity-beacon-v1');
+            const cur = raw ? (JSON.parse(raw) as { phase?: string })?.phase : null;
+            captureError(new Error(`shop_mount_stall: dispatched shop:${mountKey}:opened but MonumentShop useEffect never fired`), {
+              mk: mountKey,
+              last_phase: cur ?? 'null',
+              last_mounted: lastMounted ?? 'null',
+              tag: 'shop_mount_stall',
+            });
+          }
+        } catch { /* sessionStorage read failed — silent, not worth another error */ }
+      }, 1500);
     };
     window.addEventListener('geknee:open-monument-shop', h);
     return () => window.removeEventListener('geknee:open-monument-shop', h);

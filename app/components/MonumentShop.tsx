@@ -7,6 +7,7 @@ import { _setPendingUnlock } from '@/app/plan/location/globe/pendingUnlock';
 import { INFO } from '@/app/plan/location/globe/info';
 import { MONUMENT_LATLON } from '@/app/plan/location/globe/skins';
 import { getRarity, getQuests, type SkinTier } from '@/app/plan/location/globe/quests';
+import { markMountPhase } from '@/lib/session-continuity';
 import { ShimmerButton } from './animations/ShimmerButton';
 import { MagicCard } from './animations/MagicCard';
 import { UnlockCeremony } from './animations/UnlockCeremony';
@@ -1162,7 +1163,18 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
   const [collected, setCollected] = useState<CollectedItem[]>([]);
   const [missions,  setMissions]  = useState<MissionItem[]>([]);
   const [tripLocs,  setTripLocs]  = useState<string[]>([]);
-  const [selected,  setSelected]  = useState<CollectibleBase | null>(null);
+  // Initialize from initialMk so first paint is the detail sheet, not the
+  // grid → detail flash. The useEffect below still runs post-mount for
+  // downstream tab/fly effects, but this removes the 1-frame grid flash on
+  // taps from the globe, which on iOS WKWebView was a visible dark-full-
+  // screen blip before the sheet appeared and confused users into thinking
+  // "shop opened then closed."
+  const [selected,  setSelected]  = useState<CollectibleBase | null>(() => {
+    if (!initialMk) return null;
+    return ALL_MONUMENTS.find(m => m.id === initialMk)
+        ?? ANIMALS.find(a => a.id === initialMk)
+        ?? null;
+  });
   const [loading,   setLoading]   = useState(false);
   const [msg,       setMsg]       = useState('');
   // Remembers the most recent unlock so we can offer a share CTA. Cleared on
@@ -1259,6 +1271,18 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
   // taps by flipping to the Animals tab when the mk is found there.
   useEffect(() => {
     if (!open || !initialMk) return;
+    // Beacon: MonumentShop reached its post-mount effect. If a webview_respawn
+    // fires with last_phase="shop:*:opened" (AtlasShell heard the event) but
+    // never "shop:*:mounted" (this effect), the mount is being intercepted
+    // before React commits — dynamic-import failure, error-boundary swallow,
+    // or an unmount race. This is the specific "globe flies but no shop"
+    // signal we're hunting.
+    markMountPhase(`shop:${initialMk}:mounted`);
+    // Watchdog flag: AtlasShell's mount-stall watchdog reads this to know
+    // the shop actually reached its useEffect (as opposed to the phase
+    // beacon, which gets overwritten by unrelated globe phases). See
+    // AtlasShell open-monument-shop listener.
+    try { (window as unknown as { __geknee_shop_last_mounted?: string }).__geknee_shop_last_mounted = initialMk; } catch { /* SSR */ }
     const inMonuments = ALL_MONUMENTS.find(m => m.id === initialMk);
     const inAnimals = inMonuments ? null : ANIMALS.find(a => a.id === initialMk);
     const target = inMonuments ?? inAnimals;
