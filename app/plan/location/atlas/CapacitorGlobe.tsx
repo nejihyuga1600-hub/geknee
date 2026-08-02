@@ -886,28 +886,49 @@ export default function CapacitorGlobe() {
           // monument so spinning the globe doesn't visually rotate them
           // (user feedback: "monuments are spinning as I spin the globe").
           e.wrapper.rotation.set(0.9, 0, 0);
+          // Zoom-responsive display size.
+          //
+          // User feedback 2026-08-02 ("Tokyo tower is not in the ocean"):
+          // at globe zoom (~1-2), the fixed 63px sprite visually blankets
+          // an area from Kyushu to Kamchatka, making the anchor look
+          // completely off-place — Tokyo Skytree (correctly at 35.71,
+          // 139.81) reads as sitting in the Pacific Ocean because the
+          // coin base is wider than the visible island of Honshu.
+          //
+          // Fix: taper display size with zoom so at globe view sprites
+          // read as small pins (~22px), and only grow to the loaded 63px
+          // at regional/city zoom where there's actual room. Coordinates
+          // themselves are unchanged — this fixes perceived placement,
+          // which was the real issue.
+          //
+          //   zoom 1  → 22px (scale 0.35 of loaded)  — clean pin at globe
+          //   zoom 3  → 42px (scale 0.67)            — region visible
+          //   zoom 5+ → 63px (scale 1.0)             — city, full detail
+          const zoom = map.getZoom();
+          const dispPxAtZoom = Math.max(22, Math.min(63, 22 + (zoom - 1) * 10));
+          const zoomScale = dispPxAtZoom / 63;
           // Scale-in bounce for a monument that was JUST added via the
           // incremental refresh (unlock flow). 700ms total:
           //   0 → 350ms: cubic ease-out to 1.15 (overshoot)
           //   350 → 700ms: relax back to 1.0
-          // Applied as a wrapper.scale multiplier so it composes with
-          // the base 63/baseDim scale set at load time.
+          // Composed with the zoom scale so the bounce still reads
+          // correctly at any zoom level.
+          let bounceMul = 1;
           if (e.spawnAt) {
             const dt = performance.now() - e.spawnAt;
             const DUR = 700;
             if (dt >= DUR) {
-              e.wrapper.scale.set(1, 1, 1);
               e.spawnAt = undefined;
             } else if (dt < 350) {
               const t = dt / 350;
-              const s = 1.15 * (1 - Math.pow(1 - t, 3));
-              e.wrapper.scale.set(s, s, s);
+              bounceMul = 1.15 * (1 - Math.pow(1 - t, 3));
             } else {
               const t = (dt - 350) / 350;
-              const s = 1.15 - 0.15 * t;
-              e.wrapper.scale.set(s, s, s);
+              bounceMul = 1.15 - 0.15 * t;
             }
           }
+          const s = zoomScale * bounceMul;
+          e.wrapper.scale.set(s, s, s);
         }
         // ─── Clustering (Mapbox-style + Snap Map cover icon) ─────────
         // At low zoom, overlapping monuments collapse into groups. The
