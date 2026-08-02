@@ -597,9 +597,28 @@ export default function CapacitorGlobe() {
             loadInFlight = false;
           }
           if (isNative) {
-            // 120ms lets the WebKit watchdog tick even after a heavy
-            // parse. Total added time worst-case: 26 × 120ms ≈ 3s.
-            await new Promise<void>((r) => setTimeout(r, 120));
+            // Yield to the WebKit main thread AFTER each parse.
+            // The prior fixed 120ms sleep wasn't enough on iOS 18.7 with
+            // a heavy collector (Sentry JAVASCRIPT-NEXTJS-1K: 19 mount
+            // deaths in monuments-glb-load, gap 2631ms). Root cause of
+            // the regression: commit 949a666 removed the 8-monument cap
+            // on Capacitor, so users with 20+ collected monuments now
+            // stack parses tightly enough that a single ~2.6s spike
+            // outpaces the Jetsam watchdog.
+            //
+            // Fix: use requestIdleCallback so the yield adapts to
+            // actual main-thread pressure — if the browser is servicing
+            // touch/paint/GC, the resolve is deferred until it isn't.
+            // Falls back to a 300ms setTimeout on WKWebView versions
+            // without idle callback support (rare — Safari 16+ has it).
+            await new Promise<void>((resolve) => {
+              const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+              if (typeof ric === "function") {
+                ric(() => resolve(), { timeout: 1000 });
+              } else {
+                setTimeout(resolve, 300);
+              }
+            });
             // Yield to user interactions — MonumentShop open or fly.
             // Prior behavior: mid-load, a tap kicked off flyTo + shop
             // mount while GLB parses were still stacking → combined
