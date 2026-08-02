@@ -474,6 +474,22 @@ export default function CapacitorGlobe() {
           await new Promise<void>((r) => setTimeout(r, 250));
         }
       };
+      // Wait for map.isMoving() to go false. During active drag/pinch,
+      // GPU is already under pressure from Mapbox tile compositing +
+      // globe atmosphere. Stacking a heavy GLB parse (e.g. leaningTower
+      // decompresses ~82k verts) on top is the exact combo that Jetsam-
+      // kills the WebView (Sentry JAVASCRIPT-NEXTJS-1K, 2026-08-02:
+      // "monuments-glb-load:leaningTower" gap 1057ms while user was
+      // dragging). Await map idle here so no parse ever competes with
+      // the user's active gesture. Hard cap 30s so a user who never
+      // stops interacting still eventually sees more monuments.
+      const waitUntilMapIdle = async () => {
+        if (!map.isMoving()) return;
+        const deadline = Date.now() + 30_000;
+        while (map.isMoving() && Date.now() < deadline) {
+          await new Promise<void>((r) => setTimeout(r, 200));
+        }
+      };
       // Wait until the load loop drains any in-flight parse. Called from
       // the tap handler with a hard cap so a stuck parse can't strand the
       // user staring at an unmoving map.
@@ -542,6 +558,18 @@ export default function CapacitorGlobe() {
           // groupings will split by monument — dead-easy triage of the
           // one heavy asset that needs re-compression.
           markMountPhase(`capacitor-globe:monuments-glb-load:${mk}`);
+          // Never parse a GLB while the map is being actively dragged.
+          // Jetsam kill on 2026-08-02 (leaningTower, gap 1057ms) was
+          // parse + drag competing for the same GPU frame. Await map
+          // idle first so heavy work only happens when the compositor
+          // is free. Mount phase updates in waitUntilMapIdle keep the
+          // beacon live so this defer doesn't false-positive the
+          // continuity watchdog.
+          if (isNative) {
+            markMountPhase(`capacitor-globe:monuments-glb-load:${mk}:wait-idle`);
+            await waitUntilMapIdle();
+            markMountPhase(`capacitor-globe:monuments-glb-load:${mk}`);
+          }
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
           // Try the user's equipped skin first; on any failure (404 because
@@ -1334,35 +1362,55 @@ export default function CapacitorGlobe() {
           .setLngLat([lon, lat])
           .addTo(map);
 
-        // Name-label pill anchored TOP at the same ground point, so it
-        // hangs BELOW the monument. Compact styling (9px, tight padding,
-        // near-fully transparent bg) so it reads as an unobtrusive map
-        // label. Hidden by default; the zoomend listener toggles
-        // display based on zoom >= NAME_PILL_MIN_ZOOM. That way pills
-        // only clutter the view when the user actually zoomed in on
-        // a region.
+        // Name-label pill floating ABOVE the monument sprite.
+        //
+        // Prior anchor:'top' + offset [0,6] placed the pill BELOW the
+        // lat/lon anchor point — the exact space the tilted 3D monument
+        // sprite already occupies (base at anchor, top tilts forward
+        // toward camera). Result: pill hidden behind the monument at
+        // any normal camera angle. User feedback 2026-08-02: "labels
+        // are under the 3d monument where no one can see."
+        //
+        // Fix: anchor:'bottom' + offset [0, -PILL_LIFT_PX] puts the
+        // bottom edge of the pill above the sprite's visible top. Lift
+        // of 62px chosen because DISPLAY_PX is 63 and the 52° forward
+        // tilt drops the top ~cos(52°)·63 ≈ 39px above ground; add
+        // ~20px breathing room so the pill floats clear.
+        //
+        // Styling upgraded from a translucent map-label into a
+        // floating 3D chip: gradient bevel (light-top / dark-bottom),
+        // inset highlight, deep drop shadow, and a subtle purple text
+        // glow. Reads as an object suspended above the monument, not
+        // wallpaper on the map.
         const NAME_PILL_MIN_ZOOM = 3.5;
+        const PILL_LIFT_PX = 62;
         const nameEl = document.createElement("div");
         const monName = INFO[mk as keyof typeof INFO]?.name ?? mk;
         nameEl.dataset.mk = mk;
         nameEl.setAttribute("aria-label", monName);
         nameEl.style.cssText = [
-          "margin-top:2px",
-          "padding:2px 7px",
-          "border-radius:999px",
-          "background:rgba(10,10,31,0.28)",
+          "padding:3px 10px",
+          "border-radius:12px",
+          "background:linear-gradient(180deg,rgba(38,28,74,0.94) 0%,rgba(18,12,40,0.92) 100%)",
           "-webkit-backdrop-filter:blur(4px)",
           "backdrop-filter:blur(4px)",
-          "border:1px solid rgba(196,181,253,0.22)",
-          "color:#f0e7ff",
-          "font-size:9px", "font-weight:600",
+          // Light top edge + dark bottom edge = pseudo-3D bevel.
+          "border-top:1px solid rgba(196,181,253,0.55)",
+          "border-left:1px solid rgba(196,181,253,0.20)",
+          "border-right:1px solid rgba(0,0,0,0.32)",
+          "border-bottom:1px solid rgba(0,0,0,0.55)",
+          "color:#f5efff",
+          "font-size:11px", "font-weight:700",
           "font-family:var(--font-ui), system-ui, sans-serif",
-          "letter-spacing:0.02em",
-          "text-shadow:0 1px 2px rgba(0,0,0,0.7)",
+          "letter-spacing:0.03em",
+          "text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 6px rgba(167,139,250,0.35)",
+          // Layered shadow: soft ambient + tighter contact + inner highlight.
+          "box-shadow:0 6px 14px rgba(0,0,0,0.55),0 2px 4px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.18)",
           "white-space:nowrap",
           "cursor:pointer", "pointer-events:auto",
           "touch-action:manipulation",
-          "max-width:130px", "overflow:hidden", "text-overflow:ellipsis",
+          "max-width:150px", "overflow:hidden", "text-overflow:ellipsis",
+          "will-change:transform",
           // Hidden until zoom-toggle sets display:inline-flex.
           "display:none",
         ].join(";") + ";";
@@ -1374,10 +1422,10 @@ export default function CapacitorGlobe() {
         });
         new mapboxgl.Marker({
           element: nameEl,
-          anchor: "top",
+          anchor: "bottom",
           rotationAlignment: "viewport",
           pitchAlignment: "viewport",
-          offset: [0, 6],
+          offset: [0, -PILL_LIFT_PX],
         })
           .setLngLat([lon, lat])
           .addTo(map);
