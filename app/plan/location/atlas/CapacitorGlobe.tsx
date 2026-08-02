@@ -1182,45 +1182,11 @@ export default function CapacitorGlobe() {
       };
       map.on("zoomend", onZoomEnd);
 
-      // Shared list of monument name-label DOM nodes so a single zoom
-      // handler can show/hide them in bulk. Declared BEFORE toggleNamePills
-      // so the initial call below doesn't TDZ-throw. Populated by the
-      // marker/pill loop further down; empty at first call is fine — the
-      // for-loop is just a no-op until entries are pushed.
-      const nameEls: HTMLDivElement[] = [];
-      // Sticky-visible pill set: any mk the user has tapped stays visible
-      // regardless of zoom, so a single tap gives durable visual proof the
-      // tap registered (parallel signal to the shop opening — helpful when
-      // the shop mount stalls or is slow on WKWebView).
-      const stickyPillMks = new Set<string>();
-      // Toggle name-pill visibility off/on based on zoom. Threshold
-      // matches NAME_PILL_MIN_ZOOM = 3.5 in the marker loop (kept in
-      // sync manually — small enough duplication to inline). Sticky mks
-      // always win: a tapped pill stays visible even at low zoom.
-      const toggleNamePills = () => {
-        const z = map.getZoom();
-        const shownByZoom = z >= 3.5;
-        for (const n of nameEls) {
-          const mk = n.dataset.mk;
-          const sticky = !!(mk && stickyPillMks.has(mk));
-          n.style.display = (shownByZoom || sticky) ? "inline-flex" : "none";
-        }
-      };
-      map.on("zoomend", toggleNamePills);
-      map.on("moveend", toggleNamePills); // fires after zoom-driven flyTo too
-      // Initial call: pills stay hidden until user zooms past the
-      // hemisphere view.
-      toggleNamePills();
-      // Expose a reveal helper so the marker/pill click handlers below can
-      // sticky-reveal the tapped pill without re-implementing the lookup.
-      const revealPillFor = (mk: string) => {
-        stickyPillMks.add(mk);
-        for (const n of nameEls) {
-          if (n.dataset.mk === mk) n.style.display = "inline-flex";
-        }
-      };
-      // Stash on map so the marker click handlers can reach it via closure
-      // (they'd otherwise need to be re-scoped inside this block).
+      // Name-label pills removed 2026-08-02. Keeping revealPillFor as a
+      // no-op so tap-handler callers below don't need rewiring — cheaper
+      // than surgery across every call site. If we bring pills back, this
+      // becomes real again.
+      const revealPillFor = (_mk: string) => { /* no-op — pills removed */ };
       (map as unknown as { __geknee_revealPill?: (mk: string) => void }).__geknee_revealPill = revealPillFor;
 
       // Emit `geknee:monuments-in-view` on move + zoom. AtlasShell renders
@@ -1297,8 +1263,6 @@ export default function CapacitorGlobe() {
       // 3D shape were missing the box. Fix: anchor 'bottom' so the
       // element sits above the ground point (matches where the sprite
       // is rendered), and bump to 120x120 for finger tolerance.
-      // `nameEls` + `stickyPillMks` + `revealPillFor` are declared above,
-      // before toggleNamePills, so the initial toggle call doesn't TDZ.
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
@@ -1392,61 +1356,12 @@ export default function CapacitorGlobe() {
         // tilt drops the top ~cos(52°)·63 ≈ 39px above ground; add
         // ~20px breathing room so the pill floats clear.
         //
-        // Styling upgraded from a translucent map-label into a
-        // floating 3D chip: gradient bevel (light-top / dark-bottom),
-        // inset highlight, deep drop shadow, and a subtle purple text
-        // glow. Reads as an object suspended above the monument, not
-        // wallpaper on the map.
-        const NAME_PILL_MIN_ZOOM = 3.5;
-        const PILL_LIFT_PX = 62;
-        const nameEl = document.createElement("div");
-        const monName = INFO[mk as keyof typeof INFO]?.name ?? mk;
-        nameEl.dataset.mk = mk;
-        nameEl.setAttribute("aria-label", monName);
-        nameEl.style.cssText = [
-          "padding:3px 10px",
-          "border-radius:12px",
-          "background:linear-gradient(180deg,rgba(38,28,74,0.94) 0%,rgba(18,12,40,0.92) 100%)",
-          "-webkit-backdrop-filter:blur(4px)",
-          "backdrop-filter:blur(4px)",
-          // Light top edge + dark bottom edge = pseudo-3D bevel.
-          "border-top:1px solid rgba(196,181,253,0.55)",
-          "border-left:1px solid rgba(196,181,253,0.20)",
-          "border-right:1px solid rgba(0,0,0,0.32)",
-          "border-bottom:1px solid rgba(0,0,0,0.55)",
-          "color:#f5efff",
-          "font-size:11px", "font-weight:700",
-          "font-family:var(--font-ui), system-ui, sans-serif",
-          "letter-spacing:0.03em",
-          "text-shadow:0 1px 2px rgba(0,0,0,0.85),0 0 6px rgba(167,139,250,0.35)",
-          // Layered shadow: soft ambient + tighter contact + inner highlight.
-          "box-shadow:0 6px 14px rgba(0,0,0,0.55),0 2px 4px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.18)",
-          "white-space:nowrap",
-          "cursor:pointer", "pointer-events:auto",
-          "touch-action:manipulation",
-          "max-width:150px", "overflow:hidden", "text-overflow:ellipsis",
-          "will-change:transform",
-          // Hidden until zoom-toggle sets display:inline-flex.
-          "display:none",
-        ].join(";") + ";";
-        nameEl.textContent = monName;
-        nameEl.addEventListener("click", () => {
-          markMountPhase(`tap:${mk}:pill`);
-          revealPillFor(mk); // keep visible after shop close / zoom-out
-          window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
-        });
-        new mapboxgl.Marker({
-          element: nameEl,
-          anchor: "bottom",
-          rotationAlignment: "viewport",
-          pitchAlignment: "viewport",
-          offset: [0, -PILL_LIFT_PX],
-        })
-          .setLngLat([lon, lat])
-          .addTo(map);
-        // Register with a shared list so a single zoomend listener can
-        // toggle all pills at once — avoids adding 97 individual listeners.
-        (nameEls as HTMLDivElement[]).push(nameEl);
+        // Name-label pill removed per user request 2026-08-02. Users
+        // identify monuments by their 3D form + tap-to-open shop; the
+        // floating chip added chrome without earning it. Removing the
+        // per-monument mapbox Marker also drops ~97 DOM nodes and 97
+        // Marker instances (each with its own transform-update listener
+        // on map "move") — non-trivial memory + per-frame work on iOS.
         // Stash the marker element on the eventual entry (created by
         // loadAllMonuments) so the clustering pass in updatePositions
         // can toggle pointer-events per-frame — non-cover members lose
