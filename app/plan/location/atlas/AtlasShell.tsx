@@ -7,7 +7,7 @@
 // APIs is the next phase — see .planning/design-2026-04-24/prototype/
 // variant-atlas.jsx and atlas-panels.jsx for the target shape.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useScreen } from "@/lib/analytics";
@@ -283,6 +283,29 @@ export default function AtlasShell() {
   // blink loop — CapacitorGlobe's mount pins the main thread, WebKit
   // watchdog kills the content process, Capacitor auto-reloads, repeat).
   const [bypassGlobe, setBypassGlobe] = useState(false);
+  // On Capacitor native, kill backdrop-filter globally. Each blur surface
+  // in MonumentShop / SettingsPanel / this shell re-samples the underlying
+  // compositor every frame; when the Mapbox globe + Three.js overlay are
+  // active underneath, WKWebView OOMs and Capacitor auto-reloads (user
+  // sees the "globe refreshes" bug). The synchronous globe-pause in
+  // openShop covers the shop-mount race, but this override kills the
+  // per-frame GPU cost for all overlays, not just the shop.
+  useEffect(() => {
+    const isNative = !!(window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    }).Capacitor?.isNativePlatform?.();
+    if (!isNative) return;
+    const style = document.createElement('style');
+    style.setAttribute('data-geknee', 'no-backdrop-filter-native');
+    style.textContent = `
+      * {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
   useEffect(() => {
     // Session continuity FIRST — reads the previous beacon, so if the
     // previous mount died in a crash-reload this fires the Sentry event
@@ -429,51 +452,53 @@ export default function AtlasShell() {
     window.addEventListener('geknee:monuments-in-view', h);
     return () => window.removeEventListener('geknee:monuments-in-view', h);
   }, []);
+  // Single safe path to open MonumentShop. Every caller — the custom
+  // `geknee:open-monument-shop` event, top-nav NavPills, SettingsPanel —
+  // must go through this. A raw `setShopOpen(true)` bypasses the
+  // synchronous globe-pause and the mount-stall watchdog, which is what
+  // causes the WKWebView OOM crash-reload when the user taps Collection
+  // while the globe is under load.
+  const openShop = useCallback((mk: string | null = null) => {
+    markMountPhase(`shop:${mk ?? 'grid'}:opened`);
+    // Pause the globe SYNCHRONOUSLY before the shop mounts. MonumentShop's
+    // backdrop-filter blur composites over whatever's below — if Mapbox +
+    // the Three.js overlay are still painting when shop mounts, WKWebView
+    // OOMs. The shopOpen useEffect below also fires pause, but that runs
+    // POST-render — the composite already happened.
+    window.dispatchEvent(new Event('geknee:globe-pause'));
+    setShopInitialMk(mk);
+    setShopOpen(true);
+    // Mount watchdog. MonumentShop's initialMk useEffect writes
+    // `shop:<mk>:mounted` as its first act. If that phase isn't set 1500ms
+    // after we dispatched setShopOpen(true), the shop never mounted —
+    // dynamic-import failure, unmount race, or error boundary swallowed
+    // the mount. Sentry captures the failure without waiting on a
+    // webview_respawn crash.
+    const mountKey = mk ?? 'grid';
+    setTimeout(() => {
+      try {
+        const lastMounted = (window as unknown as { __geknee_shop_last_mounted?: string }).__geknee_shop_last_mounted;
+        if (lastMounted !== mountKey) {
+          const raw = sessionStorage.getItem('geknee:continuity-beacon-v1');
+          const cur = raw ? (JSON.parse(raw) as { phase?: string })?.phase : null;
+          captureError(new Error(`shop_mount_stall: dispatched shop:${mountKey}:opened but MonumentShop useEffect never fired`), {
+            mk: mountKey,
+            last_phase: cur ?? 'null',
+            last_mounted: lastMounted ?? 'null',
+            tag: 'shop_mount_stall',
+          });
+        }
+      } catch { /* sessionStorage read failed — silent, not worth another error */ }
+    }, 1500);
+  }, []);
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ mk?: string }>).detail;
-      // With mk: open detail view for that monument. Without mk: open
-      // grid view (the top-nav MONUMENTS button dispatches with no mk).
-      const mk = d?.mk ?? null;
-      markMountPhase(`shop:${mk ?? 'grid'}:opened`);
-      // CRITICAL: pause the globe SYNCHRONOUSLY before triggering the
-      // shop mount. MonumentShop uses backdrop-filter blur which
-      // composites over whatever's below — if mapbox + Three.js overlay
-      // are still painting when shop mounts, WKWebView OOMs. The
-      // shopOpen useEffect below also fires pause, but that runs
-      // POST-render — the composite already happened. Firing here
-      // synchronously guarantees pause propagates before React reconcile
-      // schedules the modal DOM.
-      window.dispatchEvent(new Event('geknee:globe-pause'));
-      setShopInitialMk(mk);
-      setShopOpen(true);
-      // Mount watchdog. MonumentShop's initialMk useEffect writes
-      // `shop:<mk>:mounted` as its first act. If that phase isn't set 1500ms
-      // after we dispatched setShopOpen(true), the shop never mounted —
-      // dynamic-import failure, unmount race, or error boundary swallowed
-      // the mount. This is the specific "globe flies but no shop" bug.
-      // Capture a Sentry error so we can see it in the dashboard without a
-      // webview_respawn crash to piggyback on.
-      const mountKey = mk ?? 'grid';
-      setTimeout(() => {
-        try {
-          const lastMounted = (window as unknown as { __geknee_shop_last_mounted?: string }).__geknee_shop_last_mounted;
-          if (lastMounted !== mountKey) {
-            const raw = sessionStorage.getItem('geknee:continuity-beacon-v1');
-            const cur = raw ? (JSON.parse(raw) as { phase?: string })?.phase : null;
-            captureError(new Error(`shop_mount_stall: dispatched shop:${mountKey}:opened but MonumentShop useEffect never fired`), {
-              mk: mountKey,
-              last_phase: cur ?? 'null',
-              last_mounted: lastMounted ?? 'null',
-              tag: 'shop_mount_stall',
-            });
-          }
-        } catch { /* sessionStorage read failed — silent, not worth another error */ }
-      }, 1500);
+      openShop(d?.mk ?? null);
     };
     window.addEventListener('geknee:open-monument-shop', h);
     return () => window.removeEventListener('geknee:open-monument-shop', h);
-  }, []);
+  }, [openShop]);
   // Pause the globe's WebGL render loops while the MonumentShop modal is
   // open. The modal applies backdrop-filter: blur over the constantly-painting
   // Mapbox + Three.js monument-overlay canvases — on WKWebView (iOS) the
@@ -784,7 +809,7 @@ export default function AtlasShell() {
             <NavPill onClick={() => setUpgradeOpen(true)} accent iconOnly title="Go Pro">
               <SparkleIcon />
             </NavPill>
-            <NavPill onClick={() => setShopOpen(true)} title="Collection" iconOnly>
+            <NavPill onClick={() => openShop(null)} title="Collection" iconOnly>
               <ColIcon />
             </NavPill>
           </div>
@@ -820,7 +845,7 @@ export default function AtlasShell() {
           {/* Desktop keeps Collection + Go Pro on the right. Mobile has
               them in the left cluster above (closer to thumb). */}
           {!isMobile && (
-          <NavPill onClick={() => setShopOpen(true)} title="Monument Collection">
+          <NavPill onClick={() => openShop(null)} title="Monument Collection">
             <ColIcon /> <span>Collection</span>
           </NavPill>
           )}
@@ -1190,8 +1215,8 @@ export default function AtlasShell() {
           eager because users open it almost every session. */}
       {shopOpen     && <MonumentShop   open={shopOpen}     onClose={() => { setShopOpen(false); setShopInitialMk(null); }} initialMk={shopInitialMk} />}
       {upgradeOpen  && <UpgradeModal   open={upgradeOpen}  onClose={() => setUpgradeOpen(false)} />}
-      <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />
-      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => setShopOpen(true)} onOpenUpgrade={() => setUpgradeOpen(true)} sessionUser={session?.user ?? null} onOpenAccount={() => router.push("/account")} />}
+      {tripsOpen    && <TripSocialPanel open={tripsOpen}    onClose={() => setTripsOpen(false)} currentLocation={trip.destination} />}
+      {settingsOpen && <SettingsPanel  open={settingsOpen} onClose={() => setSettingsOpen(false)} showQuickActions={isMobile} onOpenShop={() => openShop(null)} onOpenUpgrade={() => setUpgradeOpen(true)} sessionUser={session?.user ?? null} onOpenAccount={() => router.push("/account")} />}
       {authOpen     && <AuthModal      open={authOpen}     onClose={() => setAuthOpen(false)} />}
     </main>
   );
