@@ -247,7 +247,7 @@ export default function CapacitorGlobe() {
       // from 407MB → 8MB total (51× reduction, ~260KB avg per monument).
       // Diagnostic — surfaces custom layer state in the error overlay so
       // we can see what's actually happening on iOS without a console.
-      const diag = { added: false, loaded: 0, errors: 0, lastErr: "", renders: 0 };
+      const diag = { added: false, loaded: 0, errors: 0, lastErr: "", renders: 0, upsInWindow: 0, upsWindowStart: 0 };
       // Debug HUD gate: show only in web dev / non-native contexts (or when
       // ?debug=1 is set). On Capacitor (iOS app), errors are routed to
       // Sentry — the visible banner would leak into App Store screenshots.
@@ -757,6 +757,22 @@ export default function CapacitorGlobe() {
       // outward, foreshortened toward the limb so we never see its underside).
       let lastSpinTs = 0;
       const updatePositions = () => {
+        // Preventative invariant: warn if updatePositions is being fired
+        // more than ~65Hz in dev. That's the classic double-render
+        // regression signature (both map.on("render") and rAF tick
+        // calling this). Guard is dev-only so prod pays no cost.
+        if (process.env.NODE_ENV !== "production") {
+          const now = performance.now();
+          diag.upsInWindow++;
+          if (now - diag.upsWindowStart > 1000) {
+            const rate = diag.upsInWindow / ((now - diag.upsWindowStart) / 1000);
+            if (rate > 65) {
+              console.warn(`[geknee] updatePositions firing at ${rate.toFixed(0)}Hz — double render loop regression? Only ONE of rAF or map.on("render") should drive it.`);
+            }
+            diag.upsInWindow = 0;
+            diag.upsWindowStart = now;
+          }
+        }
         const w = mapContainer.clientWidth;
         const h = mapContainer.clientHeight;
         const center = map.getCenter();
@@ -765,9 +781,6 @@ export default function CapacitorGlobe() {
         const cx = Math.cos(camLat) * Math.cos(camLon);
         const cy = Math.cos(camLat) * Math.sin(camLon);
         const cz = Math.sin(camLat);
-        // Screen position of the globe centre — used to compute each
-        // monument's radial direction on screen.
-        const centerScreen = map.project([center.lng, center.lat]);
         for (const e of entries) {
           if (!e.loaded) continue;
           const lat = (e.latlon.lat * Math.PI) / 180;
@@ -917,24 +930,53 @@ export default function CapacitorGlobe() {
         // the globe was being dragged (more render events), which read
         // as "monuments spin with the globe". Real wall-clock rate:
         // ~8°/sec (0.14 rad/sec) regardless of fps or interaction.
+        //
+        // BUT — even at a time-normalized rate, spinning every monument
+        // while the user is actively panning/zooming the map reads as
+        // "monuments floating as separate entities from the globe"
+        // (user-reported bug, video 2026-07-31). Fix: pause the auto-spin
+        // whenever map.isMoving() so during interaction sprites stay
+        // locked to their lat/lon anchor and the pan feels solid. Spin
+        // resumes when the user releases and the map goes idle.
         const tNow = performance.now();
-        const dt = lastSpinTs ? Math.min(0.1, (tNow - lastSpinTs) / 1000) : 0;
-        lastSpinTs = tNow;
-        const yawDelta = 0.14 * dt;
-        for (const e of entries) {
-          if (!e.loaded) continue;
-          const inner = e.wrapper.children[0];
-          if (inner) inner.rotation.y += yawDelta;
+        const isMapMoving = map.isMoving();
+        if (isMapMoving) {
+          // Reset baseline so the next idle frame starts fresh (no dt
+          // spike from the paused interval that would otherwise cause a
+          // visible jump on resume).
+          lastSpinTs = 0;
+        } else {
+          const dt = lastSpinTs ? Math.min(0.1, (tNow - lastSpinTs) / 1000) : 0;
+          lastSpinTs = tNow;
+          const yawDelta = 0.14 * dt;
+          if (yawDelta > 0) {
+            for (const e of entries) {
+              if (!e.loaded) continue;
+              const inner = e.wrapper.children[0];
+              if (inner) inner.rotation.y += yawDelta;
+            }
+          }
         }
         overlayRenderer.render(overlayScene, overlayCamera);
         diag.renders++;
         if (diag.renders % 30 === 1) reportDiag();
       };
-      map.on("render", updatePositions);
-      // RAF loop so the monument auto-spin keeps animating even when the
-      // user isn't interacting with the map. Mapbox only fires "render"
-      // on its own state changes, which would freeze the Y-spin between
-      // gestures.
+      // RAF is the SOLE driver of updatePositions + overlayRenderer.render.
+      //
+      // Regression fix (2026-08-02): previously ALSO listened to
+      // map.on("render", updatePositions), which fires on every mapbox
+      // repaint. During interaction (drag/pinch) both fired in the same
+      // frame → the full Three.js scene re-rendered TWICE per frame,
+      // roughly doubling overlay GPU cost. That matched the profile of
+      // the WKWebView Jetsam kill in the 2026-07-31 crash video
+      // (14 seconds of continuous drag → black screen → app respawn).
+      //
+      // rAF alone is enough: it fires in-sync with the browser composite
+      // (~60Hz), and map.getCenter() reflects the current interpolated
+      // camera each tick, so sprites re-project to the same frame the
+      // Mapbox canvas is about to paint. The dev-only Hz invariant in
+      // updatePositions catches any regression re-introducing a second
+      // driver.
       let rafId = 0;
       let paused = false;
       const tick = () => {
@@ -961,14 +1003,48 @@ export default function CapacitorGlobe() {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = 0;
         try { (map as unknown as { stop?: () => void }).stop?.(); } catch {}
+        // Hide the Three.js overlay canvas while paused. Its last-rendered
+        // frame otherwise stays visible on-screen — and when the user
+        // continues to pan/zoom the underlying Mapbox layer (e.g. after
+        // ZOOM_AUTOPAUSE trips at zoom >= 5), the sprites appear to
+        // "float" over unrelated map areas, as though the monuments are
+        // separate entities from the globe. Dropping the canvas from
+        // compositing also removes one live GL surface from WebKit's
+        // stack while paused — the same class of pressure that leads to
+        // Jetsam respawns on iOS.
+        try { overlayCanvas.style.display = "none"; } catch {}
       };
       const onResume = () => {
         if (!paused) return;
         paused = false;
+        try { overlayCanvas.style.display = ""; } catch {}
+        // Paint one fresh frame synchronously BEFORE the canvas becomes
+        // visible to the next composite, so no stale content flashes even
+        // for a single frame.
+        try { updatePositions(); } catch {}
         startTick();
       };
       window.addEventListener("geknee:globe-pause", onPause);
       window.addEventListener("geknee:globe-resume", onResume);
+
+      // Invariant: while paused === true, the Three.js overlay canvas
+      // MUST be display:none. Otherwise its last-drawn frame stays fixed
+      // in screen-space while the user pans the Mapbox layer beneath —
+      // sprites appear detached from the globe. If a future refactor
+      // adds a new pause path that forgets to hide the canvas, this
+      // one-per-pan self-heal restores the invariant + logs so we
+      // notice.
+      let invariantWarned = false;
+      map.on("movestart", () => {
+        if (!paused) return;
+        if (overlayCanvas.style.display === "none") return;
+        overlayCanvas.style.display = "none";
+        if (!invariantWarned) {
+          invariantWarned = true;
+          // eslint-disable-next-line no-console
+          console.warn("[geknee] overlay-canvas visible while paused — self-healed. Fix the pause path that set paused=true without hiding the canvas.");
+        }
+      });
 
       // ─── Visibility gate ────────────────────────────────────────────
       // When the tab is hidden (app backgrounded via Home button, task
@@ -1000,6 +1076,15 @@ export default function CapacitorGlobe() {
       };
       const idleEvents: (keyof WindowEventMap)[] = ["pointerdown", "touchstart", "wheel", "keydown"];
       for (const ev of idleEvents) window.addEventListener(ev, kickIdle, { passive: true });
+      // Also reset the idle timer whenever the map is actively moving.
+      // Regression fix (2026-08-02): a slow finger drag lasting > 6s never
+      // re-fires touchstart, so the idle timer would trip mid-gesture,
+      // fire onPause() which calls map.stop() (killing the pan) and
+      // hides the overlay canvas (monuments vanish). Mapbox emits "move"
+      // continuously during any camera change (drag, pinch, fly), so
+      // routing that through kickIdle keeps the timer armed until the
+      // interaction actually ends.
+      map.on("move", kickIdle);
       kickIdle(); // arm the first timer
 
       // Auto-pause the Three.js overlay when the map zooms past 5. At
@@ -1016,19 +1101,46 @@ export default function CapacitorGlobe() {
       };
       map.on("zoomend", onZoomEnd);
 
+      // Shared list of monument name-label DOM nodes so a single zoom
+      // handler can show/hide them in bulk. Declared BEFORE toggleNamePills
+      // so the initial call below doesn't TDZ-throw. Populated by the
+      // marker/pill loop further down; empty at first call is fine — the
+      // for-loop is just a no-op until entries are pushed.
+      const nameEls: HTMLDivElement[] = [];
+      // Sticky-visible pill set: any mk the user has tapped stays visible
+      // regardless of zoom, so a single tap gives durable visual proof the
+      // tap registered (parallel signal to the shop opening — helpful when
+      // the shop mount stalls or is slow on WKWebView).
+      const stickyPillMks = new Set<string>();
       // Toggle name-pill visibility off/on based on zoom. Threshold
       // matches NAME_PILL_MIN_ZOOM = 3.5 in the marker loop (kept in
-      // sync manually — small enough duplication to inline).
+      // sync manually — small enough duplication to inline). Sticky mks
+      // always win: a tapped pill stays visible even at low zoom.
       const toggleNamePills = () => {
         const z = map.getZoom();
-        const shown = z >= 3.5;
-        for (const n of nameEls) n.style.display = shown ? "inline-flex" : "none";
+        const shownByZoom = z >= 3.5;
+        for (const n of nameEls) {
+          const mk = n.dataset.mk;
+          const sticky = !!(mk && stickyPillMks.has(mk));
+          n.style.display = (shownByZoom || sticky) ? "inline-flex" : "none";
+        }
       };
       map.on("zoomend", toggleNamePills);
       map.on("moveend", toggleNamePills); // fires after zoom-driven flyTo too
       // Initial call: pills stay hidden until user zooms past the
       // hemisphere view.
       toggleNamePills();
+      // Expose a reveal helper so the marker/pill click handlers below can
+      // sticky-reveal the tapped pill without re-implementing the lookup.
+      const revealPillFor = (mk: string) => {
+        stickyPillMks.add(mk);
+        for (const n of nameEls) {
+          if (n.dataset.mk === mk) n.style.display = "inline-flex";
+        }
+      };
+      // Stash on map so the marker click handlers can reach it via closure
+      // (they'd otherwise need to be re-scoped inside this block).
+      (map as unknown as { __geknee_revealPill?: (mk: string) => void }).__geknee_revealPill = revealPillFor;
 
       // Emit `geknee:monuments-in-view` on move + zoom. AtlasShell renders
       // a floating "★ N monuments here" pill from this — parallel entry
@@ -1085,6 +1197,7 @@ export default function CapacitorGlobe() {
         for (const ev of idleEvents) window.removeEventListener(ev, kickIdle);
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         map.off("zoomend", onZoomEnd);
+        try { map.off("move", kickIdle); } catch {}
       };
       diag.added = true;
       reportDiag();
@@ -1103,9 +1216,8 @@ export default function CapacitorGlobe() {
       // 3D shape were missing the box. Fix: anchor 'bottom' so the
       // element sits above the ground point (matches where the sprite
       // is rendered), and bump to 120x120 for finger tolerance.
-      // Shared list of monument name-label DOM nodes so a single
-      // zoom handler can show/hide them in bulk (see below).
-      const nameEls: HTMLDivElement[] = [];
+      // `nameEls` + `stickyPillMks` + `revealPillFor` are declared above,
+      // before toggleNamePills, so the initial toggle call doesn't TDZ.
       for (const [mk, { lat, lon }] of Object.entries(MONUMENT_LATLON)) {
         const el = document.createElement("div");
         el.setAttribute("aria-label", mk);
@@ -1147,6 +1259,10 @@ export default function CapacitorGlobe() {
           // respawn. Cheap: markMountPhase is a single sessionStorage
           // write.
           markMountPhase(`tap:${mk}:click`);
+          // Sticky-reveal this monument's name pill so the user gets
+          // instant visual proof the tap registered, regardless of zoom
+          // level or shop mount latency. See revealPillFor above.
+          revealPillFor(mk);
           const IS_NATIVE = typeof window !== "undefined" && !!(window as unknown as {
             Capacitor?: { isNativePlatform?: () => boolean };
           }).Capacitor?.isNativePlatform?.();
@@ -1215,6 +1331,7 @@ export default function CapacitorGlobe() {
         nameEl.textContent = monName;
         nameEl.addEventListener("click", () => {
           markMountPhase(`tap:${mk}:pill`);
+          revealPillFor(mk); // keep visible after shop close / zoom-out
           window.dispatchEvent(new CustomEvent("geknee:open-monument-shop", { detail: { mk } }));
         });
         new mapboxgl.Marker({
