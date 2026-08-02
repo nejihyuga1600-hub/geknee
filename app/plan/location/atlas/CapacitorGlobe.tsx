@@ -348,38 +348,26 @@ export default function CapacitorGlobe() {
       overlayRenderer.toneMappingExposure = 1.2;
 
       const overlayScene = new THREE.Scene();
-      // Simplified lighting (2026-08-02 fix).
-      //
-      // Prior: PMREMGenerator + RoomEnvironment IBL + HemisphereLight +
-      // 2 DirectionalLights. Beautiful PBR reflections on gold/silver
-      // skins but ~4-6 MB of prefiltered mipmap cube textures on the
-      // GPU + a directional shadow pass per light per frame. On iOS
-      // 18.7 WKWebView with 20+ collected monuments loaded, that
-      // baseline was enough for Jetsam to kill the process during
-      // drag (Sentry JAVASCRIPT-NEXTJS-1K last event: crash in
-      // wait-idle, not in parse — pure baseline pressure).
-      //
-      // On native: single HemisphereLight (sky/ground gradient) gives
-      // enough tonal variation to sell the 3D form. No env map, no
-      // directional lights. Cost: ~zero. Metallic skins render slightly
-      // flatter (no specular hotspots), which is acceptable given the
-      // alternative is a crash. Web keeps the full lighting rig.
-      // Hoisted so the outer detach handler can dispose it (nullable
-      // on native where we skip env-map generation entirely).
-      let pmrem: THREE.PMREMGenerator | null = null;
-      if (IS_NATIVE_WV) {
-        overlayScene.add(new THREE.HemisphereLight(0xfff4e0, 0x1a2240, 1.35));
-      } else {
-        pmrem = new THREE.PMREMGenerator(overlayRenderer);
-        overlayScene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-        overlayScene.add(new THREE.HemisphereLight(0xfff4e0, 0x1a2240, 1.0));
-        const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
-        keyLight.position.set(0.3, 1.4, 0.8);
-        overlayScene.add(keyLight);
-        const rimLight = new THREE.DirectionalLight(0x88a8d8, 0.5);
-        rimLight.position.set(-0.6, -0.2, -0.4);
-        overlayScene.add(rimLight);
-      }
+      // Environment map (RoomEnvironment via PMREMGenerator) gives every
+      // PBR Meshy material proper IBL reflections — without this, gold/
+      // silver/diamond skins read as flat colours instead of metallic
+      // surfaces with highlights. Setup is one-time and cached on the
+      // GPU, so adding monuments later doesn't pay the cost again.
+      const pmrem = new THREE.PMREMGenerator(overlayRenderer);
+      overlayScene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      // Sky/ground hemisphere — soft top-down gradient over the IBL so the
+      // monument's TOP face reads brighter than its base (eagle-view cue).
+      overlayScene.add(new THREE.HemisphereLight(0xfff4e0, 0x1a2240, 1.0));
+      // Key light from above-front so each monument gets a clear specular
+      // highlight on its top face — user feedback was "looks 2D"; specular
+      // hot spots are what sells 3D at icon scale.
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+      keyLight.position.set(0.3, 1.4, 0.8);
+      overlayScene.add(keyLight);
+      // Subtle cool rim from behind/below for silhouette read on dark globe.
+      const rimLight = new THREE.DirectionalLight(0x88a8d8, 0.5);
+      rimLight.position.set(-0.6, -0.2, -0.4);
+      overlayScene.add(rimLight);
       const overlayCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
       overlayCamera.position.z = 100;
 
@@ -442,7 +430,7 @@ export default function CapacitorGlobe() {
 
       (map as unknown as { __geknee_detachOverlay?: () => void }).__geknee_detachOverlay = () => {
         try { ro.disconnect(); } catch {}
-        try { pmrem?.dispose(); } catch {}
+        try { pmrem.dispose(); } catch {}
         try { overlayRenderer.dispose(); } catch {}
         try { mapContainer.removeChild(overlayCanvas); } catch {}
         try { mapContainer.removeChild(clusterBadgeLayer); } catch {}
@@ -556,46 +544,11 @@ export default function CapacitorGlobe() {
         // collection gate.
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
-        const gatedEntries = !isNative
+        const orderedEntries = !isNative
           ? allEntries
           : isDev
             ? allEntries
             : allEntries.filter(([mk]) => collected.has(mk));
-
-        // Priority-based load order on native (2026-08-02):
-        //   3 = rare skin equipped (aurora/celestial/diamond) — top billing
-        //   2 = collected with default/common skin
-        // Ties broken by mk ASC for stable per-render ordering.
-        //
-        // We split the list into an "initial batch" (first 12 by priority)
-        // and a "deferred batch" (the rest). The initial batch loads at
-        // mount as before. The deferred batch is registered against a
-        // zoom>=3.5 listener so it only starts loading once the user has
-        // zoomed in enough to actually see individual monuments — which
-        // is also when the baseline memory pressure from tile fetches is
-        // lower (fewer tiles at higher zoom) and there's room to add
-        // more GLBs without Jetsam. Chosen after Sentry pinned the
-        // remaining crash at pure baseline pressure, not GLB parse
-        // (JAVASCRIPT-NEXTJS-1K last event: gap 783ms in :wait-idle).
-        //
-        // Web keeps the un-capped behavior — marketing view showcases
-        // the full catalog.
-        const priorityFor = (mk: string): number => {
-          const skin = activeSkins[mk];
-          return skin && RARE_SKINS.has(skin) ? 3 : 2;
-        };
-        const NATIVE_INITIAL_CAP = 12;
-        const sortedEntries = isNative
-          ? gatedEntries.slice().sort((a, b) =>
-              priorityFor(b[0]) - priorityFor(a[0]) || a[0].localeCompare(b[0]))
-          : gatedEntries;
-        const orderedEntries = isNative
-          ? sortedEntries.slice(0, NATIVE_INITIAL_CAP)
-          : sortedEntries;
-        const deferredEntries = isNative
-          ? sortedEntries.slice(NATIVE_INITIAL_CAP)
-          : [];
-
         for (const [mk, latlon] of orderedEntries) {
           // Per-monument phase update. Prior behavior: the phase stayed
           // at "capacitor-globe:monuments-glb-load" for the entire loop,
@@ -709,93 +662,6 @@ export default function CapacitorGlobe() {
             // load loop until any active pause signal clears.
             await waitUntilResumed();
           }
-        }
-
-        // Native-only: arm the deferred loader. Once the user zooms in
-        // past 3.5 (city/region view), start progressively loading the
-        // rest of the collected monuments in priority order. Uses the
-        // same waitUntilMapIdle + idle-yield guards as the initial loop
-        // so it never competes with active interaction.
-        //
-        // If the user never zooms in, the deferred monuments never load —
-        // and they never need to, because at globe zoom they'd all be
-        // clustered under one cover badge anyway (CLUSTER_ZOOM_THRESHOLD
-        // is 4.0). So this is both a memory fix AND a display parity
-        // improvement: user only pays for what they'll actually see.
-        if (isNative && deferredEntries.length > 0) {
-          const ZOOM_UNLOCK = 3.5;
-          let deferredStarted = false;
-          const loadDeferred = async () => {
-            if (deferredStarted) return;
-            if (map.getZoom() < ZOOM_UNLOCK) return;
-            deferredStarted = true;
-            map.off("zoomend", loadDeferred);
-            map.off("moveend", loadDeferred);
-            for (const [mk, latlon] of deferredEntries) {
-              markMountPhase(`capacitor-globe:monuments-glb-load:deferred:${mk}:wait-idle`);
-              await waitUntilMapIdle();
-              markMountPhase(`capacitor-globe:monuments-glb-load:deferred:${mk}`);
-              const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
-              const skin = activeSkins[mk];
-              const skinUrl = skin && skin !== "default" ? `/models/mapbox/${file}_${skin}.glb` : null;
-              const defaultUrl = `/models/mapbox/${file}.glb`;
-              const wrapper = new THREE.Object3D();
-              wrapper.visible = false;
-              overlayScene.add(wrapper);
-              const priority = skin && RARE_SKINS.has(skin) ? 3 : 2;
-              const entry: ModelEntry = { mk, latlon, wrapper, loaded: false, priority };
-              entries.push(entry);
-              const applyLoaded = (gltf: { scene: THREE.Object3D }) => {
-                const obj = gltf.scene;
-                const bbox = new THREE.Box3().setFromObject(obj);
-                const size = new THREE.Vector3(); bbox.getSize(size);
-                const center = new THREE.Vector3(); bbox.getCenter(center);
-                obj.position.sub(center);
-                obj.position.y += size.y / 2;
-                const DISPLAY_PX = 63;
-                const baseDim = Math.max(size.x, size.z) || 1;
-                obj.scale.setScalar(DISPLAY_PX / baseDim);
-                wrapper.add(obj);
-                (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
-                entry.loaded = true;
-                entry.spawnAt = performance.now();
-                diag.loaded++;
-                reportDiag();
-                map.triggerRepaint();
-              };
-              loadInFlight = true;
-              try {
-                const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
-                applyLoaded(gltf as { scene: THREE.Object3D });
-              } catch {
-                if (skinUrl) {
-                  try {
-                    const gltf = await loader.loadAsync(defaultUrl);
-                    applyLoaded(gltf as { scene: THREE.Object3D });
-                  } catch (err2) {
-                    diag.errors++;
-                    diag.lastErr = `${mk}: ${(err2 as Error)?.message || err2}`.slice(0, 80);
-                    reportDiag();
-                  }
-                } else {
-                  diag.errors++;
-                  reportDiag();
-                }
-              } finally {
-                loadInFlight = false;
-              }
-              await new Promise<void>((resolve) => {
-                const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
-                if (typeof ric === "function") ric(() => resolve(), { timeout: 1000 });
-                else setTimeout(resolve, 300);
-              });
-              await waitUntilResumed();
-            }
-          };
-          map.on("zoomend", loadDeferred);
-          map.on("moveend", loadDeferred);
-          // Also try immediately in case user is already zoomed in.
-          setTimeout(loadDeferred, 0);
         }
       };
 
