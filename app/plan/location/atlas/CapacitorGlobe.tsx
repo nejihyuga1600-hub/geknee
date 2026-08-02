@@ -1069,16 +1069,22 @@ export default function CapacitorGlobe() {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = 0;
         try { (map as unknown as { stop?: () => void }).stop?.(); } catch {}
-        // Hide the Three.js overlay canvas while paused. Its last-rendered
-        // frame otherwise stays visible on-screen — and when the user
-        // continues to pan/zoom the underlying Mapbox layer (e.g. after
-        // ZOOM_AUTOPAUSE trips at zoom >= 5), the sprites appear to
-        // "float" over unrelated map areas, as though the monuments are
-        // separate entities from the globe. Dropping the canvas from
-        // compositing also removes one live GL surface from WebKit's
-        // stack while paused — the same class of pressure that leads to
-        // Jetsam respawns on iOS.
-        try { overlayCanvas.style.display = "none"; } catch {}
+        // Canvas hide moved to the movestart handler below (2026-08-02
+        // fix). Previously we hid overlayCanvas immediately on every
+        // pause — including the zoom-autopause and idle-timer paths,
+        // which fire while the map is idle and the sprites are at
+        // correct positions. Hiding then re-showing on resume made
+        // sprites visibly blink on/off during rapid pinch-zoom (user
+        // reported flicker 12:22 today).
+        //
+        // The invariant remains: while paused === true, the canvas
+        // MUST be display:none the moment the user starts to move the
+        // map (otherwise sprites would visibly lag the map underneath).
+        // The map.on("movestart") handler below enforces exactly that,
+        // so removing the immediate hide is safe and eliminates the
+        // blink. Only downside: if the user backgrounds the tab and
+        // returns, sprites show one stale frame before rAF resumes —
+        // acceptable.
       };
       const onResume = () => {
         if (!paused) return;
@@ -1153,17 +1159,26 @@ export default function CapacitorGlobe() {
       map.on("move", kickIdle);
       kickIdle(); // arm the first timer
 
-      // Auto-pause the Three.js overlay when the map zooms past 5. At
-      // that point every monument sprite is either off-screen or scaled
-      // absurdly large; keeping the WebGL scene rendering just consumes
-      // GPU budget that the Mapbox tile compositor needs. Combined with
-      // the maxZoom:8 cap this keeps iOS Jetsam from ever escalating to
-      // a WebView respawn.
-      const ZOOM_AUTOPAUSE = 5;
+      // Auto-pause the Three.js overlay at extreme zoom to keep tile
+      // pressure off the WKWebView.
+      //
+      // Hysteresis (2026-08-02 fix): prior version used a single
+      // threshold of 5. User pinching across zoom 5 (a very common
+      // city-level zoom) triggered rapid onPause/onResume cycles,
+      // each of which flipped overlayCanvas.style.display — sprites
+      // visibly blinked on and off (user video 12:22 today).
+      // Split into two thresholds: pause only when zoom > 7 (past
+      // most useful map exploration), resume when zoom drops below 6.
+      // The 1-unit dead zone eliminates the toggle for any normal
+      // pinch-zoom oscillation. Sprites are orthographic-scaled to a
+      // fixed 63px, so raising the threshold has no visual cost — they
+      // never look "absurdly large" as the old comment claimed.
+      const ZOOM_AUTOPAUSE_ON = 7;
+      const ZOOM_AUTOPAUSE_OFF = 6;
       const onZoomEnd = () => {
         const z = map.getZoom();
-        if (z >= ZOOM_AUTOPAUSE && !paused) onPause();
-        else if (z < ZOOM_AUTOPAUSE && paused) onResume();
+        if (z >= ZOOM_AUTOPAUSE_ON && !paused) onPause();
+        else if (z < ZOOM_AUTOPAUSE_OFF && paused) onResume();
       };
       map.on("zoomend", onZoomEnd);
 
