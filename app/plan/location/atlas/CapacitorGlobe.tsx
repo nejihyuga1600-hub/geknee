@@ -747,7 +747,18 @@ export default function CapacitorGlobe() {
             loadInFlight = false;
           }
           if (isNativeNow) {
-            await new Promise<void>((r) => setTimeout(r, 120));
+            // Mirror loadAllMonuments' adaptive yield (2026-08-02 fix).
+            // Skin-unlock refresh runs the same GLB parse work, so it
+            // has the same Jetsam risk if a heavy unlock (e.g. a rare
+            // skin variant) parses > 2.6s on a memory-pressured phone.
+            await new Promise<void>((resolve) => {
+              const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+              if (typeof ric === "function") {
+                ric(() => resolve(), { timeout: 1000 });
+              } else {
+                setTimeout(resolve, 300);
+              }
+            });
           }
         }
       };
