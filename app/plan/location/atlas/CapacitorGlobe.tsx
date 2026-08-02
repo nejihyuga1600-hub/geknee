@@ -534,6 +534,14 @@ export default function CapacitorGlobe() {
             ? allEntries
             : allEntries.filter(([mk]) => collected.has(mk));
         for (const [mk, latlon] of orderedEntries) {
+          // Per-monument phase update. Prior behavior: the phase stayed
+          // at "capacitor-globe:monuments-glb-load" for the entire loop,
+          // so every webview_respawn Sentry event looked identical and
+          // we couldn't tell which specific GLB parsed the WebView to
+          // death. Now the phase carries the mk, so JAVASCRIPT-NEXTJS-1K
+          // groupings will split by monument — dead-easy triage of the
+          // one heavy asset that needs re-compression.
+          markMountPhase(`capacitor-globe:monuments-glb-load:${mk}`);
           const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
           const skin = activeSkins[mk];
           // Try the user's equipped skin first; on any failure (404 because
