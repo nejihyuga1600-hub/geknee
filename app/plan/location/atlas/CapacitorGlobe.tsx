@@ -544,47 +544,11 @@ export default function CapacitorGlobe() {
         // collection gate.
         const allEntries = Object.entries(MONUMENT_LATLON)
           .filter(([mk]) => !(isNative && OVERSIZED_SKIPLIST.has(mk)));
-        const gatedEntries = !isNative
+        const orderedEntries = !isNative
           ? allEntries
           : isDev
             ? allEntries
             : allEntries.filter(([mk]) => collected.has(mk));
-
-        // Priority-based load cap on native (2026-08-02):
-        //   3 = rare skin equipped (aurora/celestial/diamond) — top billing
-        //   2 = collected with default/common skin
-        // Ties broken by mk ASC for stable per-render ordering.
-        //
-        // Split into initial batch (first 12 by priority) and deferred
-        // batch (the rest). Initial batch loads at mount as before.
-        // Deferred batch waits on a zoom>=3.5 listener so it only starts
-        // once the user has zoomed in enough to see individual monuments —
-        // where baseline memory pressure from tile fetches is lower and
-        // there's room to add more GLBs without Jetsam. Sentry pinned
-        // the residual crash at pure baseline pressure during drag
-        // (JAVASCRIPT-NEXTJS-1K: peritoMoreno:wait-idle gap 783ms),
-        // not GLB parse — hence the cap on initial load.
-        //
-        // At globe zoom the deferred monuments would all be clustered
-        // under one cover badge anyway (CLUSTER_ZOOM_THRESHOLD=4.0), so
-        // the user never notices they aren't there. Web keeps the
-        // un-capped behavior — marketing view showcases the full catalog.
-        const priorityFor = (mk: string): number => {
-          const skin = activeSkins[mk];
-          return skin && RARE_SKINS.has(skin) ? 3 : 2;
-        };
-        const NATIVE_INITIAL_CAP = 12;
-        const sortedEntries = isNative
-          ? gatedEntries.slice().sort((a, b) =>
-              priorityFor(b[0]) - priorityFor(a[0]) || a[0].localeCompare(b[0]))
-          : gatedEntries;
-        const orderedEntries = isNative
-          ? sortedEntries.slice(0, NATIVE_INITIAL_CAP)
-          : sortedEntries;
-        const deferredEntries = isNative
-          ? sortedEntries.slice(NATIVE_INITIAL_CAP)
-          : [];
-
         for (const [mk, latlon] of orderedEntries) {
           // Per-monument phase update. Prior behavior: the phase stayed
           // at "capacitor-globe:monuments-glb-load" for the entire loop,
@@ -698,91 +662,6 @@ export default function CapacitorGlobe() {
             // load loop until any active pause signal clears.
             await waitUntilResumed();
           }
-        }
-
-        // Native-only: arm the deferred loader. Once the user zooms in
-        // past 3.5 (city/region view), progressively load the rest of
-        // the collected monuments in priority order. Uses the same
-        // waitUntilMapIdle + idle-yield guards as the initial loop so
-        // it never competes with active interaction. If the user never
-        // zooms in, the deferred monuments never load — and they never
-        // need to, because at globe zoom they'd all be clustered under
-        // one cover badge anyway. User only pays memory for what they'll
-        // actually see.
-        if (isNative && deferredEntries.length > 0) {
-          const ZOOM_UNLOCK = 3.5;
-          let deferredStarted = false;
-          const loadDeferred = async () => {
-            if (deferredStarted) return;
-            if (map.getZoom() < ZOOM_UNLOCK) return;
-            deferredStarted = true;
-            map.off("zoomend", loadDeferred);
-            map.off("moveend", loadDeferred);
-            for (const [mk, latlon] of deferredEntries) {
-              markMountPhase(`capacitor-globe:monuments-glb-load:deferred:${mk}:wait-idle`);
-              await waitUntilMapIdle();
-              markMountPhase(`capacitor-globe:monuments-glb-load:deferred:${mk}`);
-              const file = MONUMENT_FILE_PREFIX[mk] ?? mk;
-              const skin = activeSkins[mk];
-              const skinUrl = skin && skin !== "default" ? `/models/mapbox/${file}_${skin}.glb` : null;
-              const defaultUrl = `/models/mapbox/${file}.glb`;
-              const wrapper = new THREE.Object3D();
-              wrapper.visible = false;
-              overlayScene.add(wrapper);
-              const priority = skin && RARE_SKINS.has(skin) ? 3 : 2;
-              const entry: ModelEntry = { mk, latlon, wrapper, loaded: false, priority };
-              entries.push(entry);
-              const applyLoaded = (gltf: { scene: THREE.Object3D }) => {
-                const obj = gltf.scene;
-                const bbox = new THREE.Box3().setFromObject(obj);
-                const size = new THREE.Vector3(); bbox.getSize(size);
-                const center = new THREE.Vector3(); bbox.getCenter(center);
-                obj.position.sub(center);
-                obj.position.y += size.y / 2;
-                const DISPLAY_PX = 63;
-                const baseDim = Math.max(size.x, size.z) || 1;
-                obj.scale.setScalar(DISPLAY_PX / baseDim);
-                wrapper.add(obj);
-                (wrapper as THREE.Object3D & { userData: { mk?: string } }).userData.mk = mk;
-                entry.loaded = true;
-                entry.spawnAt = performance.now();
-                diag.loaded++;
-                reportDiag();
-                map.triggerRepaint();
-              };
-              loadInFlight = true;
-              try {
-                const gltf = await loader.loadAsync(skinUrl ?? defaultUrl);
-                applyLoaded(gltf as { scene: THREE.Object3D });
-              } catch {
-                if (skinUrl) {
-                  try {
-                    const gltf = await loader.loadAsync(defaultUrl);
-                    applyLoaded(gltf as { scene: THREE.Object3D });
-                  } catch (err2) {
-                    diag.errors++;
-                    diag.lastErr = `${mk}: ${(err2 as Error)?.message || err2}`.slice(0, 80);
-                    reportDiag();
-                  }
-                } else {
-                  diag.errors++;
-                  reportDiag();
-                }
-              } finally {
-                loadInFlight = false;
-              }
-              await new Promise<void>((resolve) => {
-                const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
-                if (typeof ric === "function") ric(() => resolve(), { timeout: 1000 });
-                else setTimeout(resolve, 300);
-              });
-              await waitUntilResumed();
-            }
-          };
-          map.on("zoomend", loadDeferred);
-          map.on("moveend", loadDeferred);
-          // Also try immediately in case user is already zoomed in.
-          setTimeout(loadDeferred, 0);
         }
       };
 
