@@ -58,6 +58,24 @@ interface Activity {
 const TIME_RE = /^\*\*(\d{1,2}):(\d{2})\s*(AM|PM)\*\*\s*[-–:]?\s*(.*)$/i;
 const DAY_HEADING_RE = /day[\s\-]*(\d+)/i;
 
+// Strip markdown emphasis + list dashes + trailing punctuation from an
+// activity body so it renders as clean prose. The itinerary is authored
+// as markdown ("Stroll through **Vinohrady** *(~1 hr)* — Prague's...")
+// and prior versions were dumping that raw into the live-trip cards
+// with `**` and `*` and stray dashes visible on-screen (user video
+// 2026-08-03 10:34). Removes: **bold**, *italic*, _underscore_,
+// `code`, leading `—`/`-`/`–`/`:`, and collapses runs of whitespace.
+function stripMd(s: string): string {
+  return s
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/^[\s\-–—:•]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function to24h(h: number, m: number, ampm: string): string {
   let hh = h % 12;
   if (ampm.toUpperCase() === 'PM') hh += 12;
@@ -104,7 +122,10 @@ function parseTodayActivities(itinerary: string, dayNumber: number): Activity[] 
       const m = parseInt(mStr, 10);
       const time = to24h(h, m, ampm);
       const display = `${h}:${String(m).padStart(2, '0')} ${ampm.toUpperCase()}`;
-      const name = body.trim().replace(/^[-–:]\s*/, '');
+      // stripMd + strip leading list dashes so the rendered name is clean
+      // prose (was showing raw "**Vinohrady** *(~1 hr)* — Prague's..." in
+      // the LEAVE-BY / timeline cards).
+      const name = stripMd(body);
       activities.push({ time, display, name, place: extractPlaceName(name) });
     }
   }
@@ -337,69 +358,96 @@ export default function LiveTripPage() {
           </span>
         </div>
       )}
-      {/* ── Top app bar ─────────────────────────────────────────────────── */}
+      {/* ── Top app bar ─────────────────────────────────────────────────
+          Two-row layout (redesigned 2026-08-03 per user feedback that the
+          prior single row was "cramped and poorly designed"):
+            Row 1  ·  live-dot + LIVE / DAY N OF TOTAL / city  ←→  clock
+            Row 2  ·  offline-map chip  ←→  nav chips (itin / book / vault)
+          Every chip is 44 pt tall so the whole bar is a real touch surface
+          instead of a text ribbon. Font size bumped from 10 → 11–12 so
+          labels are legible without squinting. */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 30,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        // Only reserve safe-area top when the offline banner isn't doing it.
-        paddingTop: online ? 'calc(env(safe-area-inset-top) + 14px)' : '14px',
-        paddingBottom: 14, paddingLeft: 22, paddingRight: 22,
-        background: 'rgba(5,5,15,0.85)', WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        paddingTop: online ? 'calc(env(safe-area-inset-top) + 12px)' : '12px',
+        paddingBottom: 12, paddingLeft: 20, paddingRight: 20,
+        background: 'rgba(5,5,15,0.9)', WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
         borderBottom: '1px solid var(--brand-border)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Row 1 — live badge + clock */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+            <span style={{
+              flexShrink: 0,
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--brand-success)',
+              boxShadow: '0 0 12px var(--brand-success)',
+              animation: 'livePulse 1.6s ease-in-out infinite',
+            }} />
+            <span style={{
+              fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em',
+              color: 'var(--brand-ink)', fontWeight: 700,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              DAY {dayInfo.day} / {dayInfo.total} · {cityName}
+            </span>
+          </div>
           <span style={{
-            display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-            background: 'var(--brand-success)',
-            boxShadow: '0 0 12px var(--brand-success)',
-            animation: 'livePulse 1.6s ease-in-out infinite',
-          }} />
-          <span style={{
-            fontFamily: MONO, fontSize: 11, letterSpacing: '0.18em',
-            color: 'var(--brand-ink-dim)', fontWeight: 600,
-          }}>
-            LIVE · DAY {dayInfo.day} OF {dayInfo.total} · {cityName}
-          </span>
+            flexShrink: 0,
+            fontFamily: MONO, fontSize: 13, fontVariantNumeric: 'tabular-nums',
+            color: 'var(--brand-ink)', fontWeight: 600,
+          }}>{clockText}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: 'var(--brand-ink-dim)' }}>{clockText}</span>
-          <span style={{
-            fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-            padding: '4px 10px', borderRadius: 999,
-            border: '1px solid var(--brand-border)',
-            color: 'var(--brand-ink-mute)',
-          }}>
-            {String.fromCodePoint(0x25D0)} OFFLINE MAPS CACHED
+        {/* Row 2 — offline status (left) + nav chips (right) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span
+            title={online ? 'Offline maps ready' : 'Offline mode'}
+            style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+              padding: '6px 10px', borderRadius: 999,
+              border: `1px solid ${online ? 'var(--brand-border)' : 'color-mix(in srgb, var(--brand-warning, #f59e0b) 45%, transparent)'}`,
+              color: online ? 'var(--brand-ink-mute)' : 'var(--brand-warning, #f59e0b)',
+              background: online ? 'transparent' : 'color-mix(in srgb, var(--brand-warning, #f59e0b) 12%, transparent)',
+              whiteSpace: 'nowrap',
+            }}>
+            {String.fromCodePoint(0x25D0)} {online ? 'OFFLINE READY' : 'OFFLINE'}
           </span>
-          {/* Cohesion: point to the modern tabbed itinerary view rather
-              than the legacy /plan/summary entry. */}
-          <Link href={`/plan/${tripId}/itinerary`}
-            style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-              color: 'var(--brand-accent)', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: 999,
-              border: '1px solid var(--brand-border-hi)',
-            }}>
-            ITINERARY {String.fromCodePoint(0x2197)}
-          </Link>
-          <Link href={`/plan/${tripId}/booking`}
-            style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-              color: 'var(--brand-ink-dim)', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: 999,
-              border: '1px solid var(--brand-border)',
-            }}>
-            BOOK {String.fromCodePoint(0x2197)}
-          </Link>
-          <Link href={`/plan/${tripId}/vault`}
-            style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-              color: 'var(--brand-ink-dim)', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: 999,
-              border: '1px solid var(--brand-border)',
-            }}>
-            VAULT {String.fromCodePoint(0x2197)}
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Link href={`/plan/${tripId}/itinerary`}
+              title="Itinerary" aria-label="Itinerary"
+              style={{
+                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                color: 'var(--brand-accent)', textDecoration: 'none',
+                padding: '8px 12px', borderRadius: 999,
+                border: '1px solid var(--brand-border-hi)',
+                background: 'color-mix(in srgb, var(--brand-accent) 10%, transparent)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+              PLAN
+            </Link>
+            <Link href={`/plan/${tripId}/booking`}
+              title="Booking" aria-label="Booking"
+              style={{
+                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                color: 'var(--brand-ink-dim)', textDecoration: 'none',
+                padding: '8px 12px', borderRadius: 999,
+                border: '1px solid var(--brand-border)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+              BOOK
+            </Link>
+            <Link href={`/plan/${tripId}/vault`}
+              title="Vault" aria-label="Vault"
+              style={{
+                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                color: 'var(--brand-ink-dim)', textDecoration: 'none',
+                padding: '8px 12px', borderRadius: 999,
+                border: '1px solid var(--brand-border)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+              VAULT
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -959,12 +1007,35 @@ function DayTimeline({ activities, currentClock }: { activities: Activity[]; cur
     );
   }
   const nextIdx = activities.findIndex(a => a.time > currentClock);
+  // Horizontal-scroll strip (redesigned 2026-08-03): the prior
+  // grid-template `repeat(N, minmax(0, 1fr))` split the day into N
+  // equal columns, which meant a 7-activity day on a 393px iPhone gave
+  // each tile ~46px — every name truncated after 3 characters. Now
+  // each tile is a fixed 156px wide (comfortably 2 lines of 13px
+  // display), the strip scrolls horizontally with scroll-snap so users
+  // land on a card, and the "NOW" tile is scrollIntoView'd on mount.
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: `repeat(${activities.length}, minmax(0, 1fr))`,
-      gap: 8,
-    }}>
+    <div
+      ref={(el) => {
+        // Center the NOW card on first paint (or DONE if the day is over).
+        if (!el) return;
+        const targetIdx = nextIdx === -1 ? activities.length - 1 : nextIdx;
+        const target = el.children[targetIdx] as HTMLElement | undefined;
+        if (target) target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+      }}
+      style={{
+        display: 'flex',
+        gap: 10,
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        scrollSnapType: 'x mandatory',
+        paddingBottom: 6,
+        // Hide native scrollbar on WebKit — the strip is discoverable
+        // via the peeking next tile so a bar is just chrome.
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+      }}
+    >
       {activities.map((a, i) => {
         const status: 'done' | 'now' | 'future' =
           nextIdx === -1                     ? 'done'
@@ -974,21 +1045,29 @@ function DayTimeline({ activities, currentClock }: { activities: Activity[]; cur
         const color = status === 'done'   ? 'var(--brand-success)'
                     : status === 'now'    ? 'var(--brand-accent)'
                                           : 'var(--brand-ink-mute)';
-        const opacity = status === 'future' ? 0.55 : 1;
+        const opacity = status === 'future' ? 0.65 : 1;
         return (
           <div key={i} style={{
+            flex: '0 0 156px',
+            scrollSnapAlign: 'center',
             borderTop: `2px solid ${color}`,
-            paddingTop: 8, opacity,
+            paddingTop: 10,
+            opacity,
           }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%',
-              background: color, marginBottom: 8,
+              background: color, marginBottom: 10,
+              boxShadow: status === 'now' ? `0 0 10px ${color}` : 'none',
             }} />
-            <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em', color: 'var(--brand-ink-mute)', marginBottom: 2 }}>
+            <div style={{
+              fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
+              color: status === 'now' ? 'var(--brand-accent)' : 'var(--brand-ink-mute)',
+              marginBottom: 4, fontWeight: 700,
+            }}>
               {status.toUpperCase()} · {a.display}
             </div>
             <div style={{
-              fontFamily: DISPLAY, fontSize: 13, color: 'var(--brand-ink)', lineHeight: 1.3,
+              fontFamily: DISPLAY, fontSize: 14, color: 'var(--brand-ink)', lineHeight: 1.3,
               overflow: 'hidden', textOverflow: 'ellipsis',
               display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             }}>

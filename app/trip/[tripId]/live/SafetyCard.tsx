@@ -58,35 +58,73 @@ export function SafetyCard({
     }
   }
 
+  // Dedupe: when the country routes all three services through one
+  // number (EU 112, US 911, etc.), showing three identical boxes reads
+  // as visual noise (user feedback 2026-08-03 with a "112 · 112 · 112"
+  // safety card). Collapse to a single big dial-pad when they match;
+  // otherwise show the split view so distinct fire/ambulance/police
+  // numbers stay reachable (JP, RU, etc.).
+  const unified = numbers.universal === numbers.ambulance && numbers.universal === numbers.fire;
+
   return (
     <CardShell accent={ACCENT} label="SAFETY">
-      {/* Emergency numbers — the universal number leads, tinted; the rest follow. */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        {([
-          { k: 'universal', tag: 'EMERGENCY', lead: true },
-          { k: 'ambulance', tag: 'AMBULANCE', lead: false },
-          { k: 'fire', tag: 'FIRE', lead: false },
-        ] as const).map(({ k, tag, lead }) => (
-          <a
-            key={k}
-            href={`tel:${numbers[k]}`}
-            aria-label={`Call ${tag.toLowerCase()} ${numbers[k]}`}
-            style={{
-              flex: 1, minHeight: 56, textDecoration: 'none',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 2,
-              padding: '8px 4px', borderRadius: 10,
-              background: lead ? 'color-mix(in srgb, var(--brand-danger, #f87171) 14%, transparent)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${lead ? 'color-mix(in srgb, var(--brand-danger, #f87171) 45%, transparent)' : 'var(--brand-border)'}`,
-            }}
-          >
-            <span style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1, color: lead ? ACCENT : 'var(--brand-ink)' }}>
-              {numbers[k]}
+      {unified ? (
+        <a
+          href={`tel:${numbers.universal}`}
+          aria-label={`Call emergency ${numbers.universal}`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 14, padding: '14px 18px', borderRadius: 12,
+            textDecoration: 'none', minHeight: 72,
+            background: 'color-mix(in srgb, var(--brand-danger, #f87171) 14%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--brand-danger, #f87171) 45%, transparent)',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontFamily: DISPLAY, fontSize: 36, lineHeight: 1, color: ACCENT, fontVariantNumeric: 'tabular-nums' }}>
+              {numbers.universal}
             </span>
-            <span className="brand-mono-label" style={{ fontSize: 8 }}>{tag}</span>
-          </a>
-        ))}
-      </div>
+            <span className="brand-mono-label" style={{ fontSize: 9, color: 'var(--brand-ink-mute)' }}>
+              EMERGENCY · POLICE · FIRE · AMBULANCE
+            </span>
+          </div>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 44, height: 44, borderRadius: '50%',
+            background: ACCENT, color: 'var(--brand-bg, #050518)',
+            fontSize: 20, flexShrink: 0,
+          }} aria-hidden>
+            {String.fromCodePoint(0x260E)}
+          </span>
+        </a>
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {([
+            { k: 'universal', tag: 'EMERGENCY', lead: true },
+            { k: 'ambulance', tag: 'AMBULANCE', lead: false },
+            { k: 'fire', tag: 'FIRE', lead: false },
+          ] as const).map(({ k, tag, lead }) => (
+            <a
+              key={k}
+              href={`tel:${numbers[k]}`}
+              aria-label={`Call ${tag.toLowerCase()} ${numbers[k]}`}
+              style={{
+                flex: 1, minHeight: 56, textDecoration: 'none',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 2,
+                padding: '8px 4px', borderRadius: 10,
+                background: lead ? 'color-mix(in srgb, var(--brand-danger, #f87171) 14%, transparent)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${lead ? 'color-mix(in srgb, var(--brand-danger, #f87171) 45%, transparent)' : 'var(--brand-border)'}`,
+              }}
+            >
+              <span style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1, color: lead ? ACCENT : 'var(--brand-ink)' }}>
+                {numbers[k]}
+              </span>
+              <span className="brand-mono-label" style={{ fontSize: 8 }}>{tag}</span>
+            </a>
+          ))}
+        </div>
+      )}
       {isFallback && (
         <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 6 }}>
           Showing the universal GSM number (112). Confirm the local number on arrival.
