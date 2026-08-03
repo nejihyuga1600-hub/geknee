@@ -38,6 +38,11 @@ interface GoogleLiveMapProps {
       so the parent can open the add-stop modal pre-seeded with a reverse-
       geocoded place suggestion. */
   onMapClick?: (coords: { lat: number; lon: number }) => void;
+  /** Optional map surface height. Defaults to 360 (inline card mode).
+      Pass a CSS length like "100dvh" (or a number in px) to make the map
+      take over the full viewport. Also collapses the border-radius when
+      in fullscreen so the map bleeds edge-to-edge. */
+  height?: number | string;
 }
 
 // Dark map style — terse Google Maps Styled Map array tuned for the dark
@@ -88,7 +93,12 @@ function pinIcon(n: number): google.maps.Icon {
   };
 }
 
-export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick }: GoogleLiveMapProps) {
+export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, height = 360 }: GoogleLiveMapProps) {
+  // Fullscreen convention: any string height (e.g. "100dvh") means the
+  // map is escaping the card and should also drop its 14-px border-radius
+  // so it bleeds edge-to-edge into the viewport.
+  const isFullscreen = typeof height === 'string';
+  const mapRadius = isFullscreen ? 0 : 14;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -346,9 +356,9 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick }: Goo
       <div style={{
         position: 'relative',
         width: '100%',
-        height: 360,
+        height,
         background: 'var(--brand-bg2)',
-        borderRadius: 14,
+        borderRadius: mapRadius,
         overflow: 'hidden',
       }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -378,11 +388,11 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick }: Goo
       ref={containerRef}
       style={{
         width: '100%',
-        height: 360,
+        height,
         // Matches the styled-map backgroundColor so the wrapper doesn't
         // flash a dark band before tiles load when the user is in light mode.
         background: 'var(--brand-bg2)',
-        borderRadius: 14,
+        borderRadius: mapRadius,
         overflow: 'hidden',
       }}
     />

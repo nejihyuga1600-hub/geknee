@@ -147,6 +147,28 @@ export default function LiveTripPage() {
   const [now, setNow] = useState<Date>(() => new Date());
   const [currentWeather, setCurrentWeather] = useState<WeatherResult | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
+  // Location permission state. Null = not asked, 'pending' = waiting on the
+  // native picker, 'granted' = geo populated, 'denied' = user said no.
+  // Kept out of geo so the "Enable" chip can show a spinner without
+  // pretending we already have a fix.
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
+  const requestGeolocation = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeoStatus('denied'); return;
+    }
+    setGeoStatus('pending');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeo({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        setGeoStatus('granted');
+      },
+      () => setGeoStatus('denied'),
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
+    );
+  };
+  // Fullscreen map takeover — a "view map" chip flips this on and the map
+  // section becomes position:fixed at inset:0 covering everything else.
+  const [mapFull, setMapFull] = useState(false);
   const [countryCode, setCountryCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -546,8 +568,17 @@ export default function LiveTripPage() {
         )}
       </div>
 
-      {/* ── Map area (2D Google Maps, centered on selected day) ─────────── */}
-      <div style={{ padding: '0 22px', position: 'relative' }}>
+      {/* ── Map area (2D Google Maps, centered on selected day) ───────────
+          When mapFull is true this container escapes the scroll flow and
+          takes over the whole viewport as a full-screen map "page", per
+          user request 2026-08-03. Inline mode is unchanged. */}
+      <div style={mapFull ? {
+        position: 'fixed', inset: 0, zIndex: 9500,
+        background: 'var(--brand-bg, #05050f)',
+        padding: 0,
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      } : { padding: '0 22px', position: 'relative' }}>
         {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10,
@@ -563,6 +594,7 @@ export default function LiveTripPage() {
           activities={activities}
           dayKey={selectedDay}
           geo={geo}
+          height={mapFull ? '100dvh' : 360}
           onMapClick={(coords) => {
             setAddStopCoords(coords);
             setAddStopOpen(true);
@@ -575,7 +607,8 @@ export default function LiveTripPage() {
           onClick={() => { setAddStopCoords(null); setAddStopOpen(true); }}
           style={{
             position: 'absolute',
-            left: 36, top: 14,
+            left: mapFull ? 'calc(env(safe-area-inset-left) + 14px)' : 36,
+            top: mapFull ? 'calc(env(safe-area-inset-top) + 14px)' : 14,
             background: 'rgba(167,139,250,0.92)',
             color: 'var(--brand-bg)',
             border: 'none',
@@ -586,10 +619,69 @@ export default function LiveTripPage() {
             cursor: 'pointer',
             boxShadow: '0 6px 18px rgba(167,139,250,0.45)',
             display: 'inline-flex', alignItems: 'center', gap: 6,
+            zIndex: 3,
           }}
         >
           + Add stop
         </button>
+        {/* Expand-to-fullscreen / collapse chip — top-right of the map.
+            Turns the map into a takeover page per user request 2026-08-03. */}
+        <button
+          onClick={() => setMapFull((v) => !v)}
+          aria-label={mapFull ? 'Close full-screen map' : 'Open full-screen map'}
+          style={{
+            position: 'absolute',
+            right: mapFull ? 'calc(env(safe-area-inset-right) + 14px)' : 36,
+            top: mapFull ? 'calc(env(safe-area-inset-top) + 14px)' : 14,
+            background: 'rgba(13,13,36,0.88)',
+            color: 'var(--brand-ink)',
+            border: '1px solid var(--brand-border-hi)',
+            borderRadius: 999,
+            padding: '8px 12px',
+            fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            WebkitBackdropFilter: 'blur(10px)', backdropFilter: 'blur(10px)',
+            zIndex: 3,
+          }}
+        >
+          {mapFull
+            ? `${String.fromCodePoint(0x2715)} Close`
+            : `${String.fromCodePoint(0x26F6)} Full map`}
+        </button>
+        {/* "Enable location" chip — appears when we don't have a fix.
+            Powers walk-time ETAs and centers the route on where you are.
+            Sits along the bottom so it doesn't collide with the top pills. */}
+        {geoStatus !== 'granted' && (
+          <button
+            onClick={requestGeolocation}
+            disabled={geoStatus === 'pending'}
+            aria-label="Use my current location for routing"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: mapFull ? 'calc(env(safe-area-inset-bottom) + 20px)' : 20,
+              background: geoStatus === 'denied' ? 'rgba(248,113,113,0.16)' : 'rgba(125,211,252,0.16)',
+              color: geoStatus === 'denied' ? 'var(--brand-danger, #f87171)' : 'var(--brand-accent-2, #7dd3fc)',
+              border: `1px solid ${geoStatus === 'denied' ? 'rgba(248,113,113,0.55)' : 'rgba(125,211,252,0.55)'}`,
+              borderRadius: 999,
+              padding: '10px 16px',
+              fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+              letterSpacing: '0.02em',
+              cursor: geoStatus === 'pending' ? 'wait' : 'pointer',
+              WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              opacity: geoStatus === 'pending' ? 0.7 : 1,
+              zIndex: 3,
+            }}
+          >
+            {String.fromCodePoint(0x1F4CD)}
+            {geoStatus === 'pending' ? ' Locating…' : geoStatus === 'denied' ? ' Location denied — enable in Settings' : ' Use my location for routing'}
+          </button>
+        )}
         {/* Save-for-offline CTA. Web/PWA can't programmatically download
             Google Maps tiles (Google TOS), so this deep-links into the
             Google Maps app on iOS/Android — once open, the user taps
@@ -641,7 +733,7 @@ export default function LiveTripPage() {
         gap: 14, padding: '20px 22px 0',
       }}>
         <NextStopCard next={activities[nextIdx + 1] ?? null} />
-        <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} />
+        <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} current={currentWeather?.current ?? null} />
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
         <SafetyCard
           countryCode={countryCode}
@@ -800,9 +892,21 @@ function LeaveByCard({
         </div>
         <h2 style={{
           margin: 0,
-          fontFamily: DISPLAY, fontSize: 'clamp(28px, 4vw, 44px)',
-          fontWeight: 400, letterSpacing: '-0.025em', lineHeight: 1.05,
+          // Downsized from clamp(28px, 4vw, 44px) 2026-08-03. On a 393-px
+          // iPhone the 4vw floor still hit 28 px and long activity names
+          // wrapped 15+ lines, pushing everything else off-screen.
+          // clamp(19px, 4.6vw, 24px) keeps display prominence on wide
+          // devices while staying under 3 lines for typical activity
+          // names on mobile. Line-clamp: 3 lines with ellipsis — full
+          // detail already lives in the subtitle just below.
+          fontFamily: DISPLAY,
+          fontSize: 'clamp(19px, 4.6vw, 24px)',
+          fontWeight: 500, letterSpacing: '-0.015em', lineHeight: 1.2,
           color: 'var(--brand-ink)',
+          display: '-webkit-box',
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
         }}>
           {!split ? 'Day on rails.' : (
             <>
@@ -880,10 +984,10 @@ function NextStopCard({ next }: { next: Activity | null }) {
   );
 }
 
-function WeatherAlertCard({ day }: { day: WeatherDay | null }) {
+function WeatherAlertCard({ day, current }: { day: WeatherDay | null; current: WeatherResult['current'] | null }) {
   if (!day) {
     return (
-      <CardShell accent="var(--brand-gold)" label="WEATHER ALERT">
+      <CardShell accent="var(--brand-gold)" label="WEATHER">
         <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: 'var(--brand-ink)' }}>Loading…</div>
         <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', marginTop: 4 }}>
           Pulling the local forecast.
@@ -893,26 +997,55 @@ function WeatherAlertCard({ day }: { day: WeatherDay | null }) {
   }
   const popPct = day.precipPct;
   const cond = day.conditionsText || 'Clear';
-  const headline = popPct >= 60
-    ? `${cond} · expect rain`
-    : popPct >= 30
-      ? `${cond} · light rain possible`
-      : cond;
-  const tempLine = (day.highC !== null && day.lowC !== null)
-    ? `${Math.round(day.highC)}°/${Math.round(day.lowC)}° today`
-    : '';
-  const detail = popPct >= 60
-    ? 'Pack a layer and waterproof your camera bag.'
-    : popPct >= 30
-      ? 'Bring a layer. Most outdoor stops stay open in light rain.'
-      : tempLine ? `${tempLine} — sunset wraps the day in honey light.` : 'Clear conditions ahead.';
+  const nowTemp = current?.tempC != null ? Math.round(current.tempC) : null;
+  const wind = current?.windKph != null ? Math.round(current.windKph) : null;
+  const hi = day.highC != null ? Math.round(day.highC) : null;
+  const lo = day.lowC != null ? Math.round(day.lowC) : null;
+
+  // Advice tuned per condition + temperature. Stronger + more specific than
+  // the prior single line so users know what to actually bring/wear.
+  const advice = (() => {
+    const bits: string[] = [];
+    if (popPct >= 60) bits.push('Pack a rain shell — showers likely');
+    else if (popPct >= 30) bits.push(`Light rain possible (${popPct}%) — grab a layer`);
+    if (hi != null && hi >= 30) bits.push('Hot afternoon — hydrate, seek shade');
+    else if (hi != null && hi <= 5) bits.push('Bundle up — insulated layers');
+    else if (hi != null && hi <= 14) bits.push('Cool day — jacket over a mid-layer');
+    if (wind != null && wind >= 30) bits.push(`Windy (${wind} km/h) — secure loose items`);
+    if (/snow/i.test(cond)) bits.push('Snow expected — waterproof boots');
+    if (/thunder|storm/i.test(cond)) bits.push('Thunderstorms — avoid open ridges');
+    if (bits.length === 0 && hi != null && hi >= 20) bits.push('Great outdoor conditions');
+    return bits.join(' · ') || 'Clear conditions — enjoy the day.';
+  })();
+
   return (
-    <CardShell accent="var(--brand-gold)" label="WEATHER ALERT">
-      <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: 'var(--brand-ink)', textTransform: 'capitalize' }}>
-        {headline}
+    <CardShell accent="var(--brand-gold)" label="WEATHER">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{
+          fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: 'var(--brand-ink)',
+          lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+        }}>
+          {nowTemp != null ? `${nowTemp}°` : (hi != null ? `${hi}°` : '—')}
+        </div>
+        <div style={{
+          fontFamily: DISPLAY, fontSize: 15, color: 'var(--brand-ink)', textTransform: 'capitalize', flex: 1,
+        }}>
+          {cond}
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', marginTop: 4 }}>
-        {detail}
+      {/* Numeric strip — high/low, precip, wind. Data-dense but small so it
+          reads as a subtitle, not a table. */}
+      <div style={{
+        display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8,
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em',
+        color: 'var(--brand-ink-dim)',
+      }}>
+        {hi != null && lo != null && <span>HI {hi}° / LO {lo}°</span>}
+        <span>RAIN {popPct}%</span>
+        {wind != null && <span>WIND {wind} km/h</span>}
+      </div>
+      <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--brand-ink-dim)', marginTop: 8 }}>
+        {advice}
       </div>
     </CardShell>
   );
@@ -1064,7 +1197,7 @@ function DayTimeline({ activities, currentClock }: { activities: Activity[]; cur
               color: status === 'now' ? 'var(--brand-accent)' : 'var(--brand-ink-mute)',
               marginBottom: 4, fontWeight: 700,
             }}>
-              {status.toUpperCase()} · {a.display}
+              STOP {i + 1}/{activities.length} · {status.toUpperCase()} · {a.display}
             </div>
             <div style={{
               fontFamily: DISPLAY, fontSize: 14, color: 'var(--brand-ink)', lineHeight: 1.3,
