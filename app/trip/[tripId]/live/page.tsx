@@ -129,7 +129,19 @@ function parseTodayActivities(itinerary: string, dayNumber: number): Activity[] 
       activities.push({ time, display, name, place: extractPlaceName(name) });
     }
   }
-  return activities.sort((a, b) => a.time.localeCompare(b.time));
+  // Dedupe by (time, name) — sometimes the source itinerary lists the
+  // same activity twice (once in the day summary, once in the schedule
+  // block), which showed up as duplicate numbered pins on the map
+  // (user report 2026-08-03: two 3s + two 5s). Same-time + same-name is
+  // a safe signal these are the same event.
+  const seen = new Set<string>();
+  const deduped = activities.filter((a) => {
+    const key = `${a.time}::${a.name.slice(0, 40).toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 function nowHHMM(d: Date): string {
@@ -958,12 +970,28 @@ function LeaveByCard({
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(125,211,252,0.10))',
+      // Richer geknee-brand hero surface (2026-08-03 polish per user
+      // feedback that the page looked plain). Two-stop diagonal gradient
+      // from lavender → sky, an outer purple glow ring, a fine white
+      // 1-px inner highlight along the top, and a hairline accent line
+      // on the left rail so the card reads like a distinct feature card
+      // rather than a plain outlined box.
+      position: 'relative',
+      background: `linear-gradient(135deg,
+        rgba(167,139,250,0.28) 0%,
+        rgba(125,211,252,0.18) 55%,
+        rgba(52,211,153,0.10) 100%)`,
       border: '1px solid var(--brand-border-hi)',
-      borderRadius: 18,
+      borderRadius: 20,
       padding: '22px 24px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 18, flexWrap: 'wrap',
+      boxShadow: `
+        0 0 0 1px rgba(255,255,255,0.05) inset,
+        0 20px 40px -20px rgba(167,139,250,0.55),
+        0 8px 24px rgba(0,0,0,0.4)
+      `,
+      overflow: 'hidden',
     }}>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{
