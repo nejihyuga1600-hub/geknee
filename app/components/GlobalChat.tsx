@@ -574,7 +574,28 @@ function GlobalChatUI({ ctx }: { ctx: ReturnType<typeof usePageContext> }) {
 
 // ─── Export with Suspense boundary ───────────────────────────────────────────
 
+// Runtime check — Capacitor object appears on `window` only inside the
+// native shell. Kept inline (no import) so this stays a pure client-side
+// guard that doesn't drag @capacitor/core into the layout bundle.
+function isCapacitorNative(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return !!(window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    }).Capacitor?.isNativePlatform?.();
+  } catch { return false; }
+}
+
 export default function GlobalChat() {
+  // Skip GlobalChat entirely inside the Capacitor iOS/Android shell.
+  // The globe page (/plan/location) already mounts GenieCorner as its
+  // on-page chat surface — GlobalChat would be a second floating chat
+  // button competing for the same corner, and its mount cost (~583 LOC
+  // + 30 hooks + persistent event listeners) is real memory pressure on
+  // top of the Mapbox globe + Three.js overlay + monument GLBs.
+  //
+  // On web this stays exactly as it was. Only native drops it.
+  if (isCapacitorNative()) return null;
   return (
     <Suspense fallback={null}>
       <GlobalChatInner />
