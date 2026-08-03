@@ -147,25 +147,51 @@ export default function LiveTripPage() {
   const [now, setNow] = useState<Date>(() => new Date());
   const [currentWeather, setCurrentWeather] = useState<WeatherResult | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
-  // Location permission state. Null = not asked, 'pending' = waiting on the
-  // native picker, 'granted' = geo populated, 'denied' = user said no.
-  // Kept out of geo so the "Enable" chip can show a spinner without
-  // pretending we already have a fix.
+  // Location permission — persisted in localStorage as GEO_PREF so the
+  // browser prompt only fires the FIRST time the user opens a live trip.
+  // Subsequent opens: 'granted' silently re-fetches; 'denied' skips the
+  // prompt entirely (user can still tap the chip to try again).
+  const GEO_PREF = 'geknee:geo-permission-v1';
   const [geoStatus, setGeoStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
-  const requestGeolocation = () => {
+  const requestGeolocation = (opts?: { silent?: boolean }) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGeoStatus('denied'); return;
+      setGeoStatus('denied');
+      try { localStorage.setItem(GEO_PREF, 'denied'); } catch {}
+      return;
     }
-    setGeoStatus('pending');
+    if (!opts?.silent) setGeoStatus('pending');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGeo({ lat: pos.coords.latitude, lon: pos.coords.longitude });
         setGeoStatus('granted');
+        try { localStorage.setItem(GEO_PREF, 'granted'); } catch {}
       },
-      () => setGeoStatus('denied'),
+      () => {
+        setGeoStatus('denied');
+        try { localStorage.setItem(GEO_PREF, 'denied'); } catch {}
+      },
       { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
     );
   };
+  // Fire-once on first mount: if the user has previously said yes, silently
+  // refresh their location; if they said no, do nothing. First-ever open
+  // fires the prompt automatically so the map can route from where they
+  // actually are (user request 2026-08-03: "ask once, remember").
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(GEO_PREF); } catch {}
+    if (stored === 'granted') {
+      requestGeolocation({ silent: true });
+    } else if (stored === 'denied') {
+      setGeoStatus('denied');
+    } else {
+      // First-ever open — a small delay so the map paint has time to land
+      // before the OS prompt sheet slides in.
+      const t = setTimeout(() => requestGeolocation(), 800);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Fullscreen map takeover — a "view map" chip flips this on and the map
   // section becomes position:fixed at inset:0 covering everything else.
   const [mapFull, setMapFull] = useState(false);
@@ -488,7 +514,17 @@ export default function LiveTripPage() {
           if (target) target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
         }}
         style={{
-          padding: '12px 22px 4px',
+          // Sticky, sitting directly below the top app bar (2026-08-03
+          // per user request). Top-bar height varies with the safe-area
+          // inset; use the same env() plumbing so the day row locks
+          // flush against it on every device.
+          position: 'sticky',
+          top: 'calc(env(safe-area-inset-top) + 88px)',
+          zIndex: 29,
+          background: 'rgba(5,5,15,0.9)',
+          WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
+          borderBottom: '1px solid var(--brand-border)',
+          padding: '10px 22px',
           display: 'flex', alignItems: 'center', gap: 8,
           overflowX: 'auto', overflowY: 'hidden',
           scrollSnapType: 'x proximity',
@@ -614,12 +650,11 @@ export default function LiveTripPage() {
           activities={activities}
           dayKey={selectedDay}
           geo={geo}
-          // Inline map now fills the phone screen (was 360-px card, user
-          // asked for it to be "the size of the iPhone screen" 2026-08-03).
-          // 100dvh keeps it responsive to iOS Safari's dynamic toolbar
-          // vs static 100vh which stretches under the address bar and
-          // clips the bottom.
-          height="100dvh"
+          // Fill the remaining viewport height below the sticky chrome
+          // (top-bar ~96 px + day-pill row ~52 px) so the map fits the
+          // screen minus the locked header, per user request 2026-08-03.
+          // 100dvh keeps it responsive to iOS Safari's dynamic toolbar.
+          height="calc(100dvh - env(safe-area-inset-top) - 148px)"
           // Only drop the border-radius in the true takeover mode, so an
           // inline 100dvh map still reads as a card inside the padded page.
           fullscreen={mapFull}
