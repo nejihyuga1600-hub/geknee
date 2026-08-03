@@ -1934,7 +1934,11 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         background: 'rgba(255,255,255,0.04)',
                       }}>
                       <img
-                        src={`/monument-cards/${item.id}.jpg`}
+                        // ?v=2 forces WKWebView + browser HTTP cache to
+                        // fetch the freshly cropped versions of these images
+                        // (2026-08-03 white-border fix). Bump this number
+                        // any time we re-crop / re-encode the source cards.
+                        src={`/monument-cards/${item.id}.jpg?v=2`}
                         alt=""
                         loading="lazy"
                         decoding="async"
