@@ -1894,7 +1894,13 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                         background: unlocked
                           ? `linear-gradient(165deg, ${rColor}1f, rgba(255,255,255,0.03))`
                           : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${unlocked ? `${rColor}66` : eligible ? 'rgba(167, 139, 250, 0.25)' : 'rgba(148,163,208,0.18)'}`,
+                        // Border removed 2026-08-03. Prior rgba(167,139,250,0.25)
+                        // / rgba(148,163,208,0.18) semi-transparent purples read
+                        // as thin whitish outlines on the dark shop background
+                        // (user feedback with IMG_8567). The card art + bottom
+                        // gradient already delimit each tile visually — the border
+                        // was noise.
+                        border: 'none',
                         borderRadius: 14,
                         opacity: unlocked ? 1 : 0.7,
                         transition: 'opacity 150ms ease',
@@ -1993,8 +1999,11 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                           padding: '3px 8px', borderRadius: 999,
                           fontSize: 9, color: '#f2f2f8',
                           letterSpacing: '0.1em', fontWeight: 700,
-                          background: 'rgba(2,4,12,0.65)',
-                          border: `1px solid ${eligible ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.18)'}`,
+                          // Solid dark background is enough contrast against
+                          // the card art — border removed 2026-08-03 with the
+                          // rest of the "white border" cleanup (user reported
+                          // the pill outlines read as bright edges on iOS).
+                          background: 'rgba(2,4,12,0.78)',
                           WebkitBackdropFilter: 'blur(8px)',
                           backdropFilter: 'blur(8px)',
                         }}>
