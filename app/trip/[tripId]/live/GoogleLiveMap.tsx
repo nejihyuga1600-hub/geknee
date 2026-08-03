@@ -343,15 +343,36 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
               status === google.maps.places.PlacesServiceStatus.OK &&
               results?.[0]?.geometry?.location
             ) {
-              coords[i] = results[0].geometry.location;
-              const marker = new google.maps.Marker({
-                position: coords[i]!,
-                map,
-                icon: pinIcon(i + 1),
-                title: `${a.display} · ${a.place ?? a.name}`,
-                zIndex: 100 + i,
+              const loc = results[0].geometry.location;
+              // Coord-level dedupe (2026-08-03): if a prior activity in
+              // this day already geocoded within ~15 m of this one, treat
+              // them as the same real-world spot and skip the second pin.
+              // Fixes user-reported "duplicate numbers on map" cases the
+              // name-based dedupe upstream misses (e.g. two differently-
+              // worded activities that Places resolves to the same
+              // landmark). We still keep the activity in the array so
+              // it shows in the LEAVE-BY / timeline; only the pin is
+              // suppressed.
+              const duplicateOf = coords.findIndex((c, j) => {
+                if (j >= i || !c) return false;
+                const dLat = (c.lat() - loc.lat()) * 111000;
+                const dLng = (c.lng() - loc.lng()) * 111000 * Math.cos(loc.lat() * Math.PI / 180);
+                return Math.hypot(dLat, dLng) < 15;
               });
-              markersRef.current.push(marker);
+              if (duplicateOf === -1) {
+                coords[i] = loc;
+                const marker = new google.maps.Marker({
+                  position: loc,
+                  map,
+                  icon: pinIcon(i + 1),
+                  title: `${a.display} · ${a.place ?? a.name}`,
+                  zIndex: 100 + i,
+                });
+                markersRef.current.push(marker);
+              }
+              // else: leave coords[i] null so the polyline path skips this
+              // node — otherwise we'd draw a zero-length leg to the
+              // already-visible pin.
             }
             pending--;
             if (pending === 0) finalize();

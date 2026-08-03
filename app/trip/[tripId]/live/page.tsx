@@ -136,7 +136,11 @@ function parseTodayActivities(itinerary: string, dayNumber: number): Activity[] 
   // a safe signal these are the same event.
   const seen = new Set<string>();
   const deduped = activities.filter((a) => {
-    const key = `${a.time}::${a.name.slice(0, 40).toLowerCase()}`;
+    // Broadened from 40 → 20 chars 2026-08-03 to catch itinerary
+    // variants like "Breakfast at Café Louvre" vs "Café Louvre for
+    // breakfast" — same 20-char prefix after normalization treats
+    // them as the same slot.
+    const key = `${a.time}::${a.name.slice(0, 20).toLowerCase()}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
