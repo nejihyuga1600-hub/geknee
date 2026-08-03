@@ -718,7 +718,7 @@ export default function LiveTripPage() {
             Sits along the bottom so it doesn't collide with the top pills. */}
         {geoStatus !== 'granted' && (
           <button
-            onClick={requestGeolocation}
+            onClick={() => requestGeolocation()}
             disabled={geoStatus === 'pending'}
             aria-label="Use my current location for routing"
             style={{
