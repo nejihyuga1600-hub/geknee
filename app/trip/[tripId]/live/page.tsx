@@ -827,6 +827,17 @@ export default function LiveTripPage() {
         <AtThisPlaceCard activity={nextActivity} />
       </div>
 
+      {/* ── Next-3-hour micro-forecast + golden hour + greeting. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <MicroForecastCard hourly={currentWeather?.hourly ?? null} now={new Date()} />
+      </div>
+      <div style={{ padding: '14px 8px 0' }}>
+        <GoldenHourCard lat={nextCoords?.lat ?? geo?.lat ?? null} lng={nextCoords?.lon ?? geo?.lon ?? null} now={new Date()} />
+      </div>
+      <div style={{ padding: '14px 8px 0' }}>
+        <GreetingHintCard facts={factsFor(countryCode)} now={new Date()} />
+      </div>
+
       {/* ── Pack for today (weather-driven). */}
       <div style={{ padding: '14px 8px 0' }}>
         <PackForTodayCard day={currentWeather?.forecast?.[0] ?? null} />
@@ -1334,6 +1345,180 @@ function AtThisPlaceCard({ activity }: { activity: Activity | null }) {
             <span>{m.text}</span>
           </div>
         ))}
+      </div>
+    </CardShell>
+  );
+}
+
+// GoldenHourCard — sunrise/sunset + best photo light window.
+// NOAA / USNO solar-position math, no API. Accurate to a couple of
+// minutes anywhere between latitudes ±65°.
+function GoldenHourCard({ lat, lng, now }: { lat: number | null; lng: number | null; now: Date }) {
+  if (lat == null || lng == null) return null;
+  const events = solarEvents(now, lat, lng);
+  if (!events) return null;
+  const { sunrise, sunset, goldenPmStart, goldenPmEnd } = events;
+  const fmt = (d: Date) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+  const untilSunset = Math.max(0, Math.round((sunset.getTime() - now.getTime()) / 60000));
+  const hoursUntil = Math.floor(untilSunset / 60);
+  const minsUntil = untilSunset % 60;
+  const nowInGolden = now >= goldenPmStart && now <= goldenPmEnd;
+  const untilLine = untilSunset > 0
+    ? `Sunset in ${hoursUntil ? `${hoursUntil}h ${minsUntil}m` : `${minsUntil} min`}`
+    : `Sun set at ${fmt(sunset)}`;
+  return (
+    <CardShell accent="var(--brand-gold, #f59e0b)" label="GOLDEN HOUR">
+      <div style={{ fontFamily: DISPLAY, fontSize: 20, color: 'var(--brand-ink)', lineHeight: 1.1 }}>
+        {untilLine}
+      </div>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+        color: 'var(--brand-ink-mute)', marginTop: 6,
+      }}>
+        SUNRISE {fmt(sunrise)} · SUNSET {fmt(sunset)}
+      </div>
+      <div style={{
+        marginTop: 10, padding: '8px 10px', borderRadius: 8,
+        background: nowInGolden ? 'color-mix(in srgb, var(--brand-gold, #f59e0b) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${nowInGolden ? 'color-mix(in srgb, var(--brand-gold, #f59e0b) 55%, transparent)' : 'var(--brand-border)'}`,
+        fontSize: 12, color: 'var(--brand-ink)', lineHeight: 1.4,
+      }}>
+        {nowInGolden
+          ? `${String.fromCodePoint(0x1F31E)} Golden hour is happening now — best photo light until ${fmt(goldenPmEnd)}.`
+          : `${String.fromCodePoint(0x1F4F8)} Best photo light: ${fmt(goldenPmStart)}–${fmt(goldenPmEnd)}.`}
+      </div>
+    </CardShell>
+  );
+}
+
+// Solar-position helpers. Approximate NOAA algorithm — accurate ~±2 min.
+function solarEvents(date: Date, lat: number, lng: number) {
+  try {
+    const N = Math.floor((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86400000);
+    const lngHour = lng / 15;
+    // Rise
+    const tRise = N + (6 - lngHour) / 24;
+    const sunrise = calcSunTime(tRise, lat, lng, true);
+    // Set
+    const tSet = N + (18 - lngHour) / 24;
+    const sunset = calcSunTime(tSet, lat, lng, false);
+    if (!sunrise || !sunset) return null;
+    // Return same-day Dates (calcSunTime returns UTC hours; we build a
+    // Date at that UTC moment on the input date).
+    const mk = (hours: number) => {
+      const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      d.setUTCMinutes(Math.round(hours * 60));
+      return d;
+    };
+    const riseD = mk(sunrise);
+    const setD = mk(sunset);
+    // Golden hour: last ~45 min before sunset.
+    const goldenPmStart = new Date(setD.getTime() - 45 * 60000);
+    const goldenPmEnd = setD;
+    return { sunrise: riseD, sunset: setD, goldenPmStart, goldenPmEnd };
+  } catch { return null; }
+}
+function calcSunTime(t: number, lat: number, lng: number, rising: boolean): number | null {
+  const zenith = 90.833; // official
+  const M = (0.9856 * t) - 3.289;
+  const trueLng = (M + (1.916 * Math.sin(M * Math.PI / 180)) + (0.020 * Math.sin(2 * M * Math.PI / 180)) + 282.634) % 360;
+  const RA = (180 / Math.PI) * Math.atan(0.91764 * Math.tan(trueLng * Math.PI / 180));
+  let RAadj = RA + ((Math.floor(trueLng / 90)) * 90 - (Math.floor(RA / 90)) * 90);
+  RAadj = RAadj / 15;
+  const sinDec = 0.39782 * Math.sin(trueLng * Math.PI / 180);
+  const cosDec = Math.cos(Math.asin(sinDec));
+  const cosH = (Math.cos(zenith * Math.PI / 180) - (sinDec * Math.sin(lat * Math.PI / 180))) / (cosDec * Math.cos(lat * Math.PI / 180));
+  if (cosH > 1 || cosH < -1) return null;
+  const H = rising ? 360 - (180 / Math.PI) * Math.acos(cosH) : (180 / Math.PI) * Math.acos(cosH);
+  const Hhours = H / 15;
+  const T = Hhours + RAadj - (0.06571 * t) - 6.622;
+  let UT = T - lng / 15;
+  UT = ((UT % 24) + 24) % 24;
+  return UT;
+}
+
+// MicroForecastCard — 3-hour advisory built from the hourly data we
+// already fetch. Detects rain/cool/hot swings and phrases them as one
+// concrete sentence.
+function MicroForecastCard({ hourly, now }: { hourly: WeatherHour[] | null; now: Date }) {
+  if (!hourly || hourly.length === 0) return null;
+  const next3 = hourly
+    .map((h) => ({ ...h, date: h.time ? new Date(h.time) : null }))
+    .filter((h) => h.date && h.date.getTime() >= now.getTime())
+    .slice(0, 3);
+  if (next3.length === 0) return null;
+  const fmt = (d: Date) => new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(d);
+  const rainy = next3.find((h) => h.precipPct >= 40);
+  const temps = next3.map((h) => h.tempC).filter((t): t is number => t != null);
+  const swing = temps.length >= 2 ? Math.max(...temps) - Math.min(...temps) : 0;
+  const advisory = rainy && rainy.date
+    ? `${String.fromCodePoint(0x2602)} Rain likely around ${fmt(rainy.date)} (${rainy.precipPct}%). Pack an umbrella.`
+    : swing >= 5
+      ? `${String.fromCodePoint(0x1F321)} Temp swing coming — ${Math.round(Math.min(...temps))}° → ${Math.round(Math.max(...temps))}° over the next 3 hours. Bring a layer.`
+      : `${String.fromCodePoint(0x2600)} Steady conditions for the next 3 hours — no swings expected.`;
+  return (
+    <CardShell accent="var(--brand-accent-2, #7dd3fc)" label="NEXT 3 HOURS">
+      <div style={{ fontSize: 13, color: 'var(--brand-ink)', lineHeight: 1.45 }}>{advisory}</div>
+      <div style={{
+        display: 'flex', gap: 8, marginTop: 10,
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', color: 'var(--brand-ink-mute)',
+      }}>
+        {next3.map((h, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <span>{h.date ? fmt(h.date) : ''}</span>
+            <span style={{ color: 'var(--brand-ink)', fontVariantNumeric: 'tabular-nums' }}>
+              {h.tempC != null ? `${Math.round(h.tempC)}°` : '—'}
+            </span>
+            {h.precipPct > 0 && <span style={{ color: 'var(--brand-accent-2, #7dd3fc)' }}>{h.precipPct}%</span>}
+          </div>
+        ))}
+      </div>
+    </CardShell>
+  );
+}
+
+// GreetingHintCard — time-of-day-appropriate local greeting. Wraps
+// the country cheat-sheet with a small AM/PM/evening dictionary so the
+// suggestion feels contextual ("Say 'Dobré ráno' at the café — perfect
+// for 8 AM"). Silent when we don't have a curated country.
+function GreetingHintCard({ facts, now }: { facts: CountryFacts | null; now: Date }) {
+  if (!facts) return null;
+  const h = now.getHours();
+  // Country-specific time-of-day greetings. Fall back to the generic
+  // hello from the cheat-sheet when we don't have a variant.
+  const TIME_GREETINGS: Record<string, { morning?: string; evening?: string }> = {
+    CZ: { morning: 'Dobré ráno', evening: 'Dobrý večer' },
+    FR: { morning: 'Bonjour', evening: 'Bonsoir' },
+    IT: { morning: 'Buongiorno', evening: 'Buonasera' },
+    ES: { morning: 'Buenos días', evening: 'Buenas noches' },
+    DE: { morning: 'Guten Morgen', evening: 'Guten Abend' },
+    GB: { morning: 'Good morning', evening: 'Good evening' },
+    US: { morning: 'Good morning', evening: 'Good evening' },
+    JP: { morning: 'おはようございます (Ohayō gozaimasu)', evening: '今晩は (Konbanwa)' },
+    KR: { morning: '좋은 아침 (Joeun achim)', evening: '좋은 저녁 (Joeun jeonyeok)' },
+    PT: { morning: 'Bom dia', evening: 'Boa noite' },
+    NL: { morning: 'Goedemorgen', evening: 'Goedenavond' },
+    GR: { morning: 'Kaliméra', evening: 'Kalispéra' },
+    TR: { morning: 'Günaydın', evening: 'İyi akşamlar' },
+  };
+  const cc = Object.keys(TIME_GREETINGS).find((k) => facts.name.toLowerCase().includes(k.toLowerCase()))
+    ?? (facts.name === 'Czech Republic' ? 'CZ' : facts.name === 'France' ? 'FR' : '');
+  const variants = TIME_GREETINGS[cc];
+  const phrase = h < 12
+    ? (variants?.morning ?? facts.phrases.hello)
+    : h >= 17
+      ? (variants?.evening ?? facts.phrases.hello)
+      : facts.phrases.hello;
+  const bucket = h < 12 ? 'this morning' : h >= 17 ? 'this evening' : 'right now';
+  return (
+    <CardShell accent="var(--brand-accent, #a78bfa)" label="SAY IT NOW">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 22, color: 'var(--brand-ink)', lineHeight: 1.1 }}>
+          {phrase}
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', color: 'var(--brand-ink-mute)' }}>
+          — perfect for {bucket}
+        </div>
       </div>
     </CardShell>
   );
