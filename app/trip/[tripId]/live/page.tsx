@@ -473,19 +473,29 @@ export default function LiveTripPage() {
         </div>
       </div>
 
-      {/* ── Day toggle pills ───────────────────────────────────────────── */}
-      <div style={{
-        padding: '12px 22px 4px',
-        display: 'flex', alignItems: 'center', gap: 8,
-        flexWrap: 'wrap',
-      }}>
-        <span style={{
-          fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
-          color: 'var(--brand-ink-mute)', textTransform: 'uppercase',
-          marginRight: 4,
-        }}>
-          View day
-        </span>
+      {/* ── Day toggle pills ─────────────────────────────────────────────
+          One-row horizontal-scroll strip (redesigned 2026-08-03 per user
+          feedback: prior wrap layout burned a 2nd row on 8-day trips).
+          "View day" label removed — the row itself + the active TODAY
+          pill are enough visual signal that these are day selectors.
+          Today's chip is scrolled into view on mount so users land on
+          the right day even for 14-day trips. */}
+      <div
+        ref={(el) => {
+          if (!el) return;
+          const activeIdx = dayInfo.day - 1;
+          const target = el.children[activeIdx] as HTMLElement | undefined;
+          if (target) target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+        }}
+        style={{
+          padding: '12px 22px 4px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          overflowX: 'auto', overflowY: 'hidden',
+          scrollSnapType: 'x proximity',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+        }}
+      >
         {Array.from({ length: dayInfo.total }).map((_, i) => {
           const d = i + 1;
           const isActive = selectedDay === d;
@@ -495,18 +505,22 @@ export default function LiveTripPage() {
               key={d}
               onClick={() => setSelectedDay(d)}
               style={{
-                padding: '5px 12px', borderRadius: 999,
+                flexShrink: 0,
+                scrollSnapAlign: 'center',
+                padding: '6px 14px', borderRadius: 999,
                 border: `1px solid ${isActive ? 'var(--brand-accent)' : 'var(--brand-border)'}`,
                 background: isActive ? 'rgba(167,139,250,0.18)' : 'transparent',
                 color: isActive ? 'var(--brand-ink)' : 'var(--brand-ink-dim)',
-                fontFamily: MONO, fontSize: 11, fontWeight: 600,
+                fontFamily: MONO, fontSize: 12, fontWeight: 600,
                 letterSpacing: '0.08em',
                 cursor: 'pointer',
+                minHeight: 32,
+                display: 'inline-flex', alignItems: 'center', gap: 5,
               }}
             >
-              {d}{isToday && (
+              <span>{d}</span>
+              {isToday && (
                 <span style={{
-                  marginLeft: 5,
                   fontSize: 8, color: 'var(--brand-success)',
                   letterSpacing: '0.12em',
                 }}>● TODAY</span>
@@ -514,7 +528,13 @@ export default function LiveTripPage() {
             </button>
           );
         })}
+      </div>
 
+      {/* Offline-download status pill row — split out from the day pills
+          so its variable-width content (progress %, "Saved offline"
+          confirmation) can't push day chips into a second row on smaller
+          screens. Renders directly under the day chips. */}
+      <div style={{ padding: '4px 22px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {/* Offline-download status pill. Three states:
             (a) flight detected + not yet cached + not downloading → CTA
             (b) downloading → progress text
@@ -594,7 +614,15 @@ export default function LiveTripPage() {
           activities={activities}
           dayKey={selectedDay}
           geo={geo}
-          height={mapFull ? '100dvh' : 360}
+          // Inline map now fills the phone screen (was 360-px card, user
+          // asked for it to be "the size of the iPhone screen" 2026-08-03).
+          // 100dvh keeps it responsive to iOS Safari's dynamic toolbar
+          // vs static 100vh which stretches under the address bar and
+          // clips the bottom.
+          height="100dvh"
+          // Only drop the border-radius in the true takeover mode, so an
+          // inline 100dvh map still reads as a card inside the padded page.
+          fullscreen={mapFull}
           onMapClick={(coords) => {
             setAddStopCoords(coords);
             setAddStopOpen(true);

@@ -40,9 +40,13 @@ interface GoogleLiveMapProps {
   onMapClick?: (coords: { lat: number; lon: number }) => void;
   /** Optional map surface height. Defaults to 360 (inline card mode).
       Pass a CSS length like "100dvh" (or a number in px) to make the map
-      take over the full viewport. Also collapses the border-radius when
-      in fullscreen so the map bleeds edge-to-edge. */
+      take over the full viewport. */
   height?: number | string;
+  /** True when the map is rendering as a takeover page (position:fixed
+      inset:0). Drops the border-radius so the map bleeds edge-to-edge.
+      When false (default) the map keeps its inline-card radius even at
+      full viewport height, because the parent still has horizontal padding. */
+  fullscreen?: boolean;
 }
 
 // Dark map style — terse Google Maps Styled Map array tuned for the dark
@@ -93,12 +97,11 @@ function pinIcon(n: number): google.maps.Icon {
   };
 }
 
-export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, height = 360 }: GoogleLiveMapProps) {
-  // Fullscreen convention: any string height (e.g. "100dvh") means the
-  // map is escaping the card and should also drop its 14-px border-radius
-  // so it bleeds edge-to-edge into the viewport.
-  const isFullscreen = typeof height === 'string';
-  const mapRadius = isFullscreen ? 0 : 14;
+export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, height = 360, fullscreen = false }: GoogleLiveMapProps) {
+  // Border-radius follows the fullscreen flag, not the height. That way
+  // an inline "100dvh" map still keeps its 14-px card radius (parent has
+  // horizontal padding), and only the true takeover mode goes edge-to-edge.
+  const mapRadius = fullscreen ? 0 : 14;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
