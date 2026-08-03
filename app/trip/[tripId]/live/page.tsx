@@ -822,6 +822,16 @@ export default function LiveTripPage() {
         <CountryQuickFactsCard facts={factsFor(countryCode)} />
       </div>
 
+      {/* ── At-this-place: activity-type-aware etiquette + tips. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <AtThisPlaceCard activity={nextActivity} />
+      </div>
+
+      {/* ── Pack for today (weather-driven). */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <PackForTodayCard day={currentWeather?.forecast?.[0] ?? null} />
+      </div>
+
       {/* ── Three phrases every traveler should know. */}
       <div style={{ padding: '14px 8px 0' }}>
         <LocalPhrasesCard facts={factsFor(countryCode)} />
@@ -1246,6 +1256,82 @@ function LocalPhrasesCard({ facts }: { facts: CountryFacts | null }) {
             <div style={{
               fontFamily: DISPLAY, fontSize: 16, color: 'var(--brand-ink)', lineHeight: 1.25,
             }}>{phrase}</div>
+          </div>
+        ))}
+      </div>
+    </CardShell>
+  );
+}
+
+// PackForTodayCard — turns the daily weather forecast into a concrete
+// packing suggestion. Zero API cost (uses the WeatherDay we already
+// have) and answers the "what should I bring today" question every
+// traveler asks around 8 AM before heading out.
+function PackForTodayCard({ day }: { day: WeatherDay | null }) {
+  if (!day) return null;
+  const hi = day.highC ?? null;
+  const lo = day.lowC ?? null;
+  const rain = day.precipPct;
+  const cond = day.conditionsText.toLowerCase();
+  const items: Array<{ icon: string; text: string }> = [];
+  if (rain >= 40) items.push({ icon: String.fromCodePoint(0x2602), text: 'Umbrella or light rain jacket' });
+  if (hi != null && hi >= 28) items.push({ icon: String.fromCodePoint(0x1F31E), text: 'Sunscreen SPF 30+, hat, sunglasses' });
+  if (hi != null && hi >= 24) items.push({ icon: String.fromCodePoint(0x1F4A7), text: 'Refillable water bottle (1 L+)' });
+  if (lo != null && lo <= 10) items.push({ icon: String.fromCodePoint(0x1F9E5), text: 'Warm layer for evening' });
+  if (lo != null && lo <= 2)  items.push({ icon: String.fromCodePoint(0x1F9E4), text: 'Gloves + insulated jacket' });
+  if (/snow/i.test(cond))     items.push({ icon: String.fromCodePoint(0x1F97E), text: 'Waterproof boots with grip' });
+  if (/wind/i.test(cond) || (hi != null && hi >= 20 && rain < 30))
+    items.push({ icon: String.fromCodePoint(0x1F45F), text: 'Comfortable walking shoes' });
+  // Universal small kit
+  items.push({ icon: String.fromCodePoint(0x1F4F1), text: 'Portable charger + charging cable' });
+  if (items.length === 0) return null;
+  return (
+    <CardShell accent="var(--brand-accent, #a78bfa)" label="PACK FOR TODAY">
+      <div style={{ display: 'grid', gap: 6 }}>
+        {items.slice(0, 5).map((it, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, color: 'var(--brand-ink)' }}>
+            <span aria-hidden style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{it.icon}</span>
+            <span>{it.text}</span>
+          </div>
+        ))}
+      </div>
+    </CardShell>
+  );
+}
+
+// AtThisPlaceCard — activity-type-aware etiquette + practical tips.
+// Pattern-matches keywords in the activity name against a small tip
+// table and shows the top 3 matches. When nothing matches, hidden.
+function AtThisPlaceCard({ activity }: { activity: Activity | null }) {
+  if (!activity) return null;
+  const name = (activity.name + ' ' + (activity.place ?? '')).toLowerCase();
+  const rules: Array<{ match: RegExp; icon: string; text: string }> = [
+    { match: /church|cathedral|basilica|chapel|mosque|synagogue|temple|shrine/, icon: String.fromCodePoint(0x1F9E3), text: 'Modest dress — shoulders + knees covered. Remove hats indoors.' },
+    { match: /mosque/, icon: String.fromCodePoint(0x1F45E), text: 'Shoes off at the entrance. Women often provided a headscarf.' },
+    { match: /museum|gallery|exhibit/, icon: String.fromCodePoint(0x1F392), text: 'Coat check + free bag storage; anything > 15 L usually must be checked.' },
+    { match: /museum|gallery|palace|castle/, icon: String.fromCodePoint(0x1F4F5), text: 'Flash + tripods usually banned. Phone photos OK in most rooms.' },
+    { match: /park|garden|hill|viewpoint|forest|trail|hike/, icon: String.fromCodePoint(0x1F6B0), text: 'Bring water — indoor cafés often the only refill points inside.' },
+    { match: /market|bazaar|souk/, icon: String.fromCodePoint(0x1F4B5), text: 'Cash preferred. Haggle only where prices aren\'t posted.' },
+    { match: /castle|fort|fortress/, icon: String.fromCodePoint(0x1F45F), text: 'Rough cobbles + stairs. Wear grippy shoes; slippery when wet.' },
+    { match: /café|coffee|espresso|coffeehouse/, icon: String.fromCodePoint(0x2615), text: 'Sit down = table service. Standing at the bar is usually cheaper.' },
+    { match: /restaurant|dinner|lunch|dine|trattoria|bistro/, icon: String.fromCodePoint(0x1F37D), text: 'Ask for the bill — servers don\'t bring it unprompted in most of Europe.' },
+    { match: /bridge|pont|puente|brücke/, icon: String.fromCodePoint(0x1F304), text: 'Best photo light: golden hour, 30 min before sunset.' },
+    { match: /viewpoint|lookout|observation|belvedere/, icon: String.fromCodePoint(0x1F576), text: 'Morning = clearer air; afternoon = warmer light.' },
+    { match: /river|canal|lake|beach|coast|sea|ocean/, icon: String.fromCodePoint(0x1F97D), text: 'Layered clothing — wind off the water drops perceived temp 5-8°.' },
+    { match: /night|nightlife|club|bar|pub/, icon: String.fromCodePoint(0x1F511), text: 'Cover charges common after 11 PM. Keep an ID copy on your phone.' },
+    { match: /train|station|metro|subway|tram|bus/, icon: String.fromCodePoint(0x1F39F), text: 'Tap-to-pay contactless usually works. Validate paper tickets at platform machines.' },
+    { match: /walk|stroll|explore|wander|neighborhood/, icon: String.fromCodePoint(0x1F45F), text: 'Comfortable shoes, phone map cached offline. 5-10 km is easy to underestimate.' },
+    { match: /vinohrady/, icon: String.fromCodePoint(0x1F338), text: 'Elegant late-19th-century district — best around the Riegrovy Sady sunset lawn.' },
+  ];
+  const matches = rules.filter((r) => r.match.test(name)).slice(0, 3);
+  if (matches.length === 0) return null;
+  return (
+    <CardShell accent="var(--brand-success, #7cff97)" label={`AT THIS PLACE · ${(activity.place ?? activity.name).slice(0, 30).toUpperCase()}`}>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {matches.map((m, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 13, lineHeight: 1.4, color: 'var(--brand-ink)' }}>
+            <span aria-hidden style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{m.icon}</span>
+            <span>{m.text}</span>
           </div>
         ))}
       </div>
