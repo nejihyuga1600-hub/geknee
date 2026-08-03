@@ -418,7 +418,7 @@ export default function LiveTripPage() {
         position: 'sticky', top: 0, zIndex: 30,
         display: 'flex', flexDirection: 'column', gap: 10,
         paddingTop: online ? 'calc(env(safe-area-inset-top) + 12px)' : '12px',
-        paddingBottom: 12, paddingLeft: 20, paddingRight: 20,
+        paddingBottom: 12, paddingLeft: 10, paddingRight: 10,
         background: 'rgba(5,5,15,0.9)', WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
         borderBottom: '1px solid var(--brand-border)',
       }}>
@@ -524,7 +524,7 @@ export default function LiveTripPage() {
           background: 'rgba(5,5,15,0.9)',
           WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
           borderBottom: '1px solid var(--brand-border)',
-          padding: '10px 22px',
+          padding: '10px 8px',
           display: 'flex', alignItems: 'center', gap: 8,
           overflowX: 'auto', overflowY: 'hidden',
           scrollSnapType: 'x proximity',
@@ -570,7 +570,7 @@ export default function LiveTripPage() {
           so its variable-width content (progress %, "Saved offline"
           confirmation) can't push day chips into a second row on smaller
           screens. Renders directly under the day chips. */}
-      <div style={{ padding: '4px 22px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ padding: '4px 8px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {/* Offline-download status pill. Three states:
             (a) flight detected + not yet cached + not downloading → CTA
             (b) downloading → progress text
@@ -634,7 +634,7 @@ export default function LiveTripPage() {
         padding: 0,
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
-      } : { padding: '0 22px', position: 'relative' }}>
+      } : { padding: '0 8px', position: 'relative' }}>
         {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10,
@@ -779,7 +779,7 @@ export default function LiveTripPage() {
       </div>
 
       {/* ── Hero LEAVE-BY card ─────────────────────────────────────────── */}
-      <div style={{ padding: '24px 22px 0' }}>
+      <div style={{ padding: '24px 8px 0' }}>
         <LeaveByCard
           next={nextActivity}
           etaMin={etaMin}
@@ -793,29 +793,36 @@ export default function LiveTripPage() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        gap: 14, padding: '20px 22px 0',
+        gap: 14, padding: '20px 8px 0',
       }}>
         <NextStopCard next={activities[nextIdx + 1] ?? null} />
         <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} current={currentWeather?.current ?? null} />
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
+      </div>
+
+      {/* ── Day timeline strip ─────────────────────────────────────────── */}
+      <div style={{ padding: '24px 8px 0' }}>
+        <DayTimeline activities={activities} currentClock={currentClock} />
+      </div>
+
+      {/* ── Live budget tracker ────────────────────────────────────────── */}
+      {tripId && (
+        <div style={{ padding: '20px 8px 0' }}>
+          <BudgetTracker tripId={tripId} />
+        </div>
+      )}
+
+      {/* ── Safety (moved to the bottom 2026-08-03 per user feedback —
+          it's a break-glass utility, not something you glance at on
+          every session; belongs after the day plan + spend, not
+          competing with NEXT / WEATHER / CROWDS above the fold). */}
+      <div style={{ padding: '20px 8px 24px' }}>
         <SafetyCard
           countryCode={countryCode}
           anchor={geo ? { lat: geo.lat, lng: geo.lon } : null}
           online={online}
         />
       </div>
-
-      {/* ── Day timeline strip ─────────────────────────────────────────── */}
-      <div style={{ padding: '24px 22px 0' }}>
-        <DayTimeline activities={activities} currentClock={currentClock} />
-      </div>
-
-      {/* ── Live budget tracker ────────────────────────────────────────── */}
-      {tripId && (
-        <div style={{ padding: '20px 22px 0' }}>
-          <BudgetTracker tripId={tripId} />
-        </div>
-      )}
 
       {loadingTrip && (
         <div style={{ padding: '24px 22px', color: 'var(--brand-ink-mute)', fontSize: 12 }}>
