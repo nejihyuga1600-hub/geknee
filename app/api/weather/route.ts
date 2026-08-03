@@ -29,14 +29,28 @@ export async function GET(req: Request) {
   const lat = Math.round(rawLat * 100) / 100;
   const lng = Math.round(rawLng * 100) / 100;
 
+  // hours=12 (or whatever the client asks for, capped to 24) opts into
+  // the Google Weather /forecast/hours:lookup endpoint alongside the
+  // existing current + daily calls. Enables the hourly strip added to
+  // the live-trip weather card 2026-08-03.
+  const hours = Math.min(24, Math.max(0, Number(searchParams.get("hours") ?? "0")));
+
   const currentUrl = `https://weather.googleapis.com/v1/currentConditions:lookup?location.latitude=${lat}&location.longitude=${lng}&key=${key}`;
   const forecastUrl = `https://weather.googleapis.com/v1/forecast/days:lookup?location.latitude=${lat}&location.longitude=${lng}&days=${days || 7}&key=${key}`;
+  const hourlyUrl = `https://weather.googleapis.com/v1/forecast/hours:lookup?location.latitude=${lat}&location.longitude=${lng}&hours=${hours}&key=${key}`;
 
   try {
-    const reqs: Promise<Response>[] = [fetch(currentUrl, { signal: AbortSignal.timeout(8000) })];
-    if (days > 0) reqs.push(fetch(forecastUrl, { signal: AbortSignal.timeout(8000) }));
-    const responses = await Promise.all(reqs);
-    const [currentRes, forecastRes] = responses;
+    // Fire the three requests indexed by name so the destructuring
+    // below stays stable regardless of which optional endpoints are
+    // enabled by the query params.
+    const currentReq = fetch(currentUrl, { signal: AbortSignal.timeout(8000) });
+    const forecastReq = days > 0
+      ? fetch(forecastUrl, { signal: AbortSignal.timeout(8000) })
+      : Promise.resolve(null as Response | null);
+    const hourlyReq = hours > 0
+      ? fetch(hourlyUrl, { signal: AbortSignal.timeout(8000) })
+      : Promise.resolve(null as Response | null);
+    const [currentRes, forecastRes, hourlyRes] = await Promise.all([currentReq, forecastReq, hourlyReq]);
 
     if (!currentRes.ok) {
       // Surface upstream Google body to Vercel logs so 502s have a root
@@ -52,6 +66,17 @@ export async function GET(req: Request) {
       weatherCondition?: { description?: { text: string }; iconBaseUri?: string };
       wind?: { speed?: { value: number } };
     };
+
+    const hourlyData = hourlyRes && hourlyRes.ok
+      ? await hourlyRes.json() as {
+          forecastHours?: Array<{
+            interval?: { startTime?: string };
+            temperature?: { degrees: number };
+            weatherCondition?: { description?: { text: string }; iconBaseUri?: string };
+            precipitation?: { probability?: { percent: number } };
+          }>;
+        }
+      : null;
 
     const forecastData = forecastRes && forecastRes.ok
       ? await forecastRes.json() as {
@@ -76,6 +101,13 @@ export async function GET(req: Request) {
           : null,
         windKph: currentData.wind?.speed?.value ?? null,
       },
+      hourly: (hourlyData?.forecastHours ?? []).map((h) => ({
+        time: h.interval?.startTime ?? "",
+        tempC: h.temperature?.degrees ?? null,
+        conditionsText: h.weatherCondition?.description?.text ?? "",
+        iconUrl: h.weatherCondition?.iconBaseUri ? `${h.weatherCondition.iconBaseUri}.svg` : null,
+        precipPct: h.precipitation?.probability?.percent ?? 0,
+      })),
       forecast: (forecastData?.forecastDays ?? []).map((d) => ({
         date: d.displayDate
           ? `${d.displayDate.year}-${String(d.displayDate.month).padStart(2, "0")}-${String(d.displayDate.day).padStart(2, "0")}`

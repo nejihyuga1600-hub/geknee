@@ -9,7 +9,7 @@ import { AddStopModal } from './AddStopModal';
 import { useTilePrewarm, useExplicitOfflineDownload } from '@/lib/useTilePrewarm';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import { fetchDirections } from '@/lib/googleMaps/directionsClient';
-import { fetchWeather, type WeatherResult, type WeatherDay } from '@/lib/googleMaps/weatherClient';
+import { fetchWeather, type WeatherResult, type WeatherDay, type WeatherHour } from '@/lib/googleMaps/weatherClient';
 import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 import { CardShell } from './CardShell';
 import { SafetyCard } from './SafetyCard';
@@ -222,7 +222,10 @@ export default function LiveTripPage() {
         const gd = await gr.json() as { lat?: number; lng?: number; country?: string | null } | null;
         if (!gd?.lat || !gd?.lng || cancelled) return;
         if (!cancelled) setCountryCode(gd.country ?? null);
-        const w = await fetchWeather(gd.lat, gd.lng, 7);
+        // 24-hour hourly forecast alongside the 7-day daily rollup so
+        // the WeatherAlertCard can show a scrollable per-hour strip
+        // (user asked for whole-day hourly weather 2026-08-03).
+        const w = await fetchWeather(gd.lat, gd.lng, 7, 24);
         if (!cancelled) setCurrentWeather(w);
       } catch { /* silent */ }
     })();
@@ -789,6 +792,11 @@ export default function LiveTripPage() {
         />
       </div>
 
+      {/* ── Destination insight (Wikipedia-backed history/context) ─── */}
+      <div style={{ padding: '20px 8px 0' }}>
+        <PlaceInsightCard place={nextActivity?.place ?? null} city={trip?.location ?? null} />
+      </div>
+
       {/* ── Three context cards ────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
@@ -796,7 +804,11 @@ export default function LiveTripPage() {
         gap: 14, padding: '20px 8px 0',
       }}>
         <NextStopCard next={activities[nextIdx + 1] ?? null} />
-        <WeatherAlertCard day={currentWeather?.forecast?.[0] ?? null} current={currentWeather?.current ?? null} />
+        <WeatherAlertCard
+          day={currentWeather?.forecast?.[0] ?? null}
+          current={currentWeather?.current ?? null}
+          hourly={currentWeather?.hourly ?? null}
+        />
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
       </div>
 
@@ -1025,6 +1037,102 @@ function LeaveByCard({
 
 // ─── Context cards ──────────────────────────────────────────────────────────
 
+// PlaceInsightCard — pulls a short history/description of the next stop
+// from the free Wikipedia REST summary endpoint. No API key, generous
+// rate limits, works globally. Adds real editorial context ("St. Ludmila
+// Church, Neo-Gothic church consecrated 1892, Peter Parler's disciple
+// designed the twin spires...") to a page that was mostly "leave in 18
+// min" chrome. Silent + hidden when no article matches.
+function PlaceInsightCard({ place, city }: { place: string | null; city: string | null }) {
+  const [data, setData] = useState<{
+    title: string; extract: string; description: string | null; thumb: string | null; url: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!place && !city) return;
+    // Prefer the specific place; fall back to the trip city so a card
+    // still renders when the itinerary uses a poetic activity name.
+    const query = (place || city || '').trim();
+    if (!query) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
+        if (!res.ok) { if (!cancelled) { setData(null); setLoading(false); } return; }
+        const j = await res.json() as {
+          title?: string; extract?: string; description?: string;
+          thumbnail?: { source?: string };
+          content_urls?: { desktop?: { page?: string } };
+        };
+        if (cancelled) return;
+        setData({
+          title: j.title || query,
+          extract: j.extract || '',
+          description: j.description || null,
+          thumb: j.thumbnail?.source ?? null,
+          url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(query)}`,
+        });
+      } catch { if (!cancelled) setData(null); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [place, city]);
+  if (loading && !data) {
+    return (
+      <CardShell accent="var(--brand-accent-2, #7dd3fc)" label="DESTINATION FACTS">
+        <div style={{ fontSize: 13, color: 'var(--brand-ink-dim)' }}>Loading history and context…</div>
+      </CardShell>
+    );
+  }
+  if (!data || !data.extract) return null;
+  return (
+    <CardShell accent="var(--brand-accent-2, #7dd3fc)" label={`ABOUT · ${data.title.toUpperCase()}`}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+        {data.thumb && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.thumb} alt=""
+            loading="lazy" decoding="async"
+            style={{
+              flexShrink: 0,
+              width: 88, height: 88, borderRadius: 10,
+              objectFit: 'cover',
+              border: '1px solid var(--brand-border)',
+            }}
+          />
+        )}
+        <div style={{ minWidth: 0 }}>
+          {data.description && (
+            <div style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+              color: 'var(--brand-ink-mute)', textTransform: 'uppercase', marginBottom: 6,
+            }}>
+              {data.description}
+            </div>
+          )}
+          <div style={{
+            fontSize: 13, lineHeight: 1.5, color: 'var(--brand-ink)',
+            display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
+            {data.extract}
+          </div>
+          <a href={data.url} target="_blank" rel="noopener noreferrer"
+            style={{
+              display: 'inline-block', marginTop: 8,
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.16em',
+              color: 'var(--brand-accent-2, #7dd3fc)', textDecoration: 'none',
+              padding: '4px 0',
+            }}>
+            READ MORE {String.fromCodePoint(0x2197)}
+          </a>
+        </div>
+      </div>
+    </CardShell>
+  );
+}
+
 function NextStopCard({ next }: { next: Activity | null }) {
   if (!next) {
     return (
@@ -1054,7 +1162,11 @@ function NextStopCard({ next }: { next: Activity | null }) {
   );
 }
 
-function WeatherAlertCard({ day, current }: { day: WeatherDay | null; current: WeatherResult['current'] | null }) {
+function WeatherAlertCard({ day, current, hourly }: {
+  day: WeatherDay | null;
+  current: WeatherResult['current'] | null;
+  hourly: WeatherHour[] | null;
+}) {
   if (!day) {
     return (
       <CardShell accent="var(--brand-gold)" label="WEATHER">
@@ -1117,6 +1229,49 @@ function WeatherAlertCard({ day, current }: { day: WeatherDay | null; current: W
       <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--brand-ink-dim)', marginTop: 8 }}>
         {advice}
       </div>
+      {/* Hourly strip — a scrollable per-hour glimpse of the day.
+          Snap-scroll keeps ticks landing on whole hours; each cell
+          shows time + temp + a small precip percentage when > 0.
+          Added 2026-08-03 per user request for whole-day hourly weather. */}
+      {hourly && hourly.length > 0 && (
+        <div style={{
+          display: 'flex', gap: 8,
+          overflowX: 'auto', overflowY: 'hidden',
+          marginTop: 12, paddingBottom: 4,
+          scrollSnapType: 'x proximity',
+          WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+        }}>
+          {hourly.slice(0, 24).map((h, i) => {
+            const d = h.time ? new Date(h.time) : null;
+            const label = d && !isNaN(d.getTime())
+              ? new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(d)
+              : `+${i}h`;
+            const t = h.tempC != null ? Math.round(h.tempC) : null;
+            return (
+              <div key={i} style={{
+                flex: '0 0 58px',
+                scrollSnapAlign: 'start',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                padding: '8px 4px', borderRadius: 10,
+                background: i === 0 ? 'color-mix(in srgb, var(--brand-gold, #f59e0b) 12%, transparent)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${i === 0 ? 'color-mix(in srgb, var(--brand-gold, #f59e0b) 35%, transparent)' : 'var(--brand-border)'}`,
+              }}>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: 'var(--brand-ink-mute)', letterSpacing: '0.06em' }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 16, color: 'var(--brand-ink)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>
+                  {t != null ? `${t}°` : '—'}
+                </div>
+                {h.precipPct > 0 && (
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'var(--brand-accent-2, #7dd3fc)' }}>
+                    {h.precipPct}%
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </CardShell>
   );
 }
