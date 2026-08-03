@@ -1891,15 +1891,15 @@ export default function MonumentShop({ open, onClose, initialMk }: Props) {
                       gradientSize={180}
                       gradientOpacity={unlocked ? 0.5 : 0.35}
                       style={{
-                        background: unlocked
-                          ? `linear-gradient(165deg, ${rColor}1f, rgba(255,255,255,0.03))`
-                          : 'rgba(255,255,255,0.02)',
-                        // Border removed 2026-08-03. Prior rgba(167,139,250,0.25)
-                        // / rgba(148,163,208,0.18) semi-transparent purples read
-                        // as thin whitish outlines on the dark shop background
-                        // (user feedback with IMG_8567). The card art + bottom
-                        // gradient already delimit each tile visually — the border
-                        // was noise.
+                        // Background transparent (was rgba(255,255,255,0.02-0.03)):
+                        // MagicCard wraps at borderRadius 14, inner image container
+                        // rounds at 13 — that 1px offset means the wrapper's tint
+                        // shows through as a whitish ring at each corner. Since the
+                        // image completely fills the inner container, no wrapper
+                        // background is visible except in that 1px halo — which the
+                        // user reported as "white borders" (2026-08-03). Killing
+                        // the wrapper bg entirely eliminates it.
+                        background: 'transparent',
                         border: 'none',
                         borderRadius: 14,
                         opacity: unlocked ? 1 : 0.7,

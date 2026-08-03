@@ -119,3 +119,8 @@ android/.idea/
 bin/__pycache__/
 __pycache__/
 *.pyc
+
+# Local Next.js scaffold used only to render App Store screenshots.
+# The exports land in ad-assets/app-store/ which IS tracked.
+.agents/screenshots-generator/
+public/monument-cards/.pre-crop-backup/
