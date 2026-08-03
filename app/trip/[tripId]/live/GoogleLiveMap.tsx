@@ -17,6 +17,40 @@ import { useEffect, useRef } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
+import { fetchDirections } from '@/lib/googleMaps/directionsClient';
+
+// Haversine distance in kilometres between two lat/lng points. Used to
+// pick the best transport mode per leg without a live API call.
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Pick a travel mode from leg distance. Tuned to the reality that within
+// a city walking is nicer at short range, transit is the local commute,
+// driving takes over between suburbs, and rail is faster than driving
+// once you cross a hundred km (city-to-city).
+function pickModeForLeg(distKm: number): 'walking' | 'driving' | 'transit' {
+  if (distKm < 1.2) return 'walking';
+  if (distKm < 5.0) return 'transit';   // urban core
+  if (distKm < 100) return 'driving';
+  return 'transit';                     // inter-city rail
+}
+
+// Per-mode polyline styling. Dashed for walking (breadcrumb), thicker
+// solid green for transit so a train leg stands out from a driving leg.
+const MODE_STYLE: Record<'walking' | 'driving' | 'transit', {
+  color: string; weight: number; dashed: boolean; label: string;
+}> = {
+  walking: { color: '#a78bfa', weight: 4, dashed: true,  label: 'WALK' },
+  driving: { color: '#6366f1', weight: 5, dashed: false, label: 'DRIVE' },
+  transit: { color: '#22c55e', weight: 5, dashed: false, label: 'TRANSIT' },
+};
 
 interface Activity {
   time: string;
@@ -106,6 +140,11 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  // Per-leg polylines drawn from real Google Directions results (one
+  // segment per pair of consecutive stops, styled by transport mode).
+  // The single polylineRef above is a legacy fallback used only if
+  // Directions returns nothing for the whole day.
+  const polylinesRef = useRef<google.maps.Polyline[]>([]);
   // "You are here" pulsing marker, moved / created as geo arrives.
   const youAreHereRef = useRef<google.maps.Marker | null>(null);
   // Ref the click callback so we don't have to re-init the map when the
@@ -157,6 +196,8 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
       cancelled = true;
       youAreHereRef.current?.setMap(null);
       youAreHereRef.current = null;
+      polylinesRef.current.forEach((p) => p.setMap(null));
+      polylinesRef.current = [];
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       polylineRef.current?.setMap(null);
@@ -243,6 +284,8 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
     function renderStops() {
       const map = mapRef.current!;
       // Clear previous overlays.
+      polylinesRef.current.forEach((p) => p.setMap(null));
+      polylinesRef.current = [];
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       polylineRef.current?.setMap(null);
@@ -276,7 +319,18 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
       let pending = activities.length;
 
       activities.forEach((a, i) => {
-        const q = a.place ? `${a.place}, ${city}` : null;
+        // Missing-pin fix 2026-08-03: previously we skipped any activity
+        // whose `place` field failed extraction, leaving numbered gaps
+        // on the day map (user reported missing pins). Now we fall back
+        // to the first clause of the activity name as the search query.
+        // Google Places is decent at pulling a landmark out of prose
+        // ("Explore Lucerna Palace" → "Lucerna Palace, Prague").
+        const fallback = a.name
+          ? a.name.split(/[.,;—]/)[0].trim().slice(0, 60)
+          : null;
+        const q = a.place ? `${a.place}, ${city}`
+                : fallback ? `${fallback}, ${city}`
+                : null;
         if (!q) {
           pending--;
           if (pending === 0) finalize();
@@ -333,17 +387,71 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
           cleaned.forEach((c) => bounds.extend(c));
           map.fitBounds(bounds, 60);
         }
-        // Connect stops with a brand-coloured polyline. Geodesic=false
-        // because the distances are short (within-city) so straight chords
-        // are visually accurate; geodesic arcs would distort.
-        polylineRef.current = new google.maps.Polyline({
-          path: cleaned,
-          geodesic: false,
-          // Lavender — slightly darkened on light backgrounds for contrast.
-          strokeColor: colorScheme === 'light' ? '#7c5cf0' : '#a78bfa',
-          strokeOpacity: 0.95,
-          strokeWeight: 4,
-          map,
+        // Per-leg routes 2026-08-03. Previous behaviour drew ONE polyline
+        // with straight chords between every stop, which the user
+        // correctly noted looked unrealistic ("shouldn't be a straight
+        // line from each destination"). Now for each consecutive pair we
+        // (a) pick a transport mode from the leg distance,
+        // (b) ask Google Directions for the actual road/walk/transit
+        //     polyline, and
+        // (c) render it in a mode-specific style.
+        //
+        // Failure modes: if Directions returns null (no route, transit
+        // unavailable, offline) we fall back to a straight chord in the
+        // dashed WALK style so the leg is still visible. Fetches run in
+        // parallel — even a 10-stop day only pays one round-trip latency.
+        const pairs: Array<[google.maps.LatLng, google.maps.LatLng]> = [];
+        for (let i = 0; i < cleaned.length - 1; i++) {
+          pairs.push([cleaned[i], cleaned[i + 1]]);
+        }
+        Promise.all(pairs.map(async ([a, b]) => {
+          const origin = { lat: a.lat(), lng: a.lng() };
+          const dest = { lat: b.lat(), lng: b.lng() };
+          const mode = pickModeForLeg(haversineKm(origin, dest));
+          const dir = await fetchDirections(origin, dest, mode);
+          return { origin, dest, mode, dir };
+        })).then((legs) => {
+          for (const { origin, dest, mode, dir } of legs) {
+            const style = MODE_STYLE[mode];
+            const path = dir && dir.points.length > 1
+              ? dir.points.map((p) => new google.maps.LatLng(p.lat, p.lng))
+              : [new google.maps.LatLng(origin.lat, origin.lng), new google.maps.LatLng(dest.lat, dest.lng)];
+            // For dashed lines: stroke transparent, and stamp a dot symbol
+            // along the path at 12-px intervals (Google Maps convention).
+            const dashed = style.dashed || !dir; // fallback chord is dashed
+            const pl = new google.maps.Polyline({
+              path,
+              geodesic: false,
+              strokeColor: style.color,
+              strokeOpacity: dashed ? 0 : 0.9,
+              strokeWeight: style.weight,
+              icons: dashed ? [{
+                icon: {
+                  path: 'M 0,-1 0,1',
+                  strokeOpacity: 1,
+                  strokeColor: style.color,
+                  scale: style.weight - 1,
+                },
+                offset: '0',
+                repeat: '12px',
+              }] : undefined,
+              map,
+              zIndex: 40,
+            });
+            polylinesRef.current.push(pl);
+          }
+        }).catch(() => {
+          // Directions failed for the whole day — fall back to the old
+          // straight-line polyline so users see SOMETHING connecting
+          // their stops. Better than an empty map.
+          polylineRef.current = new google.maps.Polyline({
+            path: cleaned,
+            geodesic: false,
+            strokeColor: colorScheme === 'light' ? '#7c5cf0' : '#a78bfa',
+            strokeOpacity: 0.8,
+            strokeWeight: 3,
+            map,
+          });
         });
       }
     }
