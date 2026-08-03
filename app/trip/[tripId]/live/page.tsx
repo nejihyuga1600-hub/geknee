@@ -13,6 +13,7 @@ import { fetchWeather, type WeatherResult, type WeatherDay, type WeatherHour } f
 import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 import { CardShell } from './CardShell';
 import { SafetyCard } from './SafetyCard';
+import { factsFor, type CountryFacts } from '@/lib/countryCheatsheet';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -813,6 +814,19 @@ export default function LiveTripPage() {
         <PlaceInsightCard place={nextActivity?.place ?? null} city={trip?.location ?? null} />
       </div>
 
+      {/* ── Country cheat-sheet: money + tipping + tap water + power ─
+          Priority-2 for a traveler in-the-moment. Silent when we don't
+          have a curated entry for the country (keeps unsupported markets
+          from showing "—" placeholders). */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <CountryQuickFactsCard facts={factsFor(countryCode)} />
+      </div>
+
+      {/* ── Three phrases every traveler should know. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <LocalPhrasesCard facts={factsFor(countryCode)} />
+      </div>
+
       {/* ── Three context cards ────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
@@ -1160,6 +1174,80 @@ function PlaceInsightCard({ place, city }: { place: string | null; city: string 
             READ MORE {String.fromCodePoint(0x2197)}
           </a>
         </div>
+      </div>
+    </CardShell>
+  );
+}
+
+// Priority-2 card added 2026-08-03: local money + tipping. Static
+// country cheat-sheet — no API call — so it lands instantly. Rendering
+// gated: hidden when no cheat-sheet entry exists (avoids showing "—"
+// placeholders for unsupported countries).
+function CountryQuickFactsCard({ facts }: { facts: CountryFacts | null }) {
+  if (!facts) return null;
+  const { currency, tipping, cashVsCard, waterSafe, plug } = facts;
+  return (
+    <CardShell accent="var(--brand-gold, #f59e0b)" label={`MONEY & BASICS · ${facts.name.toUpperCase()}`}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 22, color: 'var(--brand-ink)', lineHeight: 1 }}>
+          {currency.symbol}1 <span style={{ color: 'var(--brand-ink-mute)', fontSize: 12 }}>=</span>{' '}
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            ${(currency.usdRate).toFixed(currency.usdRate < 0.01 ? 5 : 2)}
+          </span>
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--brand-ink-mute)', letterSpacing: '0.12em' }}>
+          {currency.code}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, display: 'grid', gap: 6, fontSize: 12, lineHeight: 1.4 }}>
+        <div><span style={{ color: 'var(--brand-ink-mute)' }}>Tipping · </span><span style={{ color: 'var(--brand-ink)' }}>{tipping}</span></div>
+        <div><span style={{ color: 'var(--brand-ink-mute)' }}>Payment · </span><span style={{ color: 'var(--brand-ink)' }}>{cashVsCard}</span></div>
+        <div>
+          <span style={{ color: 'var(--brand-ink-mute)' }}>Tap water · </span>
+          <span style={{ color: waterSafe ? 'var(--brand-success)' : 'var(--brand-danger, #f87171)' }}>
+            {waterSafe ? 'Safe to drink' : 'Do not drink — bottled only'}
+          </span>
+        </div>
+        <div><span style={{ color: 'var(--brand-ink-mute)' }}>Power · </span><span style={{ color: 'var(--brand-ink)' }}>{plug}</span></div>
+      </div>
+      {facts.cultureNote && (
+        <div style={{
+          marginTop: 10, padding: '8px 10px',
+          borderRadius: 8,
+          background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 12%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 30%, transparent)',
+          fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)',
+        }}>
+          {String.fromCodePoint(0x1F4A1)} {facts.cultureNote}
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+// Priority-3 phrase card. Three phrases every traveler should know
+// (hello, thanks, where's the bathroom). Grouped in a mono monospace
+// pill row so the syllables read as pronunciation prompts.
+function LocalPhrasesCard({ facts }: { facts: CountryFacts | null }) {
+  if (!facts) return null;
+  return (
+    <CardShell accent="var(--brand-accent-2, #7dd3fc)" label={`SAY IT LOCAL · ${facts.name.toUpperCase()}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {([
+          ['HELLO', facts.phrases.hello],
+          ['THANK YOU', facts.phrases.thanks],
+          ['BATHROOM?', facts.phrases.bathroom],
+        ] as const).map(([label, phrase]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+            <div style={{
+              fontFamily: MONO, fontSize: 9, letterSpacing: '0.16em',
+              color: 'var(--brand-ink-mute)', minWidth: 78, textAlign: 'right',
+            }}>{label}</div>
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 16, color: 'var(--brand-ink)', lineHeight: 1.25,
+            }}>{phrase}</div>
+          </div>
+        ))}
       </div>
     </CardShell>
   );
