@@ -56,6 +56,15 @@ function bumpVisitCount(): number {
   } catch { return 0; }
 }
 
+function isCapacitorNative(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return !!(window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    }).Capacitor?.isNativePlatform?.();
+  } catch { return false; }
+}
+
 export default function InstallPrompt() {
   const [bip, setBip] = useState<BIPEvent | null>(null);
   const [show, setShow] = useState(false);
@@ -63,6 +72,14 @@ export default function InstallPrompt() {
 
   // Eligibility evaluated once on mount, then again on dwell timer.
   useEffect(() => {
+    // Never prompt inside the Capacitor native shell — the app is already
+    // installed by definition, and Capacitor's WKWebView doesn't set
+    // navigator.standalone or match display-mode:standalone, so
+    // isStandalone() misses this case. Without the guard, iOS users of
+    // the native app see a persistent "Add to Home Screen" banner over
+    // the globe (visible in every sim screenshot 2026-08-02) and pay
+    // for the dwell timer + BIP listeners for nothing.
+    if (isCapacitorNative()) return;
     if (isStandalone()) return; // already installed
     setIos(isIOS());
     const visits = bumpVisitCount();
