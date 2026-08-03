@@ -73,8 +73,13 @@ export default function CapacitorGlobe() {
       maxZoom: 8,
       // Cap Mapbox's in-memory tile cache. Default is unbounded up to
       // ~500MB on desktop; iOS WKWebView has ~150MB before Jetsam kills.
-      // 60 tiles ≈ 30MB, plenty for cold-globe browsing.
-      maxTileCacheSize: 60,
+      // Reduced from 60 to 30 on 2026-08-02 as part of the RAM audit —
+      // 30 tiles ≈ 15MB, still enough for cold-globe browsing (the whole
+      // hemisphere at zoom 3 is ~12 tiles) and buys ~15MB of headroom
+      // for the Three.js overlay + monument GLBs during drag. Trade:
+      // slightly more tile re-fetches on rapid back-and-forth pan
+      // (network cost, invisible to the user).
+      maxTileCacheSize: 30,
       // No interaction throttling — Mapbox handles touch on iOS natively.
       pitchWithRotate: true,
       // Faster mount on iOS: don't compute initial fog/atmosphere until
