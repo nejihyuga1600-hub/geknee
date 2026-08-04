@@ -17,6 +17,11 @@ import { factsFor, type CountryFacts } from '@/lib/countryCheatsheet';
 import { todaysHappenings, type LocalHappening } from '@/lib/localColorByCity';
 import { guideFor, type LandmarkGuide } from '@/lib/landmarkGuides';
 import { ticketsFor, stillBookable, type SkipLineTicket } from '@/lib/skipLineTickets';
+import {
+  loadNotes, saveNote, deleteNote, newNoteId,
+  isJournalDismissedToday, dismissJournalForToday, fileToScaledDataUrl,
+  type NoteEntry,
+} from '@/lib/tripNotes';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -801,6 +806,19 @@ export default function LiveTripPage() {
         )}
       </div>
 
+      {/* ── Evening journal prompt (18:00 local). Renders above the
+          LEAVE-BY hero so it's the first thing an evening visitor sees.
+          Dismissible per-day; state in localStorage. */}
+      <div style={{ padding: '18px 8px 0' }}>
+        <JournalPromptCard
+          tripId={tripId ?? ''}
+          place={nextActivity?.place ?? nextActivity?.name ?? trip?.location ?? null}
+          tempC={currentWeather?.current?.tempC ?? null}
+          lat={nextCoords?.lat ?? geo?.lat ?? null}
+          lng={nextCoords?.lon ?? geo?.lon ?? null}
+        />
+      </div>
+
       {/* ── Hero LEAVE-BY card ─────────────────────────────────────────── */}
       <div style={{ padding: '24px 8px 0' }}>
         <LeaveByCard
@@ -809,6 +827,19 @@ export default function LiveTripPage() {
           leaveBy={leaveByText}
           coords={nextCoords}
           tripTimezone={trip?.timezone}
+        />
+      </div>
+
+      {/* ── Quick capture (photo + note) pinned to the hero card. Auto-
+          tags with time, place, temperature. Persists to localStorage
+          for MVP; server backfill lands in a follow-up. */}
+      <div style={{ padding: '10px 8px 0' }}>
+        <QuickCaptureRow
+          tripId={tripId ?? ''}
+          place={nextActivity?.place ?? nextActivity?.name ?? null}
+          tempC={currentWeather?.current?.tempC ?? null}
+          lat={nextCoords?.lat ?? geo?.lat ?? null}
+          lng={nextCoords?.lon ?? geo?.lon ?? null}
         />
       </div>
 
@@ -892,9 +923,18 @@ export default function LiveTripPage() {
         <DayTimeline activities={activities} currentClock={currentClock} />
       </div>
 
-      {/* ── Live budget tracker ────────────────────────────────────────── */}
+      {/* ── Daily pulse — trip day + spend + captures. Above the budget
+          tracker because it's the glanceable summary; the tracker
+          itself is the drill-down. */}
       {tripId && (
         <div style={{ padding: '20px 8px 0' }}>
+          <DailyPulseCard tripId={tripId} dayInfo={dayInfo} />
+        </div>
+      )}
+
+      {/* ── Live budget tracker ────────────────────────────────────────── */}
+      {tripId && (
+        <div style={{ padding: '14px 8px 0' }}>
           <BudgetTracker tripId={tripId} />
         </div>
       )}
@@ -1447,6 +1487,542 @@ function LandmarkGuideCard({ place }: { place: string | null }) {
         </div>
       )}
     </CardShell>
+  );
+}
+
+// DailyPulseCard — glanceable "how's the trip going" summary. Trip day
+// number + today's spend + captures. Steps + distance are intentionally
+// omitted for MVP — no motion plugin installed and web-fallback wants us
+// to hide rows we can't populate rather than fake them.
+function DailyPulseCard({ tripId, dayInfo }: {
+  tripId: string;
+  dayInfo: { day: number; total: number };
+}) {
+  const [todaySpend, setTodaySpend] = useState<{ amount: number; count: number } | null>(null);
+  const [captures, setCaptures] = useState<{ notes: number; photos: number }>({ notes: 0, photos: 0 });
+
+  useEffect(() => {
+    if (!tripId) return;
+    let cancelled = false;
+    fetch(`/api/trips/${tripId}/expenses`)
+      .then(r => r.ok ? r.json() : { expenses: [] })
+      .then((d: { expenses?: Array<{ date: string; amount: number }> }) => {
+        if (cancelled) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = (d.expenses ?? []).filter(e => e.date === today);
+        setTodaySpend({
+          amount: rows.reduce((s, r) => s + (r.amount ?? 0), 0),
+          count: rows.length,
+        });
+      })
+      .catch(() => { if (!cancelled) setTodaySpend({ amount: 0, count: 0 }); });
+    return () => { cancelled = true; };
+  }, [tripId]);
+
+  useEffect(() => {
+    if (!tripId) return;
+    const notes = loadNotes(tripId);
+    const today = new Date().toDateString();
+    const todays = notes.filter(n => new Date(n.createdAtMs).toDateString() === today);
+    setCaptures({
+      notes: todays.length,
+      photos: todays.filter(n => !!n.photoDataUrl).length,
+    });
+  }, [tripId]);
+
+  const dayLabel = dayInfo.total > 1
+    ? `Day ${dayInfo.day} of ${dayInfo.total}`
+    : `Day ${dayInfo.day}`;
+
+  // Vibe copy for the trip stage.
+  const vibe = (() => {
+    if (dayInfo.total <= 1) return null;
+    const pct = dayInfo.day / dayInfo.total;
+    if (dayInfo.day === 1) return 'Day one. Fresh eyes.';
+    if (dayInfo.day === dayInfo.total) return 'Last day. Squeeze it.';
+    if (Math.abs(pct - 0.5) < 0.15) return 'Halfway through.';
+    if (pct < 0.35) return 'Early days.';
+    if (pct > 0.7) return 'The home stretch.';
+    return null;
+  })();
+
+  return (
+    <CardShell accent="var(--brand-accent, #a78bfa)" label="TODAY'S PULSE">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 26, color: 'var(--brand-ink)', lineHeight: 1 }}>
+          {dayLabel}
+        </div>
+        {vibe && (
+          <div style={{ fontSize: 12, color: 'var(--brand-ink-mute)', lineHeight: 1.3 }}>
+            {vibe}
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        marginTop: 14,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+        gap: 10,
+      }}>
+        <PulseStat
+          label="SPENT TODAY"
+          value={todaySpend == null ? '…' : (todaySpend.amount > 0 ? `$${todaySpend.amount.toFixed(0)}` : '—')}
+          sublabel={todaySpend && todaySpend.count > 0 ? `${todaySpend.count} ${todaySpend.count === 1 ? 'entry' : 'entries'}` : 'No expenses yet'}
+          tone="var(--brand-gold, #f59e0b)"
+        />
+        <PulseStat
+          label="CAPTURES"
+          value={captures.notes > 0 ? String(captures.notes) : '—'}
+          sublabel={captures.photos > 0
+            ? `${captures.photos} ${captures.photos === 1 ? 'photo' : 'photos'}`
+            : captures.notes > 0 ? 'text only' : 'Nothing yet — capture something.'}
+          tone="var(--brand-accent, #a78bfa)"
+        />
+        <PulseStat
+          label="TRIP PROGRESS"
+          value={dayInfo.total > 1 ? `${Math.round((dayInfo.day / dayInfo.total) * 100)}%` : '—'}
+          sublabel={dayInfo.total > 1 ? `${Math.max(0, dayInfo.total - dayInfo.day)} days left` : 'Solo day'}
+          tone="var(--brand-accent-2, #7dd3fc)"
+        />
+      </div>
+    </CardShell>
+  );
+}
+
+function PulseStat({ label, value, sublabel, tone }: {
+  label: string;
+  value: string;
+  sublabel: string;
+  tone: string;
+}) {
+  return (
+    <div style={{
+      padding: '10px 12px', borderRadius: 10,
+      background: `color-mix(in srgb, ${tone} 8%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${tone} 25%, transparent)`,
+    }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 9, letterSpacing: '0.16em',
+        color: tone, fontWeight: 700, marginBottom: 4,
+      }}>{label}</div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 22, color: 'var(--brand-ink)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--brand-ink-mute)', marginTop: 3, lineHeight: 1.3 }}>
+        {sublabel}
+      </div>
+    </div>
+  );
+}
+
+// JournalPromptCard — evening (18:00+) prompt asking for one memorable
+// moment from the day. Same storage as QuickCaptureRow but tagged
+// kind='journal'. Dismissible per day so we don't nag.
+function JournalPromptCard({ tripId, place, tempC, lat, lng }: {
+  tripId: string;
+  place: string | null;
+  tempC: number | null;
+  lat: number | null;
+  lng: number | null;
+}) {
+  const [now, setNow] = useState(() => new Date());
+  const [dismissed, setDismissed] = useState(false);
+  const [alreadyJournaled, setAlreadyJournaled] = useState(false);
+  const [text, setText] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Tick the clock so the 6 PM threshold can fire without a page reload.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!tripId) return;
+    setDismissed(isJournalDismissedToday(tripId, now));
+    // Also consider "already journaled today" a soft dismiss — no need
+    // to prompt again once the entry exists.
+    const journaledToday = loadNotes(tripId).some(n => {
+      const ts = new Date(n.createdAtMs);
+      return n.kind === 'journal' && ts.toDateString() === now.toDateString();
+    });
+    setAlreadyJournaled(journaledToday);
+  }, [tripId, now]);
+
+  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const dataUrl = await fileToScaledDataUrl(f);
+    setPhoto(dataUrl);
+    e.target.value = '';
+  }
+
+  function handleDismiss() {
+    dismissJournalForToday(tripId, now);
+    setDismissed(true);
+  }
+
+  async function handleSave() {
+    const t = text.trim();
+    if (!t && !photo) return;
+    setSaving(true);
+    const entry: NoteEntry = {
+      id: newNoteId(),
+      kind: 'journal',
+      text: t || null,
+      photoDataUrl: photo,
+      createdAtMs: Date.now(),
+      place, tempC, lat, lng,
+    };
+    saveNote(tripId, entry);
+    setSaving(false);
+    setDone(true);
+    // Reset composer state after a short beat so the "Saved" flash reads.
+    setTimeout(() => {
+      setText(''); setPhoto(null); setDone(false);
+    }, 1200);
+  }
+
+  const hour = now.getHours();
+  // Show 18:00 – 23:59. Hide once dismissed or already journaled today.
+  if (!tripId || hour < 18 || dismissed || alreadyJournaled) return null;
+
+  return (
+    <div style={{
+      background: `linear-gradient(160deg,
+        color-mix(in srgb, var(--brand-gold, #f59e0b) 14%, transparent) 0%,
+        color-mix(in srgb, var(--brand-accent, #a78bfa) 8%, transparent) 60%,
+        rgba(255,255,255,0.03) 100%)`,
+      border: '1px solid var(--brand-border)',
+      borderLeft: '3px solid var(--brand-gold, #f59e0b)',
+      borderRadius: 12,
+      padding: '14px 16px',
+      display: 'grid', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>{String.fromCodePoint(0x1F319)}</span>
+        <div style={{
+          fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
+          color: 'var(--brand-gold, #f59e0b)', fontWeight: 700,
+        }}>TONIGHT'S CAPTURE</div>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button" onClick={handleDismiss}
+          style={{
+            background: 'transparent', border: 'none', padding: 2,
+            color: 'var(--brand-ink-dim)', cursor: 'pointer', fontSize: 14,
+            lineHeight: 1,
+          }}
+          aria-label="Dismiss for today"
+        >×</button>
+      </div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 18, lineHeight: 1.3, color: 'var(--brand-ink)' }}>
+        One thing that surprised you today?
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--brand-ink-mute)', lineHeight: 1.4 }}>
+        Small moments fade fastest. A line here + a photo → your trip book writes itself.
+      </div>
+      {photo && (
+        <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--brand-border)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photo} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }} />
+        </div>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="A small moment, a stranger, a smell, a light…"
+        rows={3}
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          background: 'var(--brand-surface, rgba(255,255,255,0.06))',
+          border: '1px solid var(--brand-border)',
+          borderRadius: 8, padding: '10px 12px',
+          color: 'var(--brand-ink)',
+          fontFamily: 'inherit', fontSize: 14, lineHeight: 1.45,
+          resize: 'vertical',
+        }}
+      />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button type="button" onClick={() => fileInputRef.current?.click()} style={secondaryBtnStyle}>
+          <span aria-hidden style={{ marginRight: 6 }}>{String.fromCodePoint(0x1F4F7)}</span>
+          {photo ? 'Retake' : 'Add photo'}
+        </button>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || done || (!text.trim() && !photo)}
+          style={{
+            ...captureBtnStyle,
+            background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 18%, transparent)',
+            opacity: done ? 0.8 : (!text.trim() && !photo) ? 0.5 : 1,
+          }}
+        >
+          {done ? `${String.fromCodePoint(0x2713)} Saved` : saving ? 'Saving…' : 'Add to journal'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFilePick}
+          style={{ display: 'none' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// QuickCaptureRow — camera + note buttons pinned under the LEAVE-BY hero.
+// Both actions auto-tag with time, place, temperature, and coords so
+// entries are searchable/exportable later without asking the user to
+// tag anything. Text-only when no photo, silent when both are blank.
+function QuickCaptureRow({ tripId, place, tempC, lat, lng }: {
+  tripId: string;
+  place: string | null;
+  tempC: number | null;
+  lat: number | null;
+  lng: number | null;
+}) {
+  const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [composing, setComposing] = useState<null | 'note' | 'photo'>(null);
+  const [draftText, setDraftText] = useState('');
+  const [draftPhoto, setDraftPhoto] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Hydrate notes on mount.
+  useEffect(() => {
+    if (!tripId) return;
+    setNotes(loadNotes(tripId));
+  }, [tripId]);
+
+  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setComposing('photo');
+    const dataUrl = await fileToScaledDataUrl(f);
+    setDraftPhoto(dataUrl);
+    e.target.value = '';
+  }
+
+  async function commit(kind: 'quick' | 'journal' = 'quick') {
+    const text = draftText.trim();
+    if (!text && !draftPhoto) return;
+    setSaving(true);
+    const entry: NoteEntry = {
+      id: newNoteId(),
+      kind,
+      text: text || null,
+      photoDataUrl: draftPhoto,
+      createdAtMs: Date.now(),
+      place, tempC, lat, lng,
+    };
+    const next = saveNote(tripId, entry);
+    setNotes(next);
+    setDraftText('');
+    setDraftPhoto(null);
+    setComposing(null);
+    setSaving(false);
+  }
+
+  function cancel() {
+    setDraftText('');
+    setDraftPhoto(null);
+    setComposing(null);
+  }
+
+  function handleDelete(id: string) {
+    setNotes(deleteNote(tripId, id));
+  }
+
+  const todayCount = notes.filter(n => {
+    const ts = new Date(n.createdAtMs);
+    return ts.toDateString() === new Date().toDateString();
+  }).length;
+
+  if (!tripId) return null;
+
+  return (
+    <div style={{
+      background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-accent, #a78bfa) 6%, transparent) 0%, rgba(255,255,255,0.02) 60%)',
+      borderRadius: 12,
+      border: '1px solid var(--brand-border)',
+      padding: 12,
+      display: 'grid', gap: 10,
+    }}>
+      {/* Row of primary actions */}
+      {!composing && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            style={captureBtnStyle}
+          >
+            <span aria-hidden style={{ marginRight: 6 }}>{String.fromCodePoint(0x1F4F7)}</span>
+            Snap
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposing('note')}
+            style={captureBtnStyle}
+          >
+            <span aria-hidden style={{ marginRight: 6 }}>{String.fromCodePoint(0x270F, 0xFE0F)}</span>
+            Note
+          </button>
+          <div style={{ flex: 1 }} />
+          {todayCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              style={{
+                background: 'transparent', border: 'none', padding: 4,
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+                color: 'var(--brand-ink-mute)', cursor: 'pointer',
+              }}
+            >
+              {todayCount} TODAY {expanded ? '▲' : '▼'}
+            </button>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFilePick}
+            style={{ display: 'none' }}
+          />
+        </div>
+      )}
+
+      {/* Composer */}
+      {composing && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {draftPhoto && (
+            <div style={{
+              position: 'relative', borderRadius: 8, overflow: 'hidden',
+              border: '1px solid var(--brand-border)',
+            }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={draftPhoto} alt="" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block' }} />
+            </div>
+          )}
+          <textarea
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            placeholder={draftPhoto ? 'Caption (optional)…' : 'What just happened?'}
+            rows={2}
+            autoFocus
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'var(--brand-surface, rgba(255,255,255,0.04))',
+              border: '1px solid var(--brand-border)',
+              borderRadius: 8, padding: '8px 10px',
+              color: 'var(--brand-ink)',
+              fontFamily: 'inherit', fontSize: 14, lineHeight: 1.4,
+              resize: 'vertical',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" onClick={cancel} style={secondaryBtnStyle}>Cancel</button>
+            <div style={{ flex: 1 }} />
+            {place && (
+              <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em', color: 'var(--brand-ink-mute)' }}>
+                @ {place.slice(0, 20).toUpperCase()}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => commit('quick')}
+              disabled={saving || (!draftText.trim() && !draftPhoto)}
+              style={{
+                ...captureBtnStyle,
+                opacity: (!draftText.trim() && !draftPhoto) ? 0.5 : 1,
+                cursor: (!draftText.trim() && !draftPhoto) ? 'default' : 'pointer',
+              }}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Today's captured entries (collapsed by default) */}
+      {expanded && todayCount > 0 && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+          {notes.filter(n => new Date(n.createdAtMs).toDateString() === new Date().toDateString()).map((n) => (
+            <NotePreview key={n.id} note={n} onDelete={() => handleDelete(n.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const captureBtnStyle: React.CSSProperties = {
+  padding: '8px 14px',
+  borderRadius: 8,
+  border: '1px solid var(--brand-border)',
+  background: 'color-mix(in srgb, var(--brand-accent, #a78bfa) 15%, transparent)',
+  color: 'var(--brand-ink)',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  padding: '8px 14px',
+  borderRadius: 8,
+  border: '1px solid var(--brand-border)',
+  background: 'transparent',
+  color: 'var(--brand-ink-mute)',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+function NotePreview({ note, onDelete }: { note: NoteEntry; onDelete: () => void }) {
+  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(note.createdAtMs));
+  return (
+    <div style={{
+      display: 'grid', gap: 6,
+      padding: 10, borderRadius: 8,
+      background: 'var(--brand-surface, rgba(255,255,255,0.03))',
+      border: '1px solid var(--brand-border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11, color: 'var(--brand-ink-mute)' }}>
+        <span style={{ fontFamily: MONO, letterSpacing: '0.14em' }}>{note.kind === 'journal' ? 'JOURNAL' : 'NOTE'} · {time}</span>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button" onClick={onDelete}
+          style={{ background: 'transparent', border: 'none', color: 'var(--brand-ink-dim)', cursor: 'pointer', fontSize: 11 }}
+          aria-label="Delete note"
+        >×</button>
+      </div>
+      {note.photoDataUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={note.photoDataUrl} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+      )}
+      {note.text && (
+        <div style={{ fontSize: 13, lineHeight: 1.4, color: 'var(--brand-ink)' }}>{note.text}</div>
+      )}
+      {(note.place || note.tempC != null) && (
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', color: 'var(--brand-ink-mute)' }}>
+          {note.place && `@ ${note.place.slice(0, 30).toUpperCase()}`}
+          {note.place && note.tempC != null && ' · '}
+          {note.tempC != null && `${Math.round(note.tempC)}°C`}
+        </div>
+      )}
+    </div>
   );
 }
 
