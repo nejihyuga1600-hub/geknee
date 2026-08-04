@@ -2604,18 +2604,45 @@ function NextStopCard({ next }: { next: Activity | null }) {
       </CardShell>
     );
   }
+  const quest = matchMonumentQuest(next.place ?? next.name);
   return (
-    <CardShell accent="var(--brand-accent-2)" label="AFTER THAT">
+    <CardShell accent="var(--brand-accent-2)" label={`AFTER THAT · ${next.display}`}>
+      {quest && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '3px 8px', borderRadius: 999,
+          background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 18%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 45%, transparent)',
+          marginBottom: 8,
+        }}>
+          <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>{String.fromCodePoint(0x1F3C6)}</span>
+          <span style={{
+            fontFamily: MONO, fontSize: 9, letterSpacing: '0.16em',
+            color: 'var(--brand-gold, #f59e0b)', fontWeight: 800,
+            textTransform: 'uppercase',
+          }}>QUEST · UNLOCKS {quest.name.toUpperCase()}</span>
+        </div>
+      )}
+      {/* Full activity name — no line clamp. Wraps naturally + breaks on
+          long CJK/URL tokens so the card can grow to fit its content
+          instead of showing an ellipsis. */}
       <div style={{
-        fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: 'var(--brand-ink)',
-        overflow: 'hidden', textOverflow: 'ellipsis',
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        fontFamily: DISPLAY, fontSize: 18, fontWeight: quest ? 500 : 400,
+        color: 'var(--brand-ink)', lineHeight: 1.35,
+        wordBreak: 'break-word', overflowWrap: 'anywhere',
       }}>
         {next.name}
       </div>
-      <div style={{ fontSize: 12, color: 'var(--brand-ink-dim)', marginTop: 4 }}>
-        {next.display}
-      </div>
+      {next.place && next.place !== next.name && (
+        <div style={{
+          marginTop: 6,
+          fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+          color: 'var(--brand-ink-mute)', fontWeight: 600,
+          textTransform: 'uppercase',
+        }}>
+          @ {next.place}
+        </div>
+      )}
     </CardShell>
   );
 }
