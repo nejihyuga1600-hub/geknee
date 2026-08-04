@@ -589,12 +589,15 @@ export default function LiveTripPage() {
           WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
           borderBottom: '1px solid var(--brand-border)',
           padding: '10px 8px',
-          // Wrapping row (no horizontal scroll) 2026-08-04 per user
-          // request. Longer trips (8+ days) now stack onto a second row
-          // instead of scrolling — matches the "only day stops + weather
-          // scroll horizontally" rule.
-          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-          overflowX: 'hidden',
+          // Single-line horizontal scroll 2026-08-04 (revised) — user
+          // wanted the pills to stay on ONE row so more of the viewport
+          // can go to the map. Scrolls internally within this sticky
+          // container; the body-level overflow-x lock prevents this
+          // from bubbling to the page.
+          display: 'flex', alignItems: 'center', gap: 8,
+          overflowX: 'auto', overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
         }}
       >
         {Array.from({ length: dayInfo.total }).map((_, i) => {
@@ -713,7 +716,7 @@ export default function LiveTripPage() {
           // (top-bar ~96 px + day-pill row ~52 px) so the map fits the
           // screen minus the locked header, per user request 2026-08-03.
           // 100dvh keeps it responsive to iOS Safari's dynamic toolbar.
-          height="calc(100dvh - env(safe-area-inset-top) - 148px)"
+          height="calc(100dvh - env(safe-area-inset-top) - 144px)"
           fullscreen={false}
           // Add-stop from the search-hydrated info card, which now hands
           // us pre-resolved coords + a place label — no need for the
