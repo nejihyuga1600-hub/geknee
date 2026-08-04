@@ -205,6 +205,25 @@ export default function LiveTripPage() {
   // refresh their location; if they said no, do nothing. First-ever open
   // fires the prompt automatically so the map can route from where they
   // actually are (user request 2026-08-03: "ask once, remember").
+  // Unstick users whose page was previously panned right (before the
+  // 2026-08-04 overflow-x lock shipped). Runs once on mount plus on
+  // orientation change, no-op if already at scrollLeft 0.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const reset = () => {
+      if (window.scrollX !== 0) window.scrollTo({ left: 0, top: window.scrollY });
+      if (document.documentElement.scrollLeft !== 0) document.documentElement.scrollLeft = 0;
+      if (document.body.scrollLeft !== 0) document.body.scrollLeft = 0;
+    };
+    reset();
+    window.addEventListener('orientationchange', reset);
+    window.addEventListener('resize', reset);
+    return () => {
+      window.removeEventListener('orientationchange', reset);
+      window.removeEventListener('resize', reset);
+    };
+  }, []);
+
   useEffect(() => {
     let stored: string | null = null;
     try { stored = localStorage.getItem(GEO_PREF); } catch {}
