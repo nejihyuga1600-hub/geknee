@@ -14,6 +14,9 @@ import { useTripTimezone } from '@/app/hooks/useTripTimezone';
 import { CardShell } from './CardShell';
 import { SafetyCard } from './SafetyCard';
 import { factsFor, type CountryFacts } from '@/lib/countryCheatsheet';
+import { todaysHappenings, type LocalHappening } from '@/lib/localColorByCity';
+import { guideFor, type LandmarkGuide } from '@/lib/landmarkGuides';
+import { ticketsFor, stillBookable, type SkipLineTicket } from '@/lib/skipLineTickets';
 
 // ─── E5 · Live Trip · in-the-field companion ────────────────────────────────
 // In-trip companion: glanceable LEAVE-BY card on top of a focused city map,
@@ -814,6 +817,20 @@ export default function LiveTripPage() {
         <PlaceInsightCard place={nextActivity?.place ?? null} city={trip?.location ?? null} />
       </div>
 
+      {/* ── Curated landmark guide (offline-safe, deeper than Wikipedia
+          summaries — voice + tips + best-time). Silent when we don't
+          have an entry for the landmark. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <LandmarkGuideCard place={nextActivity?.place ?? null} />
+      </div>
+
+      {/* ── Skip-the-line ticket links for the next stop. Only renders
+          when we have curated ticket data AND at least one ticket is
+          still bookable for today. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <SkipLineCard place={nextActivity?.place ?? null} etaMin={etaMin} />
+      </div>
+
       {/* ── Country cheat-sheet: money + tipping + tap water + power ─
           Priority-2 for a traveler in-the-moment. Silent when we don't
           have a curated entry for the country (keeps unsupported markets
@@ -825,6 +842,13 @@ export default function LiveTripPage() {
       {/* ── At-this-place: activity-type-aware etiquette + tips. */}
       <div style={{ padding: '14px 8px 0' }}>
         <AtThisPlaceCard activity={nextActivity} />
+      </div>
+
+      {/* ── Today's local color: markets / festivals happening RIGHT NOW.
+          Silent when we have no curated data for the city so unsupported
+          markets don't get a lonely empty state. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <LocalColorCard city={trip?.location ?? null} />
       </div>
 
       {/* ── Next-3-hour micro-forecast + golden hour + greeting. */}
@@ -860,7 +884,7 @@ export default function LiveTripPage() {
           current={currentWeather?.current ?? null}
           hourly={currentWeather?.hourly ?? null}
         />
-        <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} />
+        <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} etaMin={etaMin} />
       </div>
 
       {/* ── Day timeline strip ─────────────────────────────────────────── */}
@@ -1350,6 +1374,238 @@ function AtThisPlaceCard({ activity }: { activity: Activity | null }) {
   );
 }
 
+// LandmarkGuideCard — hand-curated ~1-paragraph write-up + fun facts +
+// best-time-to-visit for landmarks in lib/landmarkGuides.ts. Text-only
+// (audio deferred). Silent when the landmark isn't in the guide list, so
+// off-list stops don't get an empty card.
+function LandmarkGuideCard({ place }: { place: string | null }) {
+  const guide: LandmarkGuide | null = useMemo(() => guideFor(place), [place]);
+  const [expanded, setExpanded] = useState(false);
+  if (!guide || !place) return null;
+
+  const introShort = guide.intro.length > 220 && !expanded
+    ? guide.intro.slice(0, 210).trimEnd() + '…'
+    : guide.intro;
+
+  return (
+    <CardShell accent="var(--brand-accent-2, #7dd3fc)" label={`GUIDE · ${place.slice(0, 30).toUpperCase()}`}>
+      <div style={{
+        fontSize: 13, lineHeight: 1.5, color: 'var(--brand-ink)',
+      }}>{introShort}</div>
+      {guide.intro.length > 220 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          style={{
+            marginTop: 6, padding: 0, background: 'transparent', border: 'none',
+            fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+            color: 'var(--brand-accent-2, #7dd3fc)', cursor: 'pointer',
+            textTransform: 'uppercase', fontWeight: 700,
+          }}
+        >
+          {expanded ? '— Read less' : '+ Read more'}
+        </button>
+      )}
+      <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+        {guide.facts.map((f, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12, lineHeight: 1.45, color: 'var(--brand-ink)' }}>
+            <span aria-hidden style={{ fontSize: 10, lineHeight: 1, color: 'var(--brand-accent-2, #7dd3fc)', flexShrink: 0 }}>◆</span>
+            <span>{f}</span>
+          </div>
+        ))}
+      </div>
+      {(guide.bestTime || guide.tip) && (
+        <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+          {guide.bestTime && (
+            <div style={{
+              padding: '6px 10px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 30%, transparent)',
+              fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)',
+            }}>
+              <span style={{
+                fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+                color: 'var(--brand-gold, #f59e0b)', fontWeight: 700, marginRight: 6,
+              }}>BEST TIME</span>
+              {guide.bestTime}
+            </div>
+          )}
+          {guide.tip && (
+            <div style={{
+              padding: '6px 10px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--brand-success, #7cff97) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--brand-success, #7cff97) 30%, transparent)',
+              fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)',
+            }}>
+              <span style={{
+                fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+                color: 'var(--brand-success, #7cff97)', fontWeight: 700, marginRight: 6,
+              }}>INSIDER</span>
+              {guide.tip}
+            </div>
+          )}
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+// SkipLineCard — surfaces curated skip-the-line ticket links for the
+// next landmark. Filters by `stillBookable(arrivalHour)` so we don't
+// dangle a Louvre timed-entry link at 11 PM. Silent when no matches.
+function SkipLineCard({ place, etaMin }: { place: string | null; etaMin: number | null }) {
+  const tickets: SkipLineTicket[] = useMemo(() => ticketsFor(place), [place]);
+  const arrivalHour = useMemo(() => {
+    const now = new Date();
+    if (etaMin != null && etaMin >= 0) {
+      return new Date(now.getTime() + etaMin * 60 * 1000).getHours();
+    }
+    return now.getHours();
+  }, [etaMin]);
+
+  const bookable = useMemo(() => tickets.filter(t => stillBookable(t, arrivalHour)), [tickets, arrivalHour]);
+  if (!bookable.length || !place) return null;
+
+  const VENDOR_COLORS: Record<SkipLineTicket['vendor'], string> = {
+    getyourguide: '#ff5533',
+    viator:       '#328e28',
+    tiqets:       '#0055ff',
+    official:     '#a78bfa',
+  };
+  const VENDOR_LABELS: Record<SkipLineTicket['vendor'], string> = {
+    getyourguide: 'GetYourGuide',
+    viator:       'Viator',
+    tiqets:       'Tiqets',
+    official:     'Official',
+  };
+
+  return (
+    <CardShell accent="var(--brand-danger, #f87171)" label={`SKIP THE LINE · ${place.slice(0, 24).toUpperCase()}`}>
+      <div style={{ fontSize: 12, color: 'var(--brand-ink-mute)', marginBottom: 10, lineHeight: 1.4 }}>
+        Book ahead so you’re not the family standing in a two-hour queue.
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {bookable.map((t, i) => {
+          const chipColor = VENDOR_COLORS[t.vendor];
+          const priceStr = t.priceUsd != null ? `~$${t.priceUsd}` : null;
+          return (
+            <a
+              key={i}
+              href={t.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'grid', gap: 4,
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: `1px solid color-mix(in srgb, ${chipColor} 40%, var(--brand-border))`,
+                background: `color-mix(in srgb, ${chipColor} 6%, transparent)`,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{
+                  fontFamily: DISPLAY, fontSize: 14, lineHeight: 1.25,
+                  color: 'var(--brand-ink)', flex: 1, minWidth: 0,
+                }}>{t.label}</div>
+                {priceStr && (
+                  <div style={{
+                    fontFamily: DISPLAY, fontSize: 15, color: 'var(--brand-ink)',
+                    fontVariantNumeric: 'tabular-nums', flexShrink: 0,
+                  }}>{priceStr}</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{
+                  fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+                  padding: '2px 6px', borderRadius: 4,
+                  color: chipColor,
+                  background: `color-mix(in srgb, ${chipColor} 15%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${chipColor} 40%, transparent)`,
+                  fontWeight: 700, textTransform: 'uppercase',
+                }}>{VENDOR_LABELS[t.vendor]}</span>
+                <span aria-hidden style={{ color: 'var(--brand-ink-dim)', fontSize: 11 }}>→</span>
+                <span style={{ fontSize: 11, color: 'var(--brand-ink-mute)' }}>Book on {new URL(t.url).hostname.replace(/^www\./, '')}</span>
+              </div>
+              {t.note && (
+                <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)' }}>
+                  {t.note}
+                </div>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    </CardShell>
+  );
+}
+
+// LocalColorCard — markets + festivals happening in the trip city TODAY.
+// Reads from the hand-curated lib/localColorByCity.ts. Silent when the city
+// has no entries so unsupported destinations don't render an empty row.
+function LocalColorCard({ city }: { city: string | null }) {
+  const items = useMemo(() => todaysHappenings(city, new Date()), [city]);
+  if (!items.length) return null;
+
+  const KIND_META: Record<LocalHappening['kind'], { icon: string; label: string }> = {
+    market:    { icon: String.fromCodePoint(0x1F345), label: 'MARKET' },   // 🍅
+    flea:      { icon: String.fromCodePoint(0x1F5FF), label: 'FLEA' },     // 🗿
+    food:      { icon: String.fromCodePoint(0x1F374), label: 'FOOD' },     // 🍴
+    festival:  { icon: String.fromCodePoint(0x1F389), label: 'FESTIVAL' }, // 🎉
+    music:     { icon: String.fromCodePoint(0x1F3B7), label: 'MUSIC' },    // 🎷
+    nightlife: { icon: String.fromCodePoint(0x1F303), label: 'NIGHTLIFE' },// 🌃
+  };
+
+  const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(new Date()).toUpperCase();
+
+  return (
+    <CardShell accent="var(--brand-accent, #a78bfa)" label={`TODAY IN TOWN · ${dayName}`}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {items.map((h, i) => {
+          const meta = KIND_META[h.kind];
+          const hasCoords = typeof h.lat === 'number' && typeof h.lng === 'number';
+          const mapsUrl = hasCoords
+            ? `https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.place + ', ' + (city ?? ''))}`;
+          return (
+            <div key={i} style={{
+              display: 'grid', gap: 4,
+              paddingBottom: i === items.length - 1 ? 0 : 10,
+              borderBottom: i === items.length - 1 ? 'none' : '1px solid var(--brand-border)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>{meta.icon}</span>
+                <span style={{
+                  fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+                  color: 'var(--brand-accent, #a78bfa)', fontWeight: 700,
+                }}>{meta.label}</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 15, color: 'var(--brand-ink)', lineHeight: 1.25 }}>
+                  {h.name}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--brand-ink-mute)' }}>
+                <span>{h.hours}</span>
+                <span aria-hidden>·</span>
+                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{
+                  color: 'var(--brand-ink)', textDecoration: 'underline',
+                  textDecorationColor: 'color-mix(in srgb, var(--brand-accent, #a78bfa) 45%, transparent)',
+                  textUnderlineOffset: 2,
+                }}>{h.place}</a>
+              </div>
+              {h.note && (
+                <div style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)', marginTop: 2 }}>
+                  {h.note}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </CardShell>
+  );
+}
+
 // GoldenHourCard — sunrise/sunset + best photo light window.
 // NOAA / USNO solar-position math, no API. Accurate to a couple of
 // minutes anywhere between latitudes ±65°.
@@ -1667,7 +1923,7 @@ function WeatherAlertCard({ day, current, hourly }: {
   );
 }
 
-function CrowdsCard({ placeName, placeCoords }: { placeName: string | null; placeCoords: Geo | null }) {
+function CrowdsCard({ placeName, placeCoords, etaMin }: { placeName: string | null; placeCoords: Geo | null; etaMin: number | null }) {
   const [hours, setHours] = useState<number[] | null>(null);
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -1693,8 +1949,17 @@ function CrowdsCard({ placeName, placeCoords }: { placeName: string | null; plac
     return () => { cancelled = true; };
   }, [placeName, placeCoords?.lat, placeCoords?.lon]);
 
-  const current = new Date().getHours();
+  const now = new Date();
+  const current = now.getHours();
   const label = (resolvedName ?? placeName ?? 'NEXT STOP').toUpperCase();
+
+  // Project arrival hour from ETA. If eta is 25 min and it's 1:50 PM,
+  // arrival slot is 2 PM. We floor to the whole hour (Google's bars are
+  // hourly bins). Only meaningful if the arrival is at least +30 min from
+  // now — otherwise "current" and "arrival" collapse to the same bar.
+  const arrivalHour = etaMin != null && etaMin >= 30
+    ? new Date(now.getTime() + etaMin * 60 * 1000).getHours()
+    : null;
 
   if (!hours) {
     // No place yet, no popular-times data, or fetch failed — show a quiet
@@ -1717,18 +1982,34 @@ function CrowdsCard({ placeName, placeCoords }: { placeName: string | null; plac
   return (
     <CardShell accent="var(--brand-warn)" label={`CROWDS · ${label.slice(0, 24)}`}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, height: 36, marginTop: 4 }}>
-        {hours.map((h, i) => (
-          <div key={i} style={{
-            flex: 1,
-            height: `${Math.max(6, h)}%`,
-            borderRadius: 1,
-            background: i === current ? 'var(--brand-success)' : 'var(--brand-warn)',
-            opacity: i === current ? 1 : 0.55,
-          }} />
-        ))}
+        {hours.map((h, i) => {
+          const isCurrent = i === current;
+          const isArrival = arrivalHour !== null && i === arrivalHour && arrivalHour !== current;
+          return (
+            <div key={i} style={{
+              flex: 1,
+              height: `${Math.max(6, h)}%`,
+              borderRadius: 1,
+              background: isCurrent
+                ? 'var(--brand-success)'
+                : isArrival
+                  ? 'var(--brand-accent-2, #7dd3fc)'
+                  : 'var(--brand-warn)',
+              opacity: isCurrent || isArrival ? 1 : 0.55,
+              outline: isArrival ? '1px solid var(--brand-accent-2, #7dd3fc)' : 'none',
+              outlineOffset: isArrival ? 1 : 0,
+            }} />
+          );
+        })}
       </div>
       <div style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginTop: 6 }}>
-        {hours[current] > 0 ? `Currently ${hours[current]}%` : 'Currently quiet'}
+        {hours[current] > 0 ? `Now ${hours[current]}%` : 'Now quiet'}
+        {arrivalHour !== null && (() => {
+          const arr = hours[arrivalHour] ?? 0;
+          const ampm = arrivalHour >= 12 ? 'PM' : 'AM';
+          const display = ((arrivalHour + 11) % 12) + 1;
+          return ` · arrive ${display} ${ampm} · ${arr}%`;
+        })()}
         {' · '}
         {(() => {
           const peakHour = hours.indexOf(Math.max(...hours));
@@ -1737,6 +2018,53 @@ function CrowdsCard({ placeName, placeCoords }: { placeName: string | null; plac
           return `peak ${display} ${ampm}`;
         })()}
       </div>
+      {(() => {
+        // Actionable recommendation line. We use the arrival slot when we
+        // have an ETA, otherwise the current hour.
+        const slotHour = arrivalHour ?? current;
+        const slot = hours[slotHour] ?? 0;
+        const peak = Math.max(...hours);
+        const peakHour = hours.indexOf(peak);
+        const ratio = peak > 0 ? slot / peak : 0;
+
+        let tone = 'var(--brand-success, #7cff97)';
+        let msg = '';
+        if (peak === 0) return null;
+        if (ratio <= 0.4) {
+          msg = arrivalHour !== null
+            ? `${String.fromCodePoint(0x1F7E2)} Off-peak arrival — good timing.`
+            : `${String.fromCodePoint(0x1F7E2)} Quieter than usual right now.`;
+        } else if (ratio <= 0.7) {
+          tone = 'var(--brand-warn, #f59e0b)';
+          msg = `${String.fromCodePoint(0x1F7E1)} Moderately busy. Expect small waits.`;
+        } else {
+          tone = 'var(--brand-danger, #f87171)';
+          // Suggest a quieter slot within ±2h if one exists.
+          let bestDelta = 0;
+          let bestBusy = slot;
+          for (let d = -2; d <= 2; d++) {
+            const h = (slotHour + d + 24) % 24;
+            if (hours[h] < bestBusy) { bestBusy = hours[h]; bestDelta = d; }
+          }
+          if (bestDelta !== 0 && bestBusy < slot * 0.7) {
+            const shift = bestDelta > 0 ? `${bestDelta}h later` : `${-bestDelta}h earlier`;
+            msg = `${String.fromCodePoint(0x1F534)} Peak crowd. Try ${shift} — ~${bestBusy}%.`;
+          } else {
+            const ampm = peakHour >= 12 ? 'PM' : 'AM';
+            const display = ((peakHour + 11) % 12) + 1;
+            msg = `${String.fromCodePoint(0x1F534)} Peak crowd. Rush hits ${display} ${ampm}.`;
+          }
+        }
+        return (
+          <div style={{
+            marginTop: 8, padding: '6px 10px',
+            borderRadius: 8,
+            background: `color-mix(in srgb, ${tone} 12%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${tone} 30%, transparent)`,
+            fontSize: 12, lineHeight: 1.35, color: 'var(--brand-ink)',
+          }}>{msg}</div>
+        );
+      })()}
     </CardShell>
   );
 }
