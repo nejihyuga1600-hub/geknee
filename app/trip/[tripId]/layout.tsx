@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { TripHorizontalLock } from './TripHorizontalLock';
 
 export async function generateMetadata({
   params,
@@ -19,23 +20,15 @@ export async function generateMetadata({
 }
 
 export default function TripLayout({ children }: { children: React.ReactNode }) {
+  // TripHorizontalLock stamps html+body with .geknee-x-lock as soon as
+  // it mounts, driving the CSS rule in globals.css that hard-locks
+  // horizontal scroll for the whole /trip subtree. Also proactively
+  // snaps scrollLeft to 0 across mount, RAF, 100ms, 500ms, resize,
+  // and orientationchange so any late scrollIntoView from a nested
+  // component can't leave the viewport panned right.
   return (
     <>
-      {/* Hard-lock horizontal scroll for the whole /trip subtree
-          2026-08-04. Users were getting stuck panned right because a
-          descendant (day timeline, weather hourly) briefly reported
-          content wider than the viewport before its own overflow-hidden
-          took effect. Locking at layout-root guarantees the outer
-          scroller can never pan sideways, so day stops + weather still
-          scroll internally but the page frame stays put. */}
-      <style>{`
-        html, body {
-          overflow-x: hidden !important;
-          max-width: 100vw;
-          overscroll-behavior-x: none;
-        }
-        html { scroll-behavior: auto; }
-      `}</style>
+      <TripHorizontalLock />
       {children}
     </>
   );

@@ -191,6 +191,18 @@ html {
 .geknee-hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .geknee-hide-scrollbar::-webkit-scrollbar { display: none; }
 
+/* /trip subtree horizontal-scroll lock. Added via <TripHorizontalLock>
+   client component on the /trip layout so the class is on html+body
+   before any nested scrollIntoView call can push the page sideways.
+   Weather hourly + day stops still scroll internally via their own
+   overflow-x: auto containers — this only prevents the outer viewport
+   from moving. */
+html.geknee-x-lock, body.geknee-x-lock {
+  overflow-x: hidden !important;
+  max-width: 100vw;
+  overscroll-behavior-x: none;
+}
+
 /* Accessibility: respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -565,10 +565,17 @@ export default function LiveTripPage() {
           the right day even for 14-day trips. */}
       <div
         ref={(el) => {
+          // Use direct scrollLeft assignment instead of scrollIntoView
+          // — scrollIntoView bubbles up the scroll-parent chain and
+          // can push the whole viewport sideways on browsers that
+          // haven't yet applied the layout-level overflow-x lock.
           if (!el) return;
           const activeIdx = dayInfo.day - 1;
           const target = el.children[activeIdx] as HTMLElement | undefined;
-          if (target) target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+          if (target) {
+            const offset = target.offsetLeft - (el.clientWidth - target.clientWidth) / 2;
+            el.scrollLeft = Math.max(0, offset);
+          }
         }}
         style={{
           // Sticky, sitting directly below the top app bar (2026-08-03
@@ -2899,10 +2906,16 @@ function DayTimeline({ activities, currentClock }: { activities: Activity[]; cur
     <div
       ref={(el) => {
         // Center the NOW card on first paint (or DONE if the day is over).
+        // Uses direct scrollLeft rather than scrollIntoView so the
+        // scroll stays contained to this element — scrollIntoView
+        // walks the parent chain and pushes the outer viewport.
         if (!el) return;
         const targetIdx = nextIdx === -1 ? activities.length - 1 : nextIdx;
         const target = el.children[targetIdx] as HTMLElement | undefined;
-        if (target) target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+        if (target) {
+          const offset = target.offsetLeft - (el.clientWidth - target.clientWidth) / 2;
+          el.scrollLeft = Math.max(0, offset);
+        }
       }}
       style={{
         display: 'flex',
