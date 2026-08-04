@@ -17,6 +17,7 @@ import { factsFor, type CountryFacts } from '@/lib/countryCheatsheet';
 import { todaysHappenings, type LocalHappening } from '@/lib/localColorByCity';
 import { guideFor, type LandmarkGuide } from '@/lib/landmarkGuides';
 import { ticketsFor, stillBookable, type SkipLineTicket } from '@/lib/skipLineTickets';
+import { currentMealContext } from '@/lib/mealCadenceByCountry';
 import {
   loadNotes, saveNote, deleteNote, newNoteId,
   isJournalDismissedToday, dismissJournalForToday, fileToScaledDataUrl,
@@ -889,18 +890,40 @@ export default function LiveTripPage() {
       <div style={{ padding: '14px 8px 0' }}>
         <GoldenHourCard lat={nextCoords?.lat ?? geo?.lat ?? null} lng={nextCoords?.lon ?? geo?.lon ?? null} now={new Date()} />
       </div>
+
+      {/* ── Photo-window fusion — fires only when golden hour aligns with
+          a clear-sky forecast AND the next stop is a curated landmark.
+          The rare confluence makes this a "drop everything and go" card. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <PhotoWindowCard
+          lat={nextCoords?.lat ?? geo?.lat ?? null}
+          lng={nextCoords?.lon ?? geo?.lon ?? null}
+          place={nextActivity?.place ?? null}
+          conditions={currentWeather?.current?.conditionsText ?? null}
+          etaMin={etaMin}
+          now={new Date()}
+        />
+      </div>
       <div style={{ padding: '14px 8px 0' }}>
         <GreetingHintCard facts={factsFor(countryCode)} now={new Date()} />
       </div>
 
       {/* ── Pack for today (weather-driven). */}
       <div style={{ padding: '14px 8px 0' }}>
-        <PackForTodayCard day={currentWeather?.forecast?.[0] ?? null} />
+        <PackForTodayCard
+          day={currentWeather?.forecast?.[0] ?? null}
+          windKph={currentWeather?.current?.windKph ?? null}
+        />
       </div>
 
       {/* ── Three phrases every traveler should know. */}
       <div style={{ padding: '14px 8px 0' }}>
         <LocalPhrasesCard facts={factsFor(countryCode)} />
+      </div>
+
+      {/* ── Meal cadence — silent when the country isn't in our table. */}
+      <div style={{ padding: '14px 8px 0' }}>
+        <MealCadenceCard countryCode={countryCode} />
       </div>
 
       {/* ── Three context cards ────────────────────────────────────────── */}
@@ -1342,19 +1365,32 @@ function LocalPhrasesCard({ facts }: { facts: CountryFacts | null }) {
 // packing suggestion. Zero API cost (uses the WeatherDay we already
 // have) and answers the "what should I bring today" question every
 // traveler asks around 8 AM before heading out.
-function PackForTodayCard({ day }: { day: WeatherDay | null }) {
+function PackForTodayCard({ day, windKph }: { day: WeatherDay | null; windKph: number | null }) {
   if (!day) return null;
   const hi = day.highC ?? null;
   const lo = day.lowC ?? null;
   const rain = day.precipPct;
   const cond = day.conditionsText.toLowerCase();
   const items: Array<{ icon: string; text: string }> = [];
-  if (rain >= 40) items.push({ icon: String.fromCodePoint(0x2602), text: 'Umbrella or light rain jacket' });
-  if (hi != null && hi >= 28) items.push({ icon: String.fromCodePoint(0x1F31E), text: 'Sunscreen SPF 30+, hat, sunglasses' });
+
+  // Rain intensity ladder — precipPct is Google's chance-of-rain, so we
+  // use it as a proxy for severity when other data is missing.
+  if (rain >= 75) items.push({ icon: String.fromCodePoint(0x1F327), text: 'Heavy rain likely — full rain shell + waterproof shoes. Consider a cab.' });
+  else if (rain >= 40) items.push({ icon: String.fromCodePoint(0x2602), text: 'Umbrella or light rain jacket' });
+  // Heat ladder
+  if (hi != null && hi >= 34) items.push({ icon: String.fromCodePoint(0x1F975), text: 'Extreme heat — avoid direct sun 12-3 PM, seek shade every 20 min.' });
+  else if (hi != null && hi >= 28) items.push({ icon: String.fromCodePoint(0x1F31E), text: 'Sunscreen SPF 30+, hat, sunglasses' });
   if (hi != null && hi >= 24) items.push({ icon: String.fromCodePoint(0x1F4A7), text: 'Refillable water bottle (1 L+)' });
-  if (lo != null && lo <= 10) items.push({ icon: String.fromCodePoint(0x1F9E5), text: 'Warm layer for evening' });
-  if (lo != null && lo <= 2)  items.push({ icon: String.fromCodePoint(0x1F9E4), text: 'Gloves + insulated jacket' });
-  if (/snow/i.test(cond))     items.push({ icon: String.fromCodePoint(0x1F97E), text: 'Waterproof boots with grip' });
+  // Cold ladder
+  if (lo != null && lo <= -5) items.push({ icon: String.fromCodePoint(0x1F976), text: 'Brutal cold — thermal base layer + hat + gloves + covered ears.' });
+  else if (lo != null && lo <= 2) items.push({ icon: String.fromCodePoint(0x1F9E4), text: 'Gloves + insulated jacket' });
+  else if (lo != null && lo <= 10) items.push({ icon: String.fromCodePoint(0x1F9E5), text: 'Warm layer for evening' });
+  // Snow
+  if (/snow/i.test(cond)) items.push({ icon: String.fromCodePoint(0x1F97E), text: 'Waterproof boots with grip' });
+  // Wind (using measured windKph, not conditions string)
+  if (windKph != null && windKph >= 45) items.push({ icon: String.fromCodePoint(0x1F32C), text: `Gale-force wind (${Math.round(windKph)} km/h) — hats off, hoods up, avoid exposed viewpoints.` });
+  else if (windKph != null && windKph >= 25) items.push({ icon: String.fromCodePoint(0x1F343), text: `Windy (${Math.round(windKph)} km/h) — hair-ties + tie down loose items.` });
+  // Walking shoes: default suggestion for good weather
   if (/wind/i.test(cond) || (hi != null && hi >= 20 && rain < 30))
     items.push({ icon: String.fromCodePoint(0x1F45F), text: 'Comfortable walking shoes' });
   // Universal small kit
@@ -1363,7 +1399,7 @@ function PackForTodayCard({ day }: { day: WeatherDay | null }) {
   return (
     <CardShell accent="var(--brand-accent, #a78bfa)" label="PACK FOR TODAY">
       <div style={{ display: 'grid', gap: 6 }}>
-        {items.slice(0, 5).map((it, i) => (
+        {items.slice(0, 6).map((it, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, color: 'var(--brand-ink)' }}>
             <span aria-hidden style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{it.icon}</span>
             <span>{it.text}</span>
@@ -2224,6 +2260,152 @@ function GoldenHourCard({ lat, lng, now }: { lat: number | null; lng: number | n
 }
 
 // Solar-position helpers. Approximate NOAA algorithm — accurate ~±2 min.
+// MealCadenceCard — ambient "when do locals eat" nudge. Answers the
+// classic "wait, is it too early/too late" question travelers hit on
+// day one. Silent when we don't have meal windows for the country.
+function MealCadenceCard({ countryCode }: { countryCode: string | null }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 5 * 60_000); // 5min tick
+    return () => clearInterval(t);
+  }, []);
+
+  const ctx = useMemo(() => currentMealContext(countryCode, now), [countryCode, now]);
+  if (!ctx) return null;
+
+  const MEAL_ICON: Record<'breakfast'|'lunch'|'dinner', string> = {
+    breakfast: String.fromCodePoint(0x1F950), // 🥐
+    lunch:     String.fromCodePoint(0x1F35D), // 🍝
+    dinner:    String.fromCodePoint(0x1F374), // 🍴
+  };
+
+  if (ctx.state === 'closed_all') {
+    return (
+      <CardShell accent="var(--brand-warn, #f59e0b)" label="MEAL CADENCE">
+        <div style={{ fontFamily: DISPLAY, fontSize: 16, color: 'var(--brand-ink)', lineHeight: 1.3 }}>
+          Restaurants likely closed for the night.
+        </div>
+        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--brand-ink-mute)', lineHeight: 1.4 }}>
+          Late-night: hotel room service, convenience stores, kebab shops in tourist zones.
+        </div>
+      </CardShell>
+    );
+  }
+
+  const meal = ctx.window.meal;
+  const icon = MEAL_ICON[meal];
+  const headline = ctx.state === 'active'
+    ? `${meal.toUpperCase()} · closes in ${ctx.minsUntilCloses} min`
+    : `${meal.toUpperCase()} starts in ${ctx.minsUntilOpens > 60 ? `${Math.floor(ctx.minsUntilOpens/60)}h ${ctx.minsUntilOpens%60}m` : `${ctx.minsUntilOpens} min`}`;
+
+  const tone = ctx.state === 'active'
+    ? (ctx.minsUntilCloses < 30 ? 'var(--brand-danger, #f87171)' : 'var(--brand-success, #7cff97)')
+    : 'var(--brand-accent-2, #7dd3fc)';
+
+  return (
+    <CardShell accent={tone} label="MEAL CADENCE">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <span aria-hidden style={{ fontSize: 20, lineHeight: 1 }}>{icon}</span>
+        <div style={{ fontFamily: DISPLAY, fontSize: 18, color: 'var(--brand-ink)', lineHeight: 1.25 }}>
+          {headline}
+        </div>
+      </div>
+      {ctx.window.note && (
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--brand-ink)', lineHeight: 1.4 }}>
+          {ctx.window.note}
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+// PhotoWindowCard — high-signal, low-frequency alert. Only renders when
+// ALL three land: (a) we're inside or approaching golden hour, (b) sky
+// is clear-ish (no heavy overcast/rain in the conditions string), and
+// (c) the next stop is a curated landmark. Silent 95% of the time —
+// which is what makes it feel special when it DOES fire.
+function PhotoWindowCard({ lat, lng, place, conditions, etaMin, now }: {
+  lat: number | null;
+  lng: number | null;
+  place: string | null;
+  conditions: string | null;
+  etaMin: number | null;
+  now: Date;
+}) {
+  if (lat == null || lng == null || !place) return null;
+  const guide = guideFor(place);
+  if (!guide) return null; // Only surface for landmarks in our guide list.
+
+  // Reject on obviously bad photo conditions. Google's conditionsText is
+  // strings like "Partly cloudy", "Heavy rain", "Overcast".
+  const cond = (conditions ?? '').toLowerCase();
+  const badSky = /overcast|heavy rain|thunderstorm|fog|mist|haze|snow shower/.test(cond);
+  if (badSky) return null;
+
+  const solar = solarEvents(now, lat, lng);
+  if (!solar) return null;
+  const { goldenPmStart, goldenPmEnd, sunset } = solar;
+
+  const minsToGolden = Math.round((goldenPmStart.getTime() - now.getTime()) / 60000);
+  const minsToEnd = Math.round((goldenPmEnd.getTime() - now.getTime()) / 60000);
+  // Skip when golden hour is > 90 min away (too abstract) or already over.
+  if (minsToGolden > 90 || minsToEnd < 0) return null;
+
+  const eta = etaMin ?? 0;
+  const arrivesInsideWindow = eta >= minsToGolden - 5 && eta <= minsToEnd;
+
+  const fmt = (d: Date) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+
+  const headline = minsToGolden <= 0
+    ? `${String.fromCodePoint(0x1F31F)} Golden hour NOW at ${place}`
+    : `${String.fromCodePoint(0x1F31F)} Photo window in ${minsToGolden} min · ${place}`;
+
+  const subline = arrivesInsideWindow
+    ? `Your ETA (${eta} min) lands you inside the window — perfect timing.`
+    : eta > 0
+      ? `Head over now: ${eta} min ETA lands you ${eta < minsToGolden ? `${minsToGolden - eta} min early` : `${eta - minsToEnd} min late`}.`
+      : `Golden light ${fmt(goldenPmStart)} – ${fmt(goldenPmEnd)}. Sunset ${fmt(sunset)}.`;
+
+  return (
+    <div style={{
+      background: `linear-gradient(160deg,
+        color-mix(in srgb, var(--brand-gold, #f59e0b) 22%, transparent) 0%,
+        color-mix(in srgb, var(--brand-danger, #f87171) 10%, transparent) 55%,
+        rgba(255,255,255,0.03) 100%)`,
+      border: '1px solid var(--brand-border)',
+      borderLeft: '3px solid var(--brand-gold, #f59e0b)',
+      borderRadius: 12,
+      padding: '14px 16px',
+      boxShadow: '0 1px 0 rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.30)',
+    }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
+        color: 'var(--brand-gold, #f59e0b)', fontWeight: 700, marginBottom: 8,
+      }}>PHOTO WINDOW</div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1.25, color: 'var(--brand-ink)', marginBottom: 6 }}>
+        {headline}
+      </div>
+      <div style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--brand-ink)' }}>
+        {subline}
+      </div>
+      {guide.tip && (
+        <div style={{
+          marginTop: 10, padding: '6px 10px', borderRadius: 8,
+          background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 12%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 30%, transparent)',
+          fontSize: 12, lineHeight: 1.4, color: 'var(--brand-ink)',
+        }}>
+          <span style={{
+            fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+            color: 'var(--brand-gold, #f59e0b)', fontWeight: 700, marginRight: 6,
+          }}>INSIDER</span>
+          {guide.tip}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function solarEvents(date: Date, lat: number, lng: number) {
   try {
     const N = Math.floor((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86400000);
