@@ -343,36 +343,7 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
               status === google.maps.places.PlacesServiceStatus.OK &&
               results?.[0]?.geometry?.location
             ) {
-              const loc = results[0].geometry.location;
-              // Coord-level dedupe (2026-08-03): if a prior activity in
-              // this day already geocoded within ~15 m of this one, treat
-              // them as the same real-world spot and skip the second pin.
-              // Fixes user-reported "duplicate numbers on map" cases the
-              // name-based dedupe upstream misses (e.g. two differently-
-              // worded activities that Places resolves to the same
-              // landmark). We still keep the activity in the array so
-              // it shows in the LEAVE-BY / timeline; only the pin is
-              // suppressed.
-              const duplicateOf = coords.findIndex((c, j) => {
-                if (j >= i || !c) return false;
-                const dLat = (c.lat() - loc.lat()) * 111000;
-                const dLng = (c.lng() - loc.lng()) * 111000 * Math.cos(loc.lat() * Math.PI / 180);
-                return Math.hypot(dLat, dLng) < 15;
-              });
-              if (duplicateOf === -1) {
-                coords[i] = loc;
-                const marker = new google.maps.Marker({
-                  position: loc,
-                  map,
-                  icon: pinIcon(i + 1),
-                  title: `${a.display} · ${a.place ?? a.name}`,
-                  zIndex: 100 + i,
-                });
-                markersRef.current.push(marker);
-              }
-              // else: leave coords[i] null so the polyline path skips this
-              // node — otherwise we'd draw a zero-length leg to the
-              // already-visible pin.
+              coords[i] = results[0].geometry.location;
             }
             pending--;
             if (pending === 0) finalize();
@@ -382,6 +353,52 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
 
       function finalize() {
         const map = mapRef.current!;
+        // Coord-level dedupe (2026-08-04): run AFTER all geocodes resolve
+        // so we can compare against the fully-populated coords array,
+        // not the racy partial version. Previously the dedupe fired
+        // inline in each callback — parallel geocodes meant a later
+        // activity's callback would run before its earlier duplicate
+        // had populated coords[j], missing the match and letting both
+        // pins land at the same lat/lng with different numbers.
+        //
+        // First-index wins: we keep the earliest activity that resolves
+        // to a spot and null-out later duplicates so the polyline path
+        // skips them.
+        const R = 15; // meters — collapse only truly-same locations
+        for (let i = 0; i < coords.length; i++) {
+          const ci = coords[i];
+          if (!ci) continue;
+          for (let j = i + 1; j < coords.length; j++) {
+            const cj = coords[j];
+            if (!cj) continue;
+            const dLat = (ci.lat() - cj.lat()) * 111000;
+            const dLng = (ci.lng() - cj.lng()) * 111000 * Math.cos(ci.lat() * Math.PI / 180);
+            if (Math.hypot(dLat, dLng) < R) {
+              coords[j] = null;
+            }
+          }
+        }
+
+        // Build markers for the survivors. Number them 1..N in visit
+        // order (using original index preserves the "which stop number
+        // is this" meaning in the tooltip; the pin label uses a
+        // sequential rank so users don't see holes like 1, 3, 4).
+        let rank = 0;
+        for (let i = 0; i < coords.length; i++) {
+          const loc = coords[i];
+          if (!loc) continue;
+          rank += 1;
+          const a = activities[i];
+          const marker = new google.maps.Marker({
+            position: loc,
+            map,
+            icon: pinIcon(rank),
+            title: `${a.display} · ${a.place ?? a.name}`,
+            zIndex: 100 + i,
+          });
+          markersRef.current.push(marker);
+        }
+
         const cleaned = coords.filter((c): c is google.maps.LatLng => c !== null);
         if (cleaned.length === 0) {
           // No activity resolved — fall back to the city center.

@@ -21,6 +21,7 @@ import { currentMealContext } from '@/lib/mealCadenceByCountry';
 import {
   loadNotes, saveNote, deleteNote, newNoteId,
   isJournalDismissedToday, dismissJournalForToday, fileToScaledDataUrl,
+  todayIsoDate,
   type NoteEntry,
 } from '@/lib/tripNotes';
 
@@ -807,16 +808,15 @@ export default function LiveTripPage() {
         )}
       </div>
 
-      {/* ── Evening journal prompt (18:00 local). Renders above the
-          LEAVE-BY hero so it's the first thing an evening visitor sees.
-          Dismissible per-day; state in localStorage. */}
+      {/* ── Pack for today — pinned above the LEAVE-BY hero because
+          "what should I bring today" is the first question every
+          morning. Dismissible per-day so travelers close it once
+          they've left the hotel. */}
       <div style={{ padding: '18px 8px 0' }}>
-        <JournalPromptCard
+        <PackForTodayCard
           tripId={tripId ?? ''}
-          place={nextActivity?.place ?? nextActivity?.name ?? trip?.location ?? null}
-          tempC={currentWeather?.current?.tempC ?? null}
-          lat={nextCoords?.lat ?? geo?.lat ?? null}
-          lng={nextCoords?.lon ?? geo?.lon ?? null}
+          day={currentWeather?.forecast?.[0] ?? null}
+          windKph={currentWeather?.current?.windKph ?? null}
         />
       </div>
 
@@ -908,14 +908,6 @@ export default function LiveTripPage() {
         <GreetingHintCard facts={factsFor(countryCode)} now={new Date()} />
       </div>
 
-      {/* ── Pack for today (weather-driven). */}
-      <div style={{ padding: '14px 8px 0' }}>
-        <PackForTodayCard
-          day={currentWeather?.forecast?.[0] ?? null}
-          windKph={currentWeather?.current?.windKph ?? null}
-        />
-      </div>
-
       {/* ── Three phrases every traveler should know. */}
       <div style={{ padding: '14px 8px 0' }}>
         <LocalPhrasesCard facts={factsFor(countryCode)} />
@@ -966,11 +958,24 @@ export default function LiveTripPage() {
           it's a break-glass utility, not something you glance at on
           every session; belongs after the day plan + spend, not
           competing with NEXT / WEATHER / CROWDS above the fold). */}
-      <div style={{ padding: '20px 8px 24px' }}>
+      <div style={{ padding: '20px 8px 0' }}>
         <SafetyCard
           countryCode={countryCode}
           anchor={geo ? { lat: geo.lat, lng: geo.lon } : null}
           online={online}
+        />
+      </div>
+
+      {/* ── Evening journal prompt — moved to the very bottom 2026-08-04
+          per user feedback. Reflective content belongs after the day's
+          done, not fighting for space with morning-glance widgets. */}
+      <div style={{ padding: '20px 8px 24px' }}>
+        <JournalPromptCard
+          tripId={tripId ?? ''}
+          place={nextActivity?.place ?? nextActivity?.name ?? trip?.location ?? null}
+          tempC={currentWeather?.current?.tempC ?? null}
+          lat={nextCoords?.lat ?? geo?.lat ?? null}
+          lng={nextCoords?.lon ?? geo?.lon ?? null}
         />
       </div>
 
@@ -1365,8 +1370,26 @@ function LocalPhrasesCard({ facts }: { facts: CountryFacts | null }) {
 // packing suggestion. Zero API cost (uses the WeatherDay we already
 // have) and answers the "what should I bring today" question every
 // traveler asks around 8 AM before heading out.
-function PackForTodayCard({ day, windKph }: { day: WeatherDay | null; windKph: number | null }) {
-  if (!day) return null;
+function PackForTodayCard({ tripId, day, windKph }: { tripId: string; day: WeatherDay | null; windKph: number | null }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const dismissKey = tripId ? `geknee:pack-dismissed:${tripId}:${todayIsoDate()}` : null;
+
+  // Hydrate dismiss state on mount so SSR doesn't render a card the
+  // user has already closed today.
+  useEffect(() => {
+    if (!dismissKey || typeof window === 'undefined') { setReady(true); return; }
+    try { setDismissed(window.localStorage.getItem(dismissKey) === '1'); } catch {}
+    setReady(true);
+  }, [dismissKey]);
+
+  function handleDismiss() {
+    if (!dismissKey || typeof window === 'undefined') { setDismissed(true); return; }
+    try { window.localStorage.setItem(dismissKey, '1'); } catch {}
+    setDismissed(true);
+  }
+
+  if (!day || !ready || dismissed) return null;
   const hi = day.highC ?? null;
   const lo = day.lowC ?? null;
   const rain = day.precipPct;
@@ -1397,16 +1420,29 @@ function PackForTodayCard({ day, windKph }: { day: WeatherDay | null; windKph: n
   items.push({ icon: String.fromCodePoint(0x1F4F1), text: 'Portable charger + charging cable' });
   if (items.length === 0) return null;
   return (
-    <CardShell accent="var(--brand-accent, #a78bfa)" label="PACK FOR TODAY">
-      <div style={{ display: 'grid', gap: 6 }}>
-        {items.slice(0, 6).map((it, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, color: 'var(--brand-ink)' }}>
-            <span aria-hidden style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{it.icon}</span>
-            <span>{it.text}</span>
-          </div>
-        ))}
-      </div>
-    </CardShell>
+    <div style={{ position: 'relative' }}>
+      <CardShell accent="var(--brand-accent, #a78bfa)" label="PACK FOR TODAY">
+        <div style={{ display: 'grid', gap: 6 }}>
+          {items.slice(0, 6).map((it, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, color: 'var(--brand-ink)' }}>
+              <span aria-hidden style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{it.icon}</span>
+              <span>{it.text}</span>
+            </div>
+          ))}
+        </div>
+      </CardShell>
+      <button
+        type="button"
+        onClick={handleDismiss}
+        aria-label="Dismiss for today"
+        style={{
+          position: 'absolute', top: 8, right: 10,
+          background: 'transparent', border: 'none', padding: 4,
+          color: 'var(--brand-ink-dim)', cursor: 'pointer',
+          fontSize: 16, lineHeight: 1,
+        }}
+      >×</button>
+    </div>
   );
 }
 
