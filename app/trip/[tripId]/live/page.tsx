@@ -221,7 +221,7 @@ export default function LiveTripPage() {
   }, []);
   // Fullscreen map takeover — a "view map" chip flips this on and the map
   // section becomes position:fixed at inset:0 covering everything else.
-  const [mapFull, setMapFull] = useState(false);
+  const mapFull = false; // legacy no-op — the fullscreen toggle was removed 2026-08-04
   const [countryCode, setCountryCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -658,13 +658,7 @@ export default function LiveTripPage() {
           When mapFull is true this container escapes the scroll flow and
           takes over the whole viewport as a full-screen map "page", per
           user request 2026-08-03. Inline mode is unchanged. */}
-      <div style={mapFull ? {
-        position: 'fixed', inset: 0, zIndex: 9500,
-        background: 'var(--brand-bg, #05050f)',
-        padding: 0,
-        paddingTop: 'env(safe-area-inset-top)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      } : { padding: '0 8px', position: 'relative' }}>
+      <div style={{ padding: '0 8px', position: 'relative' }}>
         {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10,
@@ -685,64 +679,20 @@ export default function LiveTripPage() {
           // screen minus the locked header, per user request 2026-08-03.
           // 100dvh keeps it responsive to iOS Safari's dynamic toolbar.
           height="calc(100dvh - env(safe-area-inset-top) - 148px)"
-          // Only drop the border-radius in the true takeover mode, so an
-          // inline 100dvh map still reads as a card inside the padded page.
-          fullscreen={mapFull}
-          onMapClick={(coords) => {
+          fullscreen={false}
+          // Add-stop from the search-hydrated info card, which now hands
+          // us pre-resolved coords + a place label — no need for the
+          // map-click seeding path the old "+ Add stop" pill used.
+          onAddStopFromSearch={(coords, label) => {
             setAddStopCoords(coords);
             setAddStopOpen(true);
+            // Pre-seed the modal title so the user doesn't retype the
+            // place they just searched for. Read by AddStopModal.
+            if (label && typeof window !== 'undefined') {
+              try { window.sessionStorage.setItem('geknee:add-stop-seed-label', label); } catch {}
+            }
           }}
         />
-        {/* Floating "+ Add stop" pill in the top-left of the map. Always
-            visible so users don't have to discover the click-to-add
-            interaction. */}
-        <button
-          onClick={() => { setAddStopCoords(null); setAddStopOpen(true); }}
-          style={{
-            position: 'absolute',
-            left: mapFull ? 'calc(env(safe-area-inset-left) + 14px)' : 36,
-            top: mapFull ? 'calc(env(safe-area-inset-top) + 14px)' : 14,
-            background: 'rgba(167,139,250,0.92)',
-            color: 'var(--brand-bg)',
-            border: 'none',
-            borderRadius: 999,
-            padding: '8px 14px',
-            fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-            letterSpacing: '0.04em',
-            cursor: 'pointer',
-            boxShadow: '0 6px 18px rgba(167,139,250,0.45)',
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            zIndex: 3,
-          }}
-        >
-          + Add stop
-        </button>
-        {/* Expand-to-fullscreen / collapse chip — top-right of the map.
-            Turns the map into a takeover page per user request 2026-08-03. */}
-        <button
-          onClick={() => setMapFull((v) => !v)}
-          aria-label={mapFull ? 'Close full-screen map' : 'Open full-screen map'}
-          style={{
-            position: 'absolute',
-            right: mapFull ? 'calc(env(safe-area-inset-right) + 14px)' : 36,
-            top: mapFull ? 'calc(env(safe-area-inset-top) + 14px)' : 14,
-            background: 'rgba(13,13,36,0.88)',
-            color: 'var(--brand-ink)',
-            border: '1px solid var(--brand-border-hi)',
-            borderRadius: 999,
-            padding: '8px 12px',
-            fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-            letterSpacing: '0.04em',
-            cursor: 'pointer',
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            WebkitBackdropFilter: 'blur(10px)', backdropFilter: 'blur(10px)',
-            zIndex: 3,
-          }}
-        >
-          {mapFull
-            ? `${String.fromCodePoint(0x2715)} Close`
-            : `${String.fromCodePoint(0x26F6)} Full map`}
-        </button>
         {/* "Enable location" chip — appears when we don't have a fix.
             Powers walk-time ETAs and centers the route on where you are.
             Sits along the bottom so it doesn't collide with the top pills. */}
@@ -904,10 +854,6 @@ export default function LiveTripPage() {
           now={new Date()}
         />
       </div>
-      <div style={{ padding: '14px 8px 0' }}>
-        <GreetingHintCard facts={factsFor(countryCode)} now={new Date()} />
-      </div>
-
       {/* ── Three phrases every traveler should know. */}
       <div style={{ padding: '14px 8px 0' }}>
         <LocalPhrasesCard facts={factsFor(countryCode)} />
@@ -994,6 +940,17 @@ export default function LiveTripPage() {
           city={trip?.location ?? null}
           day={selectedDay}
           initialCoords={addStopCoords}
+          // Pre-seeded from the search-hydrated info card via
+          // sessionStorage so we don't have to thread state up + down.
+          // Cleared on read so it only applies once.
+          initialPlaceName={(() => {
+            if (typeof window === 'undefined') return undefined;
+            try {
+              const seed = window.sessionStorage.getItem('geknee:add-stop-seed-label');
+              if (seed) window.sessionStorage.removeItem('geknee:add-stop-seed-label');
+              return seed ?? undefined;
+            } catch { return undefined; }
+          })()}
           onSaved={(newItinerary) => {
             setItinerary(newItinerary);
             setAddStopOpen(false);

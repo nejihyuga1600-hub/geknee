@@ -68,10 +68,10 @@ interface GoogleLiveMapProps {
   /** User's current geolocation. When provided, a pulsing "You are here"
       marker is shown and the map re-centers on it. */
   geo?: { lat: number; lon: number } | null;
-  /** Fired when the user clicks an empty spot on the map. Coords are passed
-      so the parent can open the add-stop modal pre-seeded with a reverse-
-      geocoded place suggestion. */
-  onMapClick?: (coords: { lat: number; lon: number }) => void;
+  /** Fired when the user clicks the "Add to trip" button on the search-
+      hydrated info card. Coords + label come from the resolved place, no
+      reverse-geocoding needed. */
+  onAddStopFromSearch?: (coords: { lat: number; lon: number }, label: string | null) => void;
   /** Optional map surface height. Defaults to 360 (inline card mode).
       Pass a CSS length like "100dvh" (or a number in px) to make the map
       take over the full viewport. */
@@ -144,7 +144,7 @@ interface SearchedPlace {
   reviews: Array<{ author: string; rating: number; text: string; relative: string }>;
 }
 
-export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, height = 360, fullscreen = false }: GoogleLiveMapProps) {
+export function GoogleLiveMap({ city, activities, dayKey, geo, onAddStopFromSearch, height = 360, fullscreen = false }: GoogleLiveMapProps) {
   // Border-radius follows the fullscreen flag, not the height. That way
   // an inline "100dvh" map still keeps its 14-px card radius (parent has
   // horizontal padding), and only the true takeover mode goes edge-to-edge.
@@ -165,10 +165,13 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
   const polylinesRef = useRef<google.maps.Polyline[]>([]);
   // "You are here" pulsing marker, moved / created as geo arrives.
   const youAreHereRef = useRef<google.maps.Marker | null>(null);
-  // Ref the click callback so we don't have to re-init the map when the
-  // parent's onMapClick identity changes. The listener reads .current.
-  const onMapClickRef = useRef(onMapClick);
-  onMapClickRef.current = onMapClick;
+  // Ref the callback so we don't have to re-init the map when its
+  // identity changes on the parent.
+  const onAddStopRef = useRef(onAddStopFromSearch);
+  onAddStopRef.current = onAddStopFromSearch;
+  // Track the coords the searched place resolved to so the "Add to trip"
+  // button on the info card can forward them without another geocode.
+  const searchedCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
   // Follow the user's color-scheme preference. Both the map's styled tiles
   // and the polyline color flip when this changes — see the effect below.
   const colorScheme = useColorScheme();
@@ -197,15 +200,9 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
         });
         mapRef.current = map;
 
-        // Surface map clicks to the parent so the add-stop modal can
-        // pre-seed with a reverse-geocoded label. Wrapped in a function
-        // declaration (not arrow) so the listener receives the LatLng.
-        map.addListener('click', (e: google.maps.MapMouseEvent) => {
-          const ll = e.latLng;
-          if (ll && onMapClickRef.current) {
-            onMapClickRef.current({ lat: ll.lat(), lon: ll.lng() });
-          }
-        });
+        // Map-tap add-stop was removed 2026-08-04 in favor of the
+        // search-hydrated info card's "Add to trip" button (clearer UX,
+        // no accidental drops).
 
         // Places Autocomplete on the search input — mirrors the pattern
         // from app/plan/[tripId]/map/page.tsx so users get the same
@@ -224,50 +221,87 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
           });
           ac.bindTo('bounds', map);
           ac.addListener('place_changed', () => {
-            const place = ac.getPlace();
-            if (!place.geometry?.location) return;
-            const loc = place.geometry.location;
-            // Drop / replace the search pin.
-            if (searchMarkerRef.current) searchMarkerRef.current.setMap(null);
-            searchMarkerRef.current = new google.maps.Marker({
-              position: loc,
-              map,
-              icon: {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-                  '<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\' width=\'32\' height=\'32\'>' +
-                  '<circle cx=\'16\' cy=\'16\' r=\'11\' fill=\'#7dd3fc\' stroke=\'#0c0c1f\' stroke-width=\'2\'/>' +
-                  '<circle cx=\'16\' cy=\'16\' r=\'4\' fill=\'#0c0c1f\'/>' +
-                  '</svg>'),
-                scaledSize: new google.maps.Size(32, 32),
-                anchor: new google.maps.Point(16, 16),
-              },
-              title: place.name ?? '',
-              zIndex: 300,
-            });
-            map.panTo(loc);
-            if (map.getZoom() != null && map.getZoom()! < 15) map.setZoom(16);
-            // Hydrate the info card with photos + reviews.
-            const photos = (place.photos ?? [])
-              .slice(0, 6)
-              .map((p) => { try { return p.getUrl({ maxWidth: 900 }); } catch { return null; } })
-              .filter((u): u is string => !!u);
-            const reviews = (place.reviews ?? []).slice(0, 3).map((r) => ({
-              author: r.author_name ?? 'Anonymous',
-              rating: r.rating ?? 0,
-              text: r.text ?? '',
-              relative: r.relative_time_description ?? '',
-            }));
-            setSearchedPlace({
-              name: place.name ?? 'Unnamed place',
-              address: place.formatted_address ?? null,
-              rating: place.rating ?? null,
-              reviewCount: place.user_ratings_total ?? null,
-              openNow: place.opening_hours?.isOpen?.() ?? null,
-              photos,
-              reviews,
-            });
-            setActivePhoto(0);
-            if (input) input.value = '';
+            // Everything inside this listener is user-triggered async work
+            // against the third-party Google Maps SDK. A single unhandled
+            // throw here surfaces to the user as "the map crashed" (React
+            // error boundary tears the map component down). Wrap the whole
+            // body so a bad place object degrades to "search returned
+            // nothing" instead of a blank map.
+            try {
+              const place = ac.getPlace();
+              if (!place || !place.geometry || !place.geometry.location) return;
+              const loc = place.geometry.location;
+              // Drop / replace the search pin.
+              if (searchMarkerRef.current) searchMarkerRef.current.setMap(null);
+              searchMarkerRef.current = new google.maps.Marker({
+                position: loc,
+                map,
+                icon: {
+                  url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                    '<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\' width=\'32\' height=\'32\'>' +
+                    '<circle cx=\'16\' cy=\'16\' r=\'11\' fill=\'#7dd3fc\' stroke=\'#0c0c1f\' stroke-width=\'2\'/>' +
+                    '<circle cx=\'16\' cy=\'16\' r=\'4\' fill=\'#0c0c1f\'/>' +
+                    '</svg>'),
+                  scaledSize: new google.maps.Size(32, 32),
+                  anchor: new google.maps.Point(16, 16),
+                },
+                title: place.name ?? '',
+                zIndex: 300,
+              });
+              // Store the resolved coords so the info card's "Add to
+              // trip" button doesn't need to re-geocode.
+              searchedCoordsRef.current = { lat: loc.lat(), lon: loc.lng() };
+              map.panTo(loc);
+              const z = map.getZoom();
+              if (typeof z === 'number' && z < 15) map.setZoom(16);
+              // Hydrate the info card with photos + reviews. Each field
+              // guarded because Places can return partial objects.
+              const photos = (Array.isArray(place.photos) ? place.photos : [])
+                .slice(0, 6)
+                .map((p) => {
+                  try { return p.getUrl({ maxWidth: 900 }); }
+                  catch { return null; }
+                })
+                .filter((u): u is string => !!u);
+              const reviews = (Array.isArray(place.reviews) ? place.reviews : [])
+                .slice(0, 3)
+                .map((r) => ({
+                  author: r.author_name ?? 'Anonymous',
+                  rating: typeof r.rating === 'number' ? r.rating : 0,
+                  text: r.text ?? '',
+                  relative: r.relative_time_description ?? '',
+                }));
+              // opening_hours.isOpen() is being deprecated in the JS SDK
+              // and throws in some builds when called without an argument.
+              // Isolate it so a throw here doesn't crash the whole card.
+              let openNow: boolean | null = null;
+              try {
+                const oh = place.opening_hours as (google.maps.places.PlaceOpeningHours & { isOpen?: () => boolean }) | undefined;
+                if (oh && typeof oh.isOpen === 'function') {
+                  openNow = oh.isOpen() ?? null;
+                }
+              } catch { openNow = null; }
+              setSearchedPlace({
+                name: place.name ?? 'Unnamed place',
+                address: place.formatted_address ?? null,
+                rating: typeof place.rating === 'number' ? place.rating : null,
+                reviewCount: typeof place.user_ratings_total === 'number' ? place.user_ratings_total : null,
+                openNow,
+                photos,
+                reviews,
+              });
+              setActivePhoto(0);
+              if (input) input.value = '';
+            } catch (err) {
+              // Never let the map die from a search click.
+              // eslint-disable-next-line no-console
+              console.error('[GoogleLiveMap] place_changed handler failed:', err);
+              setSearchedPlace(null);
+              if (searchMarkerRef.current) {
+                searchMarkerRef.current.setMap(null);
+                searchMarkerRef.current = null;
+              }
+            }
           });
         }
       })
@@ -481,7 +515,86 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
             title: `${a.display} · ${a.place ?? a.name}`,
             zIndex: 100 + i,
           });
+          // Tap → hydrate the info card with photos/reviews for this
+          // stop. Uses PlacesService.findPlaceFromQuery to resolve the
+          // place_id, then getDetails to pull the same fields we surface
+          // for a search result. Silent-fail so a broken lookup doesn't
+          // kill the marker.
+          const placeQuery = a.place ? `${a.place}, ${city ?? ''}` : (a.name ?? '');
+          const stopLoc = loc;
+          marker.addListener('click', () => {
+            const svc = placesServiceRef.current;
+            if (!svc) return;
+            try {
+              svc.findPlaceFromQuery(
+                { query: placeQuery, fields: ['place_id'] },
+                (results, status) => {
+                  if (status !== google.maps.places.PlacesServiceStatus.OK) return;
+                  const placeId = results?.[0]?.place_id;
+                  if (!placeId) return;
+                  svc.getDetails(
+                    {
+                      placeId,
+                      fields: [
+                        'name', 'formatted_address', 'photos',
+                        'rating', 'user_ratings_total', 'reviews',
+                        'opening_hours',
+                      ],
+                    },
+                    (details, s) => {
+                      if (s !== google.maps.places.PlacesServiceStatus.OK || !details) return;
+                      hydrateSearchedFromDetails(details, stopLoc);
+                    },
+                  );
+                },
+              );
+            } catch (err) {
+              // eslint-disable-next-line no-console
+              console.error('[GoogleLiveMap] pin click hydrate failed:', err);
+            }
+          });
           markersRef.current.push(marker);
+        }
+
+        // Shared hydration: mirrors the search flow so tap-a-pin and
+        // search-a-place render the exact same info card.
+        function hydrateSearchedFromDetails(
+          details: google.maps.places.PlaceResult,
+          markerLoc: google.maps.LatLng,
+        ) {
+          try {
+            const photos = (Array.isArray(details.photos) ? details.photos : [])
+              .slice(0, 6)
+              .map((p) => { try { return p.getUrl({ maxWidth: 900 }); } catch { return null; } })
+              .filter((u): u is string => !!u);
+            const reviews = (Array.isArray(details.reviews) ? details.reviews : [])
+              .slice(0, 3)
+              .map((r) => ({
+                author: r.author_name ?? 'Anonymous',
+                rating: typeof r.rating === 'number' ? r.rating : 0,
+                text: r.text ?? '',
+                relative: r.relative_time_description ?? '',
+              }));
+            let openNow: boolean | null = null;
+            try {
+              const oh = details.opening_hours as (google.maps.places.PlaceOpeningHours & { isOpen?: () => boolean }) | undefined;
+              if (oh && typeof oh.isOpen === 'function') openNow = oh.isOpen() ?? null;
+            } catch { openNow = null; }
+            searchedCoordsRef.current = { lat: markerLoc.lat(), lon: markerLoc.lng() };
+            setSearchedPlace({
+              name: details.name ?? 'Stop',
+              address: details.formatted_address ?? null,
+              rating: typeof details.rating === 'number' ? details.rating : null,
+              reviewCount: typeof details.user_ratings_total === 'number' ? details.user_ratings_total : null,
+              openNow,
+              photos,
+              reviews,
+            });
+            setActivePhoto(0);
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[GoogleLiveMap] hydrate failed:', err);
+          }
         }
 
         const cleaned = coords.filter((c): c is google.maps.LatLng => c !== null);
@@ -672,6 +785,12 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
           place={searchedPlace}
           activePhoto={activePhoto}
           onPhotoSelect={setActivePhoto}
+          onAddToTrip={() => {
+            const coords = searchedCoordsRef.current;
+            if (coords && onAddStopRef.current) {
+              onAddStopRef.current(coords, searchedPlace.name ?? null);
+            }
+          }}
           onClose={() => {
             setSearchedPlace(null);
             if (searchMarkerRef.current) {
@@ -688,10 +807,11 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
 // SearchedPlaceCard — floating info card that appears when the user
 // selects a place from the search bar's Places Autocomplete. Photos,
 // rating, and up to 3 top reviews.
-function SearchedPlaceCard({ place, activePhoto, onPhotoSelect, onClose }: {
+function SearchedPlaceCard({ place, activePhoto, onPhotoSelect, onAddToTrip, onClose }: {
   place: SearchedPlace;
   activePhoto: number;
   onPhotoSelect: (i: number) => void;
+  onAddToTrip: () => void;
   onClose: () => void;
 }) {
   const heroPhoto = place.photos[activePhoto];
@@ -780,6 +900,25 @@ function SearchedPlaceCard({ place, activePhoto, onPhotoSelect, onClose }: {
             {place.address}
           </div>
         )}
+        <button
+          type="button"
+          onClick={onAddToTrip}
+          style={{
+            marginTop: 4,
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: 'rgba(167,139,250,0.92)',
+            color: 'var(--brand-bg, #0c0c1f)',
+            border: 'none',
+            fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.02em',
+            cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            boxShadow: '0 6px 18px rgba(167,139,250,0.35)',
+          }}
+        >
+          + Add to trip
+        </button>
         {place.reviews.length > 0 && (
           <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
             {place.reviews.map((r, i) => (
