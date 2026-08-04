@@ -762,6 +762,24 @@ export default function LiveTripPage() {
           "what should I bring today" is the first question every
           morning. Dismissible per-day so travelers close it once
           they've left the hotel. */}
+      {/* ── Stop schedule + weather + after-that. Moved directly below
+          the map 2026-08-04 per user feedback so the three glanceable
+          "what's-next" cards are the first thing under the map. Stacked
+          full-width (was a cramped 3-column grid) so each card can
+          breathe. */}
+      <div style={{
+        padding: '18px 8px 0',
+        display: 'grid', gap: 14,
+      }}>
+        <DayTimeline activities={activities} currentClock={currentClock} />
+        <WeatherAlertCard
+          day={currentWeather?.forecast?.[0] ?? null}
+          current={currentWeather?.current ?? null}
+          hourly={currentWeather?.hourly ?? null}
+        />
+        <NextStopCard next={activities[nextIdx + 1] ?? null} />
+      </div>
+
       <div style={{ padding: '18px 8px 0' }}>
         <PackForTodayCard
           tripId={tripId ?? ''}
@@ -833,14 +851,6 @@ export default function LiveTripPage() {
         <LocalColorCard city={trip?.location ?? null} />
       </div>
 
-      {/* ── Next-3-hour micro-forecast + golden hour + greeting. */}
-      <div style={{ padding: '14px 8px 0' }}>
-        <MicroForecastCard hourly={currentWeather?.hourly ?? null} now={new Date()} />
-      </div>
-      <div style={{ padding: '14px 8px 0' }}>
-        <GoldenHourCard lat={nextCoords?.lat ?? geo?.lat ?? null} lng={nextCoords?.lon ?? geo?.lon ?? null} now={new Date()} />
-      </div>
-
       {/* ── Photo-window fusion — fires only when golden hour aligns with
           a clear-sky forecast AND the next stop is a curated landmark.
           The rare confluence makes this a "drop everything and go" card. */}
@@ -859,29 +869,10 @@ export default function LiveTripPage() {
         <LocalPhrasesCard facts={factsFor(countryCode)} />
       </div>
 
-      {/* ── Meal cadence — silent when the country isn't in our table. */}
-      <div style={{ padding: '14px 8px 0' }}>
-        <MealCadenceCard countryCode={countryCode} />
-      </div>
-
-      {/* ── Three context cards ────────────────────────────────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        gap: 14, padding: '20px 8px 0',
-      }}>
-        <NextStopCard next={activities[nextIdx + 1] ?? null} />
-        <WeatherAlertCard
-          day={currentWeather?.forecast?.[0] ?? null}
-          current={currentWeather?.current ?? null}
-          hourly={currentWeather?.hourly ?? null}
-        />
+      {/* ── Crowds (arrival-slot aware) — stays down here since it's a
+          "should we go" nudge, not a schedule glance. */}
+      <div style={{ padding: '20px 8px 0' }}>
         <CrowdsCard placeName={nextActivity?.place ?? null} placeCoords={nextCoords ?? geo} etaMin={etaMin} />
-      </div>
-
-      {/* ── Day timeline strip ─────────────────────────────────────────── */}
-      <div style={{ padding: '24px 8px 0' }}>
-        <DayTimeline activities={activities} currentClock={currentClock} />
       </div>
 
       {/* ── Daily pulse — trip day + spend + captures. Above the budget
