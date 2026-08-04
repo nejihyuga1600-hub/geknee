@@ -13,7 +13,7 @@
 // "<place name>, <city>" and resolve via `PlacesService.findPlaceFromQuery`.
 // Falls back to "<city>" centering when no activity has a geocodable place.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
@@ -131,12 +131,30 @@ function pinIcon(n: number): google.maps.Icon {
   };
 }
 
+// Info surfaced by the search-hydrated pin. Kept narrow — anything
+// beyond photos + rating + top reviews + address adds render load
+// without much travel-in-the-moment value.
+interface SearchedPlace {
+  name: string;
+  address: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  openNow: boolean | null;
+  photos: string[];
+  reviews: Array<{ author: string; rating: number; text: string; relative: string }>;
+}
+
 export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, height = 360, fullscreen = false }: GoogleLiveMapProps) {
   // Border-radius follows the fullscreen flag, not the height. That way
   // an inline "100dvh" map still keeps its 14-px card radius (parent has
   // horizontal padding), and only the true takeover mode goes edge-to-edge.
   const mapRadius = fullscreen ? 0 : 14;
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchMarkerRef = useRef<google.maps.Marker | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  const [searchedPlace, setSearchedPlace] = useState<SearchedPlace | null>(null);
+  const [activePhoto, setActivePhoto] = useState(0);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
@@ -188,6 +206,70 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
             onMapClickRef.current({ lat: ll.lat(), lon: ll.lng() });
           }
         });
+
+        // Places Autocomplete on the search input — mirrors the pattern
+        // from app/plan/[tripId]/map/page.tsx so users get the same
+        // "type-a-place → drop pin → see reviews + photos" flow they
+        // know from the planner map. Bounds-bound to the current map
+        // viewport so results bias toward the trip area.
+        placesServiceRef.current = new google.maps.places.PlacesService(map);
+        const input = searchInputRef.current;
+        if (input) {
+          const ac = new google.maps.places.Autocomplete(input, {
+            fields: [
+              'name', 'geometry', 'place_id', 'formatted_address',
+              'photos', 'rating', 'user_ratings_total', 'reviews',
+              'opening_hours', 'price_level', 'types',
+            ],
+          });
+          ac.bindTo('bounds', map);
+          ac.addListener('place_changed', () => {
+            const place = ac.getPlace();
+            if (!place.geometry?.location) return;
+            const loc = place.geometry.location;
+            // Drop / replace the search pin.
+            if (searchMarkerRef.current) searchMarkerRef.current.setMap(null);
+            searchMarkerRef.current = new google.maps.Marker({
+              position: loc,
+              map,
+              icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                  '<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\' width=\'32\' height=\'32\'>' +
+                  '<circle cx=\'16\' cy=\'16\' r=\'11\' fill=\'#7dd3fc\' stroke=\'#0c0c1f\' stroke-width=\'2\'/>' +
+                  '<circle cx=\'16\' cy=\'16\' r=\'4\' fill=\'#0c0c1f\'/>' +
+                  '</svg>'),
+                scaledSize: new google.maps.Size(32, 32),
+                anchor: new google.maps.Point(16, 16),
+              },
+              title: place.name ?? '',
+              zIndex: 300,
+            });
+            map.panTo(loc);
+            if (map.getZoom() != null && map.getZoom()! < 15) map.setZoom(16);
+            // Hydrate the info card with photos + reviews.
+            const photos = (place.photos ?? [])
+              .slice(0, 6)
+              .map((p) => { try { return p.getUrl({ maxWidth: 900 }); } catch { return null; } })
+              .filter((u): u is string => !!u);
+            const reviews = (place.reviews ?? []).slice(0, 3).map((r) => ({
+              author: r.author_name ?? 'Anonymous',
+              rating: r.rating ?? 0,
+              text: r.text ?? '',
+              relative: r.relative_time_description ?? '',
+            }));
+            setSearchedPlace({
+              name: place.name ?? 'Unnamed place',
+              address: place.formatted_address ?? null,
+              rating: place.rating ?? null,
+              reviewCount: place.user_ratings_total ?? null,
+              openNow: place.opening_hours?.isOpen?.() ?? null,
+              photos,
+              reviews,
+            });
+            setActivePhoto(0);
+            if (input) input.value = '';
+          });
+        }
       })
       .catch(() => {
         /* loader failure surfaces via empty map area — silent */
@@ -202,6 +284,9 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
       markersRef.current = [];
       polylineRef.current?.setMap(null);
       polylineRef.current = null;
+      searchMarkerRef.current?.setMap(null);
+      searchMarkerRef.current = null;
+      placesServiceRef.current = null;
       mapRef.current = null;
     };
   }, []);
@@ -533,17 +618,191 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onMapClick, heigh
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height,
-        // Matches the styled-map backgroundColor so the wrapper doesn't
-        // flash a dark band before tiles load when the user is in light mode.
-        background: 'var(--brand-bg2)',
-        borderRadius: mapRadius,
-        overflow: 'hidden',
-      }}
-    />
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      height,
+      background: 'var(--brand-bg2)',
+      borderRadius: mapRadius,
+      overflow: 'hidden',
+    }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Floating search bar — mirrors the plan/[tripId]/map look so users
+          get consistent UX across map surfaces. Sits below any sticky
+          chrome the parent renders (top-bar + day pills). */}
+      <div style={{
+        position: 'absolute',
+        top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 20,
+        width: 'min(440px, calc(100% - 24px))',
+        pointerEvents: 'none',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'rgba(13,13,36,0.92)',
+          WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
+          border: '1px solid var(--brand-border)',
+          borderRadius: 12,
+          padding: '0 12px',
+          pointerEvents: 'auto',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
+        }}>
+          <span aria-hidden style={{ color: 'var(--brand-ink-mute)', fontSize: 14 }}>
+            {String.fromCodePoint(0x1F50D)}
+          </span>
+          <input
+            ref={searchInputRef}
+            placeholder="Search a place — reviews + photos"
+            aria-label="Search a place on the map"
+            style={{
+              flex: 1, padding: '10px 0',
+              background: 'transparent', border: 'none',
+              color: 'var(--brand-ink)', fontFamily: 'inherit', fontSize: 14,
+              outline: 'none', minWidth: 0,
+            }}
+          />
+        </div>
+      </div>
+
+      {searchedPlace && (
+        <SearchedPlaceCard
+          place={searchedPlace}
+          activePhoto={activePhoto}
+          onPhotoSelect={setActivePhoto}
+          onClose={() => {
+            setSearchedPlace(null);
+            if (searchMarkerRef.current) {
+              searchMarkerRef.current.setMap(null);
+              searchMarkerRef.current = null;
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// SearchedPlaceCard — floating info card that appears when the user
+// selects a place from the search bar's Places Autocomplete. Photos,
+// rating, and up to 3 top reviews.
+function SearchedPlaceCard({ place, activePhoto, onPhotoSelect, onClose }: {
+  place: SearchedPlace;
+  activePhoto: number;
+  onPhotoSelect: (i: number) => void;
+  onClose: () => void;
+}) {
+  const heroPhoto = place.photos[activePhoto];
+  return (
+    <div style={{
+      position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 22,
+      maxWidth: 420, margin: '0 auto',
+      maxHeight: 'calc(100% - 100px)',
+      overflow: 'auto',
+      background: 'rgba(13,13,36,0.96)',
+      WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
+      border: '1px solid var(--brand-border)',
+      borderRadius: 14,
+      boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
+    }}>
+      {heroPhoto ? (
+        <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={heroPhoto} alt={place.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <button onClick={onClose} aria-label="Close" style={{
+            position: 'absolute', top: 10, right: 10,
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'rgba(10,10,31,0.7)',
+            border: '1px solid var(--brand-border)',
+            color: 'var(--brand-ink)', cursor: 'pointer',
+            fontSize: 14, lineHeight: 1,
+          }}>×</button>
+          {place.photos.length > 1 && (
+            <div style={{
+              position: 'absolute', left: 10, right: 10, bottom: 10,
+              display: 'flex', gap: 6, overflowX: 'auto',
+            }}>
+              {place.photos.map((url, i) => (
+                <button key={i} onClick={() => onPhotoSelect(i)} aria-label={`Photo ${i + 1}`} style={{
+                  flexShrink: 0,
+                  width: 56, height: 38, borderRadius: 4,
+                  border: i === activePhoto ? '2px solid var(--brand-accent)' : '1px solid rgba(255,255,255,0.2)',
+                  padding: 0, cursor: 'pointer', background: 'transparent', overflow: 'hidden',
+                  opacity: i === activePhoto ? 1 : 0.7,
+                }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: '10px 14px', display: 'flex', justifyContent: 'flex-end', borderBottom: '1px solid var(--brand-border)' }}>
+          <button onClick={onClose} aria-label="Close" style={{
+            width: 24, height: 24, borderRadius: '50%',
+            background: 'transparent', border: '1px solid var(--brand-border)',
+            color: 'var(--brand-ink-mute)', cursor: 'pointer',
+            fontSize: 14, lineHeight: 1,
+          }}>×</button>
+        </div>
+      )}
+      <div style={{ padding: '14px 16px 16px', display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {place.openNow !== null && (
+            <span style={{
+              fontFamily: 'var(--font-mono-display, monospace)',
+              fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
+              padding: '2px 8px', borderRadius: 999,
+              color: place.openNow ? 'var(--brand-success)' : 'var(--brand-warn)',
+              background: place.openNow ? 'rgba(124,255,151,0.10)' : 'rgba(251,146,60,0.10)',
+              border: `1px solid ${place.openNow ? 'rgba(124,255,151,0.4)' : 'rgba(251,146,60,0.4)'}`,
+            }}>{place.openNow ? 'OPEN NOW' : 'CLOSED'}</span>
+          )}
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display, serif)', fontSize: 22, fontWeight: 400,
+          letterSpacing: '-0.01em', color: 'var(--brand-ink)', lineHeight: 1.2,
+        }}>{place.name}</div>
+        {place.rating !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--brand-ink-dim)' }}>
+            <span style={{ letterSpacing: 1, color: 'var(--brand-gold, #f59e0b)' }} aria-hidden>
+              {'★'.repeat(Math.round(place.rating)) + '☆'.repeat(5 - Math.round(place.rating))}
+            </span>
+            <span>{place.rating.toFixed(1)}{place.reviewCount ? ` · ${place.reviewCount.toLocaleString()} reviews` : ''}</span>
+          </div>
+        )}
+        {place.address && (
+          <div style={{ fontSize: 12, color: 'var(--brand-ink-mute)', lineHeight: 1.5 }}>
+            {place.address}
+          </div>
+        )}
+        {place.reviews.length > 0 && (
+          <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
+            {place.reviews.map((r, i) => (
+              <div key={i} style={{
+                padding: '10px 12px', borderRadius: 10,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--brand-border)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand-ink)' }}>{r.author}</span>
+                  <span style={{ fontSize: 11, letterSpacing: 1, color: 'var(--brand-gold, #f59e0b)' }} aria-hidden>
+                    {'★'.repeat(Math.round(r.rating))}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--brand-ink-dim)', marginLeft: 'auto' }}>{r.relative}</span>
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--brand-ink)' }}>
+                  {r.text.length > 240 ? r.text.slice(0, 235).trimEnd() + '…' : r.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
