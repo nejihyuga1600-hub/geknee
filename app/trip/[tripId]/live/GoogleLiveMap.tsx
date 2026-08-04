@@ -746,7 +746,10 @@ export function GoogleLiveMap({ city, activities, dayKey, geo, onAddStopFromSear
           chrome the parent renders (top-bar + day pills). */}
       <div style={{
         position: 'absolute',
-        top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+        // Pinned to the very top of the map wrapper 2026-08-04 per user
+        // request. Safe-area is already handled by the parent's sticky
+        // top-bar, so no extra inset here.
+        top: 8,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 20,
@@ -817,9 +820,13 @@ function SearchedPlaceCard({ place, activePhoto, onPhotoSelect, onAddToTrip, onC
   const heroPhoto = place.photos[activePhoto];
   return (
     <div style={{
-      position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 22,
+      // Docked to the TOP of the map wrapper 2026-08-04 per user request
+      // (was bottom). The search bar sits above it; the card starts just
+      // below with an ~68px offset so the search input stays reachable
+      // even when the card is open.
+      position: 'absolute', left: 12, right: 12, top: 68, zIndex: 22,
       maxWidth: 420, margin: '0 auto',
-      maxHeight: 'calc(100% - 100px)',
+      maxHeight: 'calc(100% - 96px)',
       overflow: 'auto',
       background: 'rgba(13,13,36,0.96)',
       WebkitBackdropFilter: 'blur(16px)', backdropFilter: 'blur(16px)',
