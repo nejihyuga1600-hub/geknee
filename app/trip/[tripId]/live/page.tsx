@@ -415,6 +415,13 @@ export default function LiveTripPage() {
       color: 'var(--brand-ink)',
       fontFamily: 'var(--font-ui), system-ui, sans-serif',
       paddingBottom: 80,
+      // Lock horizontal scrolling on the page root 2026-08-04 per user
+      // request — the DAY STOPS timeline and WEATHER hourly strip are
+      // the only surfaces that should scroll left/right; everything
+      // else stays locked so accidental swipes don't reveal the
+      // outside-viewport gutter.
+      overflowX: 'hidden',
+      maxWidth: '100vw',
     }}>
       {/* ── Offline status banner (Phase 3) ───────────────────────────── */}
       {!online && (
@@ -555,11 +562,12 @@ export default function LiveTripPage() {
           WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
           borderBottom: '1px solid var(--brand-border)',
           padding: '10px 8px',
-          display: 'flex', alignItems: 'center', gap: 8,
-          overflowX: 'auto', overflowY: 'hidden',
-          scrollSnapType: 'x proximity',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'none',
+          // Wrapping row (no horizontal scroll) 2026-08-04 per user
+          // request. Longer trips (8+ days) now stack onto a second row
+          // instead of scrolling — matches the "only day stops + weather
+          // scroll horizontally" rule.
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          overflowX: 'hidden',
         }}
       >
         {Array.from({ length: dayInfo.total }).map((_, i) => {
