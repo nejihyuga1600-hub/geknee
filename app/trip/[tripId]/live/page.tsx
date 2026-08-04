@@ -773,20 +773,29 @@ export default function LiveTripPage() {
           they've left the hotel. */}
       {/* ── Stop schedule + weather + after-that. Moved directly below
           the map 2026-08-04 per user feedback so the three glanceable
-          "what's-next" cards are the first thing under the map. Stacked
-          full-width (was a cramped 3-column grid) so each card can
-          breathe. */}
+          "what's-next" cards are the first thing under the map.
+          gridTemplateColumns:minmax(0,1fr) plus per-row min-width:0
+          keeps the horizontally-scrolling day timeline + weather
+          hourly strips from pushing the whole page wider than the
+          viewport — they scroll INSIDE their own row instead. */}
       <div style={{
         padding: '18px 8px 0',
         display: 'grid', gap: 14,
+        gridTemplateColumns: 'minmax(0, 1fr)',
       }}>
-        <DayTimeline activities={activities} currentClock={currentClock} />
-        <WeatherAlertCard
-          day={currentWeather?.forecast?.[0] ?? null}
-          current={currentWeather?.current ?? null}
-          hourly={currentWeather?.hourly ?? null}
-        />
-        <NextStopCard next={activities[nextIdx + 1] ?? null} />
+        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+          <DayTimeline activities={activities} currentClock={currentClock} />
+        </div>
+        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+          <WeatherAlertCard
+            day={currentWeather?.forecast?.[0] ?? null}
+            current={currentWeather?.current ?? null}
+            hourly={currentWeather?.hourly ?? null}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <NextStopCard next={activities[nextIdx + 1] ?? null} />
+        </div>
       </div>
 
       <div style={{ padding: '18px 8px 0' }}>
@@ -968,6 +977,12 @@ export default function LiveTripPage() {
         @keyframes routeDash {
           to { stroke-dashoffset: -32; }
         }
+        /* Hard-lock body + html against horizontal scroll while the
+           live-trip page is mounted 2026-08-04. Any inner scrollable
+           strip (day stops, weather hourly) still scrolls its own
+           overflow — this just prevents the whole viewport from ever
+           panning right when a child accidentally reports wide. */
+        html, body { overflow-x: hidden !important; max-width: 100vw; }
       `}</style>
     </div>
   );
