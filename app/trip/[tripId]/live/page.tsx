@@ -518,8 +518,8 @@ export default function LiveTripPage() {
             {String.fromCodePoint(0x25D0)} {online ? 'OFFLINE READY' : 'OFFLINE'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Link href={`/plan/${tripId}/itinerary`}
-              title="Itinerary" aria-label="Itinerary"
+            <Link href={`/trip/${tripId}/live`}
+              title="Plan (Live)" aria-label="Plan (Live)"
               style={{
                 fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-accent)', textDecoration: 'none',
@@ -529,6 +529,17 @@ export default function LiveTripPage() {
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
               PLAN
+            </Link>
+            <Link href={`/plan/${tripId}/itinerary`}
+              title="Original AI Itinerary" aria-label="Itinerary"
+              style={{
+                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                color: 'var(--brand-ink-dim)', textDecoration: 'none',
+                padding: '8px 12px', borderRadius: 999,
+                border: '1px solid var(--brand-border)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+              ITINERARY
             </Link>
             <Link href={`/plan/${tripId}/booking`}
               title="Booking" aria-label="Booking"
@@ -796,17 +807,12 @@ export default function LiveTripPage() {
         )}
       </div>
 
-      {/* ── Pack for today — pinned above the LEAVE-BY hero because
-          "what should I bring today" is the first question every
-          morning. Dismissible per-day so travelers close it once
-          they've left the hotel. */}
-      {/* ── Stop schedule + weather + after-that. Moved directly below
-          the map 2026-08-04 per user feedback so the three glanceable
-          "what's-next" cards are the first thing under the map.
-          gridTemplateColumns:minmax(0,1fr) plus per-row min-width:0
-          keeps the horizontally-scrolling day timeline + weather
-          hourly strips from pushing the whole page wider than the
-          viewport — they scroll INSIDE their own row instead. */}
+      {/* ── Below-map reorganized 2026-08-04 per user request:
+          DAY STOPS → TICKET MONITORING → LEAVE IN X MIN → AFTER THAT
+          → WEATHER → PACK FOR TODAY → QUICK CAPTURE → …
+          The day-schedule / ticket / next-stop cluster stays at the
+          top of the fold because those are the "what do I do next"
+          answers travelers scan for first. */}
       <div style={{
         padding: '18px 8px 0',
         display: 'grid', gap: 14,
@@ -815,15 +821,27 @@ export default function LiveTripPage() {
         <div style={{ minWidth: 0, overflow: 'hidden' }}>
           <DayTimeline activities={activities} currentClock={currentClock} />
         </div>
+        <div style={{ minWidth: 0 }}>
+          <SkipLineCard place={nextActivity?.place ?? null} etaMin={etaMin} tripId={tripId ?? ''} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <LeaveByCard
+            next={nextActivity}
+            etaMin={etaMin}
+            leaveBy={leaveByText}
+            coords={nextCoords}
+            tripTimezone={trip?.timezone}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <NextStopCard next={activities[nextIdx + 1] ?? null} />
+        </div>
         <div style={{ minWidth: 0, overflow: 'hidden' }}>
           <WeatherAlertCard
             day={currentWeather?.forecast?.[0] ?? null}
             current={currentWeather?.current ?? null}
             hourly={currentWeather?.hourly ?? null}
           />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <NextStopCard next={activities[nextIdx + 1] ?? null} />
         </div>
       </div>
 
@@ -835,20 +853,9 @@ export default function LiveTripPage() {
         />
       </div>
 
-      {/* ── Hero LEAVE-BY card ─────────────────────────────────────────── */}
-      <div style={{ padding: '24px 8px 0' }}>
-        <LeaveByCard
-          next={nextActivity}
-          etaMin={etaMin}
-          leaveBy={leaveByText}
-          coords={nextCoords}
-          tripTimezone={trip?.timezone}
-        />
-      </div>
-
-      {/* ── Quick capture (photo + note) pinned to the hero card. Auto-
-          tags with time, place, temperature. Persists to localStorage
-          for MVP; server backfill lands in a follow-up. */}
+      {/* ── Quick capture (photo + note). Auto-tags with time, place,
+          temperature. Persists to localStorage for MVP; server backfill
+          lands in a follow-up. */}
       <div style={{ padding: '10px 8px 0' }}>
         <QuickCaptureRow
           tripId={tripId ?? ''}
@@ -869,13 +876,6 @@ export default function LiveTripPage() {
           have an entry for the landmark. */}
       <div style={{ padding: '14px 8px 0' }}>
         <LandmarkGuideCard place={nextActivity?.place ?? null} />
-      </div>
-
-      {/* ── Skip-the-line ticket links for the next stop. Only renders
-          when we have curated ticket data AND at least one ticket is
-          still bookable for today. */}
-      <div style={{ padding: '14px 8px 0' }}>
-        <SkipLineCard place={nextActivity?.place ?? null} etaMin={etaMin} />
       </div>
 
       {/* ── Country cheat-sheet: money + tipping + tap water + power ─
@@ -2121,7 +2121,37 @@ function NotePreview({ note, onDelete }: { note: NoteEntry; onDelete: () => void
 // SkipLineCard — surfaces curated skip-the-line ticket links for the
 // next landmark. Filters by `stillBookable(arrivalHour)` so we don't
 // dangle a Louvre timed-entry link at 11 PM. Silent when no matches.
-function SkipLineCard({ place, etaMin }: { place: string | null; etaMin: number | null }) {
+function SkipLineCard({ place, etaMin, tripId }: { place: string | null; etaMin: number | null; tripId: string }) {
+  // "Already booked?" check — pull the trip's file vault and look for a
+  // booking-tagged file whose name mentions the current activity's
+  // place. If found, we swap the buy links for a "View ticket in Vault"
+  // deep-link so travelers don't rebook something they already have.
+  type VaultFile = { id: string; name: string; url: string; tag: string };
+  const [bookedFile, setBookedFile] = useState<VaultFile | null>(null);
+
+  useEffect(() => {
+    if (!tripId || !place) { setBookedFile(null); return; }
+    let cancelled = false;
+    fetch(`/api/trips/${tripId}/files`)
+      .then((r) => r.ok ? r.json() : { files: [] })
+      .then((d: { files?: VaultFile[] }) => {
+        if (cancelled) return;
+        const files = Array.isArray(d.files) ? d.files : [];
+        // Fuzzy match: booking-tagged file whose name contains a
+        // meaningful chunk of the place (≥5 chars, case-insensitive).
+        const key = place.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
+        const tokens = key.split(/\s+/).filter(t => t.length >= 5);
+        if (!tokens.length) { setBookedFile(null); return; }
+        const match = files.find((f) => {
+          if (f.tag !== 'booking') return false;
+          const name = f.name.toLowerCase();
+          return tokens.some(t => name.includes(t));
+        });
+        setBookedFile(match ?? null);
+      })
+      .catch(() => { if (!cancelled) setBookedFile(null); });
+    return () => { cancelled = true; };
+  }, [tripId, place]);
   const tickets: SkipLineTicket[] = useMemo(() => ticketsFor(place), [place]);
   const arrivalHour = useMemo(() => {
     const now = new Date();
@@ -2132,6 +2162,65 @@ function SkipLineCard({ place, etaMin }: { place: string | null; etaMin: number 
   }, [etaMin]);
 
   const bookable = useMemo(() => tickets.filter(t => stillBookable(t, arrivalHour)), [tickets, arrivalHour]);
+
+  // Already booked — deep-link to the vault instead of the buy links.
+  // Takes priority over the curated tickets so we never nudge someone
+  // to rebook something they already have a confirmation for.
+  if (bookedFile && place) {
+    return (
+      <CardShell accent="var(--brand-success, #7cff97)" label={`TICKET READY · ${place.slice(0, 24).toUpperCase()}`}>
+        <div style={{ fontSize: 12, color: 'var(--brand-ink-mute)', marginBottom: 10, lineHeight: 1.4 }}>
+          You already have a booking confirmation in your Vault.
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <a
+            href={bookedFile.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1px solid color-mix(in srgb, var(--brand-success, #7cff97) 45%, var(--brand-border))',
+              background: 'color-mix(in srgb, var(--brand-success, #7cff97) 10%, transparent)',
+              textDecoration: 'none', color: 'inherit',
+            }}
+          >
+            <span aria-hidden style={{ fontSize: 18 }}>{String.fromCodePoint(0x1F39F, 0xFE0F)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: DISPLAY, fontSize: 14, color: 'var(--brand-ink)',
+                lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {bookedFile.name}
+              </div>
+              <div style={{
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
+                color: 'var(--brand-success, #7cff97)', fontWeight: 700, marginTop: 3,
+              }}>OPEN TICKET →</div>
+            </div>
+          </a>
+          <Link
+            href={`/plan/${tripId}/vault`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--brand-border)',
+              background: 'transparent',
+              color: 'var(--brand-ink-dim)',
+              textDecoration: 'none',
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em', fontWeight: 700,
+              textTransform: 'uppercase',
+            }}
+          >
+            View all in Vault →
+          </Link>
+        </div>
+      </CardShell>
+    );
+  }
+
   if (!bookable.length || !place) return null;
 
   const VENDOR_COLORS: Record<SkipLineTicket['vendor'], string> = {
