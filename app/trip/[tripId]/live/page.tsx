@@ -18,6 +18,7 @@ import { todaysHappenings, type LocalHappening } from '@/lib/localColorByCity';
 import { guideFor, type LandmarkGuide } from '@/lib/landmarkGuides';
 import { ticketsFor, stillBookable, type SkipLineTicket } from '@/lib/skipLineTickets';
 import { currentMealContext } from '@/lib/mealCadenceByCountry';
+import { matchMonumentQuest } from '@/lib/monumentQuest';
 import {
   loadNotes, saveNote, deleteNote, newNoteId,
   isJournalDismissedToday, dismissJournalForToday, fileToScaledDataUrl,
@@ -1025,6 +1026,8 @@ function LeaveByCard({
     return { lead: next.name.replace(/[.]$/, ''), place: '' };
   })();
 
+  const quest = next ? matchMonumentQuest(next.place ?? next.name) : null;
+
   const stamp = (() => {
     if (!next) return 'WAITING ON NEXT STOP';
     if (leaveBy && leaveBy.minsToLeave > 0) {
@@ -1081,6 +1084,23 @@ function LeaveByCard({
       overflow: 'hidden',
     }}>
       <div style={{ minWidth: 0, flex: 1 }}>
+        {quest && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px', borderRadius: 999,
+            background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 22%, transparent)',
+            border: '1.5px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 55%, transparent)',
+            boxShadow: '0 0 24px color-mix(in srgb, var(--brand-gold, #f59e0b) 35%, transparent)',
+            marginBottom: 10,
+          }}>
+            <span aria-hidden style={{ fontSize: 12, lineHeight: 1 }}>{String.fromCodePoint(0x1F3C6)}</span>
+            <span style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+              color: 'var(--brand-gold, #f59e0b)', fontWeight: 800,
+              textTransform: 'uppercase',
+            }}>QUEST · UNLOCKS {quest.name.toUpperCase()}</span>
+          </div>
+        )}
         <div style={{
           fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
           color: 'var(--brand-accent)', fontWeight: 700, marginBottom: 8,
@@ -2869,32 +2889,74 @@ function DayTimeline({ activities, currentClock }: { activities: Activity[]; cur
           : i < nextIdx                       ? 'done'
           : i === nextIdx                     ? 'now'
                                               : 'future';
-        const color = status === 'done'   ? 'var(--brand-success)'
+        // Quest detection — is this stop a monument that unlocks a
+        // globe skin/badge? Quest tiles override the normal accent
+        // with gold + a trophy chip so they can't be missed.
+        const quest = matchMonumentQuest(a.place ?? a.name);
+        const color = quest ? 'var(--brand-gold, #f59e0b)'
+                    : status === 'done'   ? 'var(--brand-success)'
                     : status === 'now'    ? 'var(--brand-accent)'
                                           : 'var(--brand-ink-mute)';
-        const opacity = status === 'future' ? 0.65 : 1;
+        const opacity = status === 'future' && !quest ? 0.65 : 1;
         return (
           <div key={i} style={{
-            flex: '0 0 156px',
+            flex: '0 0 168px',
             scrollSnapAlign: 'center',
-            borderTop: `2px solid ${color}`,
+            borderTop: `${quest ? 3 : 2}px solid ${color}`,
             paddingTop: 10,
             opacity,
+            // Subtle gold glow around quest tiles so they read as a
+            // "hero" stop even in the peripheral vision of a scrolling
+            // day timeline.
+            ...(quest ? {
+              background: 'linear-gradient(180deg, color-mix(in srgb, var(--brand-gold, #f59e0b) 14%, transparent) 0%, transparent 60%)',
+              borderRadius: '0 0 8px 8px',
+              padding: '10px 8px 6px',
+              margin: '0 -8px -6px',
+              boxShadow: '0 0 0 1px color-mix(in srgb, var(--brand-gold, #f59e0b) 25%, transparent) inset',
+            } : {}),
           }}>
             <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: color, marginBottom: 10,
-              boxShadow: status === 'now' ? `0 0 10px ${color}` : 'none',
-            }} />
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10,
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: color,
+                boxShadow: status === 'now' || quest ? `0 0 10px ${color}` : 'none',
+              }} />
+              {quest && (
+                <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>
+                  {String.fromCodePoint(0x1F3C6)}
+                </span>
+              )}
+            </div>
+            {quest && (
+              <div style={{
+                display: 'inline-block',
+                fontFamily: MONO, fontSize: 8, letterSpacing: '0.16em',
+                color: 'var(--brand-gold, #f59e0b)', fontWeight: 800,
+                padding: '2px 6px', borderRadius: 4,
+                background: 'color-mix(in srgb, var(--brand-gold, #f59e0b) 16%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--brand-gold, #f59e0b) 40%, transparent)',
+                marginBottom: 6,
+                textTransform: 'uppercase',
+              }}>
+                QUEST · UNLOCKS SKIN
+              </div>
+            )}
             <div style={{
               fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-              color: status === 'now' ? 'var(--brand-accent)' : 'var(--brand-ink-mute)',
+              color: quest ? 'var(--brand-gold, #f59e0b)'
+                : status === 'now' ? 'var(--brand-accent)'
+                : 'var(--brand-ink-mute)',
               marginBottom: 4, fontWeight: 700,
             }}>
               STOP {i + 1}/{activities.length} · {status.toUpperCase()} · {a.display}
             </div>
             <div style={{
-              fontFamily: DISPLAY, fontSize: 14, color: 'var(--brand-ink)', lineHeight: 1.3,
+              fontFamily: DISPLAY, fontSize: 14, color: 'var(--brand-ink)',
+              lineHeight: 1.3,
+              fontWeight: quest ? 600 : 400,
               overflow: 'hidden', textOverflow: 'ellipsis',
               display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             }}>
