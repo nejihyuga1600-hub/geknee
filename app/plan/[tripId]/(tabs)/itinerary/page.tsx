@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import SuggestionsSection from '@/app/components/SuggestionsSection';
@@ -39,7 +39,13 @@ const TripSocialPanel = dynamic(
 export default function ItineraryTabPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tripId = (params?.tripId as string) ?? '';
+  // When the user reaches this page via the ITINERARY chip on the live
+  // page (which appends ?stay=1), skip the "trip is happening now →
+  // redirect to /live" bounce — they explicitly asked to see the AI
+  // itinerary instead of the live view.
+  const stayOnItinerary = searchParams?.get('stay') === '1';
   const { data: session } = useSession();
   const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
 
@@ -65,7 +71,7 @@ export default function ItineraryTabPage() {
         setTripOwnerUserId(d.trip.userId ?? null);
         setTripVoteMode(d.trip.suggestionVoteMode === 'auto_majority' ? 'auto_majority' : 'advisory');
         setTripDestination(d.trip.destination ?? d.trip.location ?? '');
-        if (startDate && endDate) {
+        if (startDate && endDate && !stayOnItinerary) {
           const today = new Date().toISOString().slice(0, 10);
           if (today >= startDate && today <= endDate) {
             router.replace(`/trip/${tripId}/live`);
@@ -87,7 +93,7 @@ export default function ItineraryTabPage() {
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
     };
-  }, [tripId, router]);
+  }, [tripId, router, stayOnItinerary]);
 
   return (
     <>

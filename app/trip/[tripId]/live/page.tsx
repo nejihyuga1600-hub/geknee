@@ -522,7 +522,7 @@ export default function LiveTripPage() {
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <Link href={`/trip/${tripId}/live`}
-              title="Plan (Live)" aria-label="Plan (Live)"
+              title="Live view" aria-label="Live view"
               style={{
                 fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-accent)', textDecoration: 'none',
@@ -531,9 +531,9 @@ export default function LiveTripPage() {
                 background: 'color-mix(in srgb, var(--brand-accent) 10%, transparent)',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
-              PLAN
+              LIVE
             </Link>
-            <Link href={`/plan/${tripId}/itinerary`}
+            <Link href={`/plan/${tripId}/itinerary?stay=1`}
               title="Original AI Itinerary" aria-label="Itinerary"
               style={{
                 fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
