@@ -40,14 +40,35 @@ export interface ActivityBlockProps {
   dayNumber?: number;
 }
 
+// Module-scoped per-place image pool. Keyed by place||city; stores the
+// full image array from /api/place-images so we can rotate through
+// available photos instead of always showing images[0] when the same
+// landmark shows up on multiple days/steps. `variantSeq[key]` bumps by
+// one every time PlaceThumb mounts with that key, and we pick
+// images[seq % images.length] so consecutive uses land on different
+// photos. Falls back to images[0] when only one is available.
+const imagePool = new Map<string, string[]>();
+const variantSeq = new Map<string, number>();
+
+function pickVariantIndex(key: string): number {
+  const cur = variantSeq.get(key) ?? 0;
+  variantSeq.set(key, cur + 1);
+  return cur;
+}
+
 function PlaceThumb({ place, city }: { place: string; city?: string }) {
   const cacheKey = city ? `${place}||${city}` : place;
-  const cached = imgCache.has(cacheKey) ? (imgCache.get(cacheKey) || null) : undefined;
-  const [src, setSrc] = useState<string | null | undefined>(cached);
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (imgCache.has(cacheKey)) { setSrc(imgCache.get(cacheKey) || null); return; }
+    const pool = imagePool.get(cacheKey);
+    if (pool !== undefined) {
+      if (pool.length === 0) { setSrc(null); return; }
+      const idx = pickVariantIndex(cacheKey) % pool.length;
+      setSrc(pool[idx]);
+      return;
+    }
     // Google Places only — no Wikidata/Wikipedia/Commons fallbacks. Day-step
     // images must come from Google Maps imagery so the thumb matches what
     // the user sees when they open the place in Google Maps. The broader
@@ -59,12 +80,18 @@ function PlaceThumb({ place, city }: { place: string; city?: string }) {
         const r = await fetch(`/api/place-images?${sp.toString()}`);
         if (r.ok) {
           const d = await r.json() as { images?: string[] };
-          const url = d.images?.[0] ?? null;
-          imgCache.set(cacheKey, url ?? '');
-          setSrc(url);
+          const list = Array.isArray(d.images) ? d.images.filter((u): u is string => !!u) : [];
+          imagePool.set(cacheKey, list);
+          // Preserve the legacy single-URL cache so other consumers of
+          // imgCache still get their expected shape.
+          imgCache.set(cacheKey, list[0] ?? '');
+          if (list.length === 0) { setSrc(null); return; }
+          const idx = pickVariantIndex(cacheKey) % list.length;
+          setSrc(list[idx]);
           return;
         }
       } catch {}
+      imagePool.set(cacheKey, []);
       imgCache.set(cacheKey, '');
       setSrc(null);
     })();
