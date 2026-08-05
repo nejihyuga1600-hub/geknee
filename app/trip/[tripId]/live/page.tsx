@@ -473,24 +473,27 @@ export default function LiveTripPage() {
           labels are legible without squinting. */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 30,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        paddingTop: online ? 'calc(env(safe-area-inset-top) + 12px)' : '12px',
-        paddingBottom: 12, paddingLeft: 10, paddingRight: 10,
+        // Tightened 2026-08-04 per user request — smaller vertical
+        // footprint so the map can grow. Row gap 10→6, vertical
+        // padding 12→8, chip padding 8/12→5/10, font sizes -1.
+        display: 'flex', flexDirection: 'column', gap: 6,
+        paddingTop: online ? 'calc(env(safe-area-inset-top) + 8px)' : '8px',
+        paddingBottom: 8, paddingLeft: 10, paddingRight: 10,
         background: 'rgba(5,5,15,0.9)', WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
         borderBottom: '1px solid var(--brand-border)',
       }}>
         {/* Row 1 — live badge + clock */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
             <span style={{
               flexShrink: 0,
-              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
               background: 'var(--brand-success)',
-              boxShadow: '0 0 12px var(--brand-success)',
+              boxShadow: '0 0 10px var(--brand-success)',
               animation: 'livePulse 1.6s ease-in-out infinite',
             }} />
             <span style={{
-              fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em',
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.16em',
               color: 'var(--brand-ink)', fontWeight: 700,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
@@ -499,17 +502,17 @@ export default function LiveTripPage() {
           </div>
           <span style={{
             flexShrink: 0,
-            fontFamily: MONO, fontSize: 13, fontVariantNumeric: 'tabular-nums',
+            fontFamily: MONO, fontSize: 12, fontVariantNumeric: 'tabular-nums',
             color: 'var(--brand-ink)', fontWeight: 600,
           }}>{clockText}</span>
         </div>
         {/* Row 2 — offline status (left) + nav chips (right) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span
             title={online ? 'Offline maps ready' : 'Offline mode'}
             style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em',
-              padding: '6px 10px', borderRadius: 999,
+              fontFamily: MONO, fontSize: 9, letterSpacing: '0.14em',
+              padding: '4px 8px', borderRadius: 999,
               border: `1px solid ${online ? 'var(--brand-border)' : 'color-mix(in srgb, var(--brand-warning, #f59e0b) 45%, transparent)'}`,
               color: online ? 'var(--brand-ink-mute)' : 'var(--brand-warning, #f59e0b)',
               background: online ? 'transparent' : 'color-mix(in srgb, var(--brand-warning, #f59e0b) 12%, transparent)',
@@ -517,13 +520,13 @@ export default function LiveTripPage() {
             }}>
             {String.fromCodePoint(0x25D0)} {online ? 'OFFLINE READY' : 'OFFLINE'}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <Link href={`/trip/${tripId}/live`}
               title="Plan (Live)" aria-label="Plan (Live)"
               style={{
-                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-accent)', textDecoration: 'none',
-                padding: '8px 12px', borderRadius: 999,
+                padding: '5px 10px', borderRadius: 999,
                 border: '1px solid var(--brand-border-hi)',
                 background: 'color-mix(in srgb, var(--brand-accent) 10%, transparent)',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -533,9 +536,9 @@ export default function LiveTripPage() {
             <Link href={`/plan/${tripId}/itinerary`}
               title="Original AI Itinerary" aria-label="Itinerary"
               style={{
-                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-ink-dim)', textDecoration: 'none',
-                padding: '8px 12px', borderRadius: 999,
+                padding: '5px 10px', borderRadius: 999,
                 border: '1px solid var(--brand-border)',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
@@ -544,9 +547,9 @@ export default function LiveTripPage() {
             <Link href={`/plan/${tripId}/booking`}
               title="Booking" aria-label="Booking"
               style={{
-                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-ink-dim)', textDecoration: 'none',
-                padding: '8px 12px', borderRadius: 999,
+                padding: '5px 10px', borderRadius: 999,
                 border: '1px solid var(--brand-border)',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
@@ -555,9 +558,9 @@ export default function LiveTripPage() {
             <Link href={`/plan/${tripId}/vault`}
               title="Vault" aria-label="Vault"
               style={{
-                fontFamily: MONO, fontSize: 11, letterSpacing: '0.12em', fontWeight: 700,
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
                 color: 'var(--brand-ink-dim)', textDecoration: 'none',
-                padding: '8px 12px', borderRadius: 999,
+                padding: '5px 10px', borderRadius: 999,
                 border: '1px solid var(--brand-border)',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
@@ -589,17 +592,15 @@ export default function LiveTripPage() {
           }
         }}
         style={{
-          // Sticky, sitting directly below the top app bar (2026-08-03
-          // per user request). Top-bar height varies with the safe-area
-          // inset; use the same env() plumbing so the day row locks
-          // flush against it on every device.
+          // Sticky, sitting directly below the top app bar. Offset
+          // tightened 2026-08-04 with the top-bar shrink (88 → 70).
           position: 'sticky',
-          top: 'calc(env(safe-area-inset-top) + 88px)',
+          top: 'calc(env(safe-area-inset-top) + 70px)',
           zIndex: 29,
           background: 'rgba(5,5,15,0.9)',
           WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)',
           borderBottom: '1px solid var(--brand-border)',
-          padding: '10px 8px',
+          padding: '6px 8px',
           // Single-line horizontal scroll 2026-08-04 (revised) — user
           // wanted the pills to stay on ONE row so more of the viewport
           // can go to the map. Scrolls internally within this sticky
@@ -622,15 +623,15 @@ export default function LiveTripPage() {
               style={{
                 flexShrink: 0,
                 scrollSnapAlign: 'center',
-                padding: '6px 14px', borderRadius: 999,
+                padding: '4px 12px', borderRadius: 999,
                 border: `1px solid ${isActive ? 'var(--brand-accent)' : 'var(--brand-border)'}`,
                 background: isActive ? 'rgba(167,139,250,0.18)' : 'transparent',
                 color: isActive ? 'var(--brand-ink)' : 'var(--brand-ink-dim)',
-                fontFamily: MONO, fontSize: 12, fontWeight: 600,
+                fontFamily: MONO, fontSize: 11, fontWeight: 600,
                 letterSpacing: '0.08em',
                 cursor: 'pointer',
-                minHeight: 32,
-                display: 'inline-flex', alignItems: 'center', gap: 5,
+                minHeight: 26,
+                display: 'inline-flex', alignItems: 'center', gap: 4,
               }}
             >
               <span>{d}</span>
@@ -727,7 +728,7 @@ export default function LiveTripPage() {
           // (top-bar ~96 px + day-pill row ~52 px) so the map fits the
           // screen minus the locked header, per user request 2026-08-03.
           // 100dvh keeps it responsive to iOS Safari's dynamic toolbar.
-          height="calc(100dvh - env(safe-area-inset-top) - 144px)"
+          height="calc(100dvh - env(safe-area-inset-top) - 112px)"
           fullscreen={false}
           // Add-stop from the search-hydrated info card, which now hands
           // us pre-resolved coords + a place label — no need for the
